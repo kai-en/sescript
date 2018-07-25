@@ -1,0 +1,394 @@
+// names 
+string shipControllerPointZeroName = "Flight Seat 3 Reference"; 
+IMyShipController Cockpit; 
+ 
+// Add 
+string missileRotorGroupName = "Rotor-Missile-G"; 
+string missileWelderGroupName = "Welder-Missile-G"; 
+string gcLightGroupName = "light-gc-g";
+string sensorHangarGroupName = "Sensor-Hangar-G";
+string rotorHangarGroupName = "Rotor-Hangar-G";
+
+List<List<IMyTerminalBlock>> missileRotorsSort = null; 
+List<List<IMyTerminalBlock>> missileWeldersSort = null; 
+List<List<IMyTerminalBlock>> gcLightSort = null; 
+List<List<IMyTerminalBlock>> sensorHangarSort = null; 
+List<List<IMyTerminalBlock>> rotorHangarSort = null; 
+List<bool> lastSensorStatus = new List<bool>() {true,true,true,true,true,true};
+
+List<IMyTerminalBlock> gcWelderList = null; 
+ 
+string missileTriggerName = "Timer Block Miss"; 
+string fighterFcsName = "Programmable block fcs"; 
+string gesName = "Programmable block GES"; 
+ 
+//  
+bool inited = false; 
+List<List<List<IMyTerminalBlock>>> seqBlockList = new List<List<List<IMyTerminalBlock>>>(); 
+List<long> seqIntervalList = new List<long>(); 
+List<long> seqStartList = new List<long>(); 
+List<string> seqActionList = new List<string>(); 
+List<List<TerminalActionParameter>> seqActionParamenterList = new List<List<TerminalActionParameter>>(); 
+IMyTerminalBlock gesBlock = null; 
+ 
+long counter = 0; 
+int fireGCMode = 0; 
+long fireGCStart = 0;
+ 
+public Program() 
+{ 
+  Runtime.UpdateFrequency = UpdateFrequency.Update1; 
+} 
+ 
+void findByGroup(string groupName, List<IMyTerminalBlock> blocks) { 
+  var group = GridTerminalSystem.GetBlockGroupWithName(groupName); 
+  if (group == null) { 
+    Echo("no group for name " + groupName); 
+    return; 
+  } 
+  group.GetBlocks(blocks); 
+} 
+ 
+IMyTerminalBlock getBlockByName(string name, bool filterSameGrid=true, bool equal = true) { 
+  List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>(); 
+  GridTerminalSystem.SearchBlocksOfName(name, blocks, block => !equal || block.CustomName.Equals(name)); 
+  if (filterSameGrid) FilterSameGrid(Me.CubeGrid, ref blocks); 
+  if (blocks.Count > 0) return blocks[0]; 
+  return null; 
+} 
+ 
+void FilterSameGrid<T>(IMyCubeGrid grid, ref List<T> blocks) where T: class, IMyTerminalBlock 
+{ 
+List<T> filtered = new List<T>(); 
+for (int i = 0; i < blocks.Count; i++) 
+{ 
+if (blocks[i].CubeGrid == grid) 
+{ 
+filtered.Add(blocks[i]); 
+} 
+} 
+if(filtered.Count == 0) return; 
+blocks = filtered; 
+} 
+ 
+List<IMyTerminalBlock> getBlockListByName(string name, bool filterSameGrid=true, bool equal = true) { 
+  List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>(); 
+  if (equal) 
+    GridTerminalSystem.SearchBlocksOfName(name, blocks, block => block.CustomName.Equals(name)); 
+  else 
+    GridTerminalSystem.SearchBlocksOfName(name, blocks); 
+  if (filterSameGrid) FilterSameGrid(Me.CubeGrid, ref blocks); 
+  return blocks; 
+} 
+ 
+List<List<IMyTerminalBlock>> sortByPosition(List<IMyTerminalBlock> blocks, string dir, bool isAsc) { 
+  IEnumerable<IGrouping<int, IMyTerminalBlock>> grouped; 
+  switch (dir) { 
+  case "X": 
+    grouped = blocks.GroupBy(b=>(int)b.Position.X); //Position means relative pos to ship, GetPosition() mean absolute pos to world. 
+  break; 
+  case "Y": 
+    grouped = blocks.GroupBy(b=>(int)b.Position.Y); 
+  break; 
+  case "Z": 
+    grouped = blocks.GroupBy(b=>(int)b.Position.Z); 
+  break; 
+  default: 
+  return null; 
+  } 
+ 
+  if(isAsc) 
+    return grouped.OrderBy(g=>g.Key).Select(g=>g.ToList()).ToList(); 
+  else 
+    return grouped.OrderByDescending(g=>g.Key).Select(g=>g.ToList()).ToList(); 
+} 
+ 
+List<List<IMyTerminalBlock>> sortByRelativePosition(List<IMyTerminalBlock> blocks, string dir, bool isAsc) { 
+  MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up); 
+ 
+  IEnumerable<IGrouping<int, IMyTerminalBlock>> grouped; 
+ 
+  switch (dir) { 
+  case "X": 
+    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).X /2.0))); 
+  break; 
+  case "Y": 
+    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Y /2.0))); 
+  break; 
+  case "Z": 
+    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Z /2.0))); 
+  break;
+  case "ZX":
+    grouped = blocks.GroupBy(b=>((int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Z /2.0))) * 1000 + (int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).X /2.0))); 
+  break;
+  default: 
+  return null; 
+  } 
+ 
+  if(isAsc) 
+    return grouped.OrderBy(g=>g.Key).Select(g=>g.ToList()).ToList(); 
+  else 
+    return grouped.OrderByDescending(g=>g.Key).Select(g=>g.ToList()).ToList(); 
+} 
+ 
+void PlayAction(IMyTerminalBlock block, String action, List<TerminalActionParameter> args = null) { 
+    if (block != null) { 
+        block.GetActionWithName(action).Apply(block, args); 
+    } 
+} 
+ 
+void runSeq() { 
+  for(int i = 0; i < seqIntervalList.Count(); i++) { 
+    List<List<IMyTerminalBlock>> blockll = seqBlockList[i]; 
+    long interval = seqIntervalList[i]; 
+    long start = seqStartList[i]; 
+    string action = seqActionList[i]; 
+    List<TerminalActionParameter> argumentList = seqActionParamenterList[i]; 
+ 
+    if ((counter - start) % interval != 0) continue;  
+ 
+    if (blockll.Count() == 0) continue; 
+ 
+    List<IMyTerminalBlock> blockl = blockll[0]; 
+    for(int j = 0; j < blockl.Count(); j++) { 
+      PlayAction(blockl[j], action, argumentList); 
+    } 
+    blockll.RemoveAt(0); 
+  } 
+ 
+  int k = 0; 
+  while(k < seqIntervalList.Count()) { 
+    List<List<IMyTerminalBlock>> blockll = seqBlockList[k]; 
+    if (blockll.Count() == 0) { 
+      seqBlockList.RemoveAt(k); 
+      seqIntervalList.RemoveAt(k); 
+      seqStartList.RemoveAt(k); 
+      seqActionList.RemoveAt(k); 
+      seqActionParamenterList.RemoveAt(k); 
+    } else { 
+      k ++; 
+    } 
+  } 
+} 
+ 
+void addSeq(List<List<IMyTerminalBlock>> blocks, string action, long interval, List<TerminalActionParameter> argumentList = null) { 
+  List<List<IMyTerminalBlock>> copyBlockLL = new List<List<IMyTerminalBlock>>(blocks); 
+  seqBlockList.Add(copyBlockLL); 
+  seqIntervalList.Add(interval); 
+  seqActionList.Add(action); 
+  seqStartList.Add(counter); 
+  seqActionParamenterList.Add(argumentList); 
+} 
+ 
+void PlayActionList(List<IMyTerminalBlock> blocks, String action) { 
+    if(blocks == null) return; 
+    for(int i = 0; i < blocks.Count; i ++) 
+    { 
+        blocks[i].GetActionWithName(action).Apply(blocks[i]); 
+    } 
+} 
+ 
+void init() { 
+  Cockpit = getBlockByName(shipControllerPointZeroName) as IMyShipController; 
+ 
+  // Add 
+  List<IMyTerminalBlock> missileRotors = new List<IMyTerminalBlock>(); 
+  findByGroup(missileRotorGroupName, missileRotors); 
+ 
+  missileRotorsSort = sortByPosition(missileRotors, "Z", true); 
+ 
+  List<IMyTerminalBlock> missileWelders = new List<IMyTerminalBlock>(); 
+  findByGroup(missileWelderGroupName, missileWelders); 
+ 
+  missileWeldersSort = sortByPosition(missileWelders, "Y", true);
+
+  List<IMyTerminalBlock> gcLights = new List<IMyTerminalBlock>();
+  findByGroup(gcLightGroupName, gcLights);
+
+  gcLightSort = sortByPosition(gcLights, "Z", false);
+ 
+  gcWelderList = new List<IMyTerminalBlock>(); 
+  findByGroup("Welder-GC-G", gcWelderList); 
+ 
+  gesBlock = getBlockByName(gesName, false); 
+
+  List<IMyTerminalBlock> sensorHangar = new List<IMyTerminalBlock>();
+  findByGroup(sensorHangarGroupName, sensorHangar);
+  sensorHangarSort = sortByRelativePosition(sensorHangar, "ZX", true);
+
+  List<IMyTerminalBlock> rotorHangar = new List<IMyTerminalBlock>();
+  findByGroup(rotorHangarGroupName, rotorHangar);
+  rotorHangarSort = sortByRelativePosition(rotorHangar, "ZX", true);
+
+  inited = true; 
+}
+ 
+public void Main(string argument, UpdateType updateSource) 
+{ 
+  if (!inited) { 
+    init(); 
+    return; 
+  } 
+  // Echo(seqBlockList.Count() + " " + seqIntervalList.Count() + " " + seqStartList.Count() + " " + seqActionList.Count() + " "); 
+ 
+  // Add 
+  switch(argument) { 
+  case "ReverseMissileRotor": 
+    addSeq(missileRotorsSort, "Reverse", 120); 
+  break; 
+  case "ToggleMissileWelder": 
+    addSeq(missileWeldersSort, "OnOff", 120); 
+  break; 
+  case "FireMissile":
+    if (fireGCMode > 0) return;
+    fireGCMode = 2;
+    fireGCStart = counter;
+    addSeq(missileWeldersSort, "OnOff_Off", 120); 
+{
+{
+    String cmd = ""; 
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();
+    argumentList.Add(tap);  
+    List<IMyTerminalBlock> msPB = getBlockListByName("Programmable block Missile", false); 
+    List<List<IMyTerminalBlock>> msPBSorted = sortByRelativePosition(msPB, "Y", true);
+    addSeq(msPBSorted, "Run", 40, argumentList);
+}
+    { 
+    String cmd = "FIREONMS"; 
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>(); 
+    argumentList.Add(tap); 
+    PlayAction(gesBlock, "Run", argumentList); 
+    } 
+
+}
+  break; 
+  case "LaunchFighters":
+  {
+    List<IMyTerminalBlock> fighterFcs = getBlockListByName(fighterFcsName, false); 
+    List<List<IMyTerminalBlock>> fcsSorted = sortByRelativePosition(fighterFcs, "Z", true); 
+    String cmd = "1st:FLYBYON"; 
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>(); 
+    argumentList.Add(tap); 
+    addSeq(fcsSorted, "Run", 600, argumentList);
+  }
+  break; 
+  case "LoadGC": 
+    List<List<IMyTerminalBlock>> gcWeldersSort = sortByRelativePosition(gcWelderList, "Z", true); 
+    addSeq(gcWeldersSort, "OnOff_On", 120); 
+  break;
+  case "FireGC": 
+    if (fireGCMode == 0) { 
+      fireGCMode = 1; 
+      fireGCStart = counter; 
+      PlayActionList(gcWelderList, "OnOff_On");
+    } 
+  break; 
+  } 
+ 
+  runSeq(); 
+ 
+  if (fireGCMode == 1 && counter > fireGCStart + 180) { 
+    PlayActionList(gcWelderList, "OnOff_Off"); 
+    {
+    String cmd = ""; 
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();
+    argumentList.Add(tap);  
+    List<IMyTerminalBlock> gcPB = getBlockListByName("Programmable block GC", false); 
+    List<List<IMyTerminalBlock>> gcPBSorted = sortByRelativePosition(gcPB, "Z", true); 
+    Echo(gcPB.Count+"");
+    addSeq(gcPBSorted, "Run", 20, argumentList); 
+    fireGCMode = 2; 
+    }
+
+    { 
+    String cmd = "FIREON"; 
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>(); 
+    argumentList.Add(tap); 
+    PlayAction(gesBlock, "Run", argumentList); 
+    }
+    addSeq(gcLightSort, "OnOff_On", 5);
+  }
+
+  if (fireGCMode == 2 && counter > fireGCStart + 480) { 
+    { 
+    String cmd = "FIREOFF"; 
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>(); 
+    argumentList.Add(tap); 
+    PlayAction(gesBlock, "Run", argumentList); 
+    } 
+    fireGCMode = 0; 
+    addSeq(gcLightSort, "OnOff_Off", 10); 
+
+  } 
+
+  // get new sensor status
+  List<bool> newSensorStatus = new List<bool>(sensorHangarSort.Count);
+  for (int i=0;i<sensorHangarSort.Count;i++) {
+    newSensorStatus.Add(true);
+  }
+  saveSensorStatus(ref newSensorStatus);
+  // set the rotor
+  // if rotor down?
+  for (int i = 0; i < 2; i ++) {
+    for (int j = 0; j< 2; j++ ) {
+      bool allBackAreDown = true;
+      for (int k = 0; k < i; k ++) {
+        if (!newSensorStatus[k*2 + j]) {
+          allBackAreDown = false;
+        }
+      }
+      if (allBackAreDown && !lastSensorStatus[i*2+j] && newSensorStatus[i*2+j] ) {
+        // turn rotor down
+        turnRotor(rotorHangarSort[(i)*2+j][0], true);
+      }
+    }
+  }
+  // if rotor up ?
+  for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+      if (lastSensorStatus[(i+1)*2+j] && ! newSensorStatus[(i+1)*2+j]) {
+        turnRotor(rotorHangarSort[(i)*2+j][0], false);        
+      }
+    }
+  }
+
+  // save last sensor status
+  lastSensorStatus = newSensorStatus;
+  counter ++; 
+}
+
+void turnRotor(IMyTerminalBlock rotor, bool isDown) {
+  Base6Directions.Direction rotor_Right = rotor.WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Right);
+  bool isIncreaseAngle;
+  switch(rotor_Right){
+  case Base6Directions.Direction.Up:
+    isIncreaseAngle = !isDown;
+  break;
+  case Base6Directions.Direction.Down:
+    isIncreaseAngle = isDown;
+  break;
+  default:
+    isIncreaseAngle = true;
+  break;
+  }
+  IMyMotorStator motor = rotor as IMyMotorStator;
+  if (isIncreaseAngle) {
+    motor.TargetVelocityRPM = 1;
+  } else {
+    motor.TargetVelocityRPM = -1;
+  }
+}
+
+void saveSensorStatus(ref List<bool> saveList) {
+  for (int i = 0; i < sensorHangarSort.Count; i++) {
+    List<IMyTerminalBlock> oneSensor = sensorHangarSort[i]; 
+    IMySensorBlock sensor = oneSensor[0] as IMySensorBlock;
+    saveList[i] = sensor.IsActive;
+  }
+}

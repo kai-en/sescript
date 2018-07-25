@@ -1,0 +1,1015 @@
+/*     
+================================ MEA 重力引擎_GES v6.1版 ==================     
+【安装方法】     
+1、安装一个编程块，将此脚本复制进去，或者直接从工坊订阅脚本中使用。     
+2、按照下列【方块命名规则】填写好所需的方块     
+3、已更新自触发，无需定时块，只要安装完成后手动运行一次这个编程块即可     
+     
+【使用方法】     
+编程块包含了一些指令用于控制，每一个指令都是一个特定的文字，例如“AIM”。你可以在驾驶舱的快捷栏中，将编程块拖拽到底部的快捷栏，并选择运行，这时候会提示输入指令，把这个指令输入进来即可对编程块进行控制。     
+指令包括（注意区分大小写）：     
+ONOFF —— 		切换总开关的开启和关闭     
+MODE —— 		切换操作模式，有精确模式和普通模式。在普通模式下，一旦按下WASD 空格 C按键，程序立即控制重力发生器使用最大力度推进。在精确模式下，按下按键以后，重力发生器的出力会逐步增加，这个模式适用于精确对接等操作     
+				可以通过修改InputRatio系数来进一步修改逐步增加的速度     
+Z —— 			切换惯性抑制开关。注意，在自定义变量中还有一个InertiaAccordingThrust参数用于控制惯性抑制的计算方法。可以使用不依赖任何推进器的自主计算，也可以让程序自动检测推进器的出力值来计算惯性抑制     
+				（依赖推进器的算法相当于在非按键状态下把重力发生器的出力和对应方向推进器的出力所联系起来，如果你有其他的通过控制推进器控制飞船的脚本，这个方法可以让那个脚本的作用传递给重力引擎）     
+ATTITUDE ——		开关姿态稳定控制，可有效修复重力引擎受力点不在重心上导致的飞行偏航问题。强烈建议只使用一部分陀螺仪进行姿态控制	  
+ROLL ——			开关螺旋运动模式     
+	     
+【更新说明】     
+v6.0 —— 全新的脚本     
+经过一系列的经验和技术积累，目前的脚本写法已经趋于完善。计算方式大大简化，同时变得更加有效     
+1、增加了不依赖推进器的惯性抑制算法     
+2、重写了LCD面板的显示文本，它变得更加简洁，你甚至可以不使用LCD，因为程序只有3个状态开关     
+3、重写了运动控制方法，现在的重力引擎变得更加敏捷     
+4、新增了姿态控制方法，现在就算重力引擎会导致飞船偏航也可以在程序控制下保持正确的姿态飞行     
+    
+v6.1 —— 修复了低速卡顿问题    
+1、新增了自触发功能，不需要再装定时块   
+当速度低于0.01时，原先的程序依然会判定存在速度并控制重力发生器进行修正，导致依然存在极小的高频变化重力场    
+这个版本新增了一个控制参数，当绝对速度低于这个参数时不进行惯性抑制。建议使用低于0.01的值    
+2、新增螺旋运动功能，开启后自动触发基于上下左右的圆周运动，该运动不影响按键操控，可用于规避敌人子弹  
+*/     
+//================= 命名规则 =================     
+string CockpitNameTag = "Flight Seat 3 Reference"; //控制座椅或者驾驶舱或者远程控制块的名字，必须，一个，程序检测这个座椅上玩家的按键输入来控制重力发生器的出力值     
+string LCDNameTag = "GE_LCD"; //LCD面板名字，非必须，一个，用于显示开关状态     
+string GravityNameTag = "GE_GEN";//重力发生器名字，非必须，多个。如果不填写，程序会按类型获取所有重力发生器。如果填写，程序会搜索所有【包含】这个名字的重力发生器，注意，并不一定是完全匹配的名字，只要名字包含这个字符的重力发生器都会被纳入     
+string GyroscopesNameTag = "GE_Gyro";  
+//陀螺仪的名字，非必须，多个。如果不填写，程序会按类型获取所有陀螺仪。。如果填写，程序会搜索所有【包含】这个名字的陀螺仪。这些陀螺仪用于修正重力引擎导致的运动偏航     
+								//【重要】强烈建议使用一部分陀螺仪进行姿态控制，另外一部分由玩家自己控制。如果使用全部陀螺仪进行姿态控制会在某些情况下重力引擎和姿态控制互相冲突，从而导致船只不受控运动     
+     
+//================== 自定义参数 ===============     
+float InputRatio = 0.05f; //按键力度系数。仅在精确模式的时候起作用，这个值越大加速的过程越快     
+double MouseMoveRatio = 3; //开启姿态控制后，程序会接管陀螺仪并使用越级控制。它会优先消除由重力引擎造成的偏航或外力造成的偏航，然后把鼠标和QE按键的值叠加到结果上，实现鼠标控制姿态。这个系数越大越灵敏。     
+double AttitudeControlRatio = 1; //开启姿态控制后，当重力发生器使飞船产生偏航，程序会自动计算飞船角速度并反馈给陀螺仪修复这个偏航。这个系数控制恢复姿态的力度，系数越大力度越大。     
+double MaxWorldSpeed = 100; //在当前世界中你的船只的最大速度，即世界限速。用于计算自主惯性抑制的一个参考因素     
+double MaxWorldAngularSpeed = 180; //在当前世界中你的船只最大角速度，默认的情况下大船是180，小船是360     
+bool InertiaAccordingThrust = false; //是否需要依据推进器出力进行惯性抑制计算，false表示惯性抑制自主计算，true表示仅使用推进器的出力进行惯性抑制计算  
+int type=2;
+
+// 螺旋运动部分  
+double Roll_R = 40; //圆周运动加速度“半径”，这个半径是加速度的半径，而不是真实的运动半径。它相当于在圆周运动过程中加速度的线速度大小，实际加速度效应相当于这个值的^0.5  
+double Roll_Speed = 0.3; //加速度做圆周运动的大小  
+    
+double InertiaMinLimit = 0.001; //惯性抑制关闭阀值，调大可减少低速时惯性抑制产生的卡顿。建议使用低于0.001的数值    
+
+// ME
+double meMaxG = 0;
+bool meLastOn = false;
+float meRpm;
+
+//================== 自定义参数结束 ==============     
+     
+IMyShipController Cockpit;     
+IMyTextPanel LCD;     
+String debugInfo;
+
+List<IMyTerminalBlock> AllGravity;     
+List<IMyTerminalBlock> Left;     
+List<IMyTerminalBlock> Right;     
+List<IMyTerminalBlock> Up;     
+List<IMyTerminalBlock> Down;     
+List<IMyTerminalBlock> Forward;     
+List<IMyTerminalBlock> Backward;     
+List<IMyTerminalBlock> MergeMeList = new List<IMyTerminalBlock>();     
+     
+List<IMyTerminalBlock> Thrusts;     
+List<IMyTerminalBlock> ThrustsLeft;     
+List<IMyTerminalBlock> ThrustsRight;     
+List<IMyTerminalBlock> ThrustsUp;     
+List<IMyTerminalBlock> ThrustsDown;     
+List<IMyTerminalBlock> ThrustsForward;     
+List<IMyTerminalBlock> ThrustsBackward;     
+string[] ThrustField = null;     
+     
+List<IMyTerminalBlock> Gyroscopes;    
+List<IMyTerminalBlock> GyrosUn;    
+List<List<IMyTerminalBlock>> GyrosMe;
+  
+List<IMyTerminalBlock> massList = new List<IMyTerminalBlock>();    
+List<IMyTerminalBlock> Spotlights = new List<IMyTerminalBlock>();   
+List<IMyTerminalBlock> lcdList = new List<IMyTerminalBlock>();   
+List<IMyTerminalBlock> fireLights = new List<IMyTerminalBlock>();   
+  
+string[] gyroYawField = null;     
+string[] gyroPitchField = null;     
+string[] gyroRollField = null;     
+float[] gyroYawFactor = null;     
+float[] gyroPitchFactor = null;     
+float[] gyroRollFactor = null;     
+string[] gyroYawFieldUn = null;     
+string[] gyroPitchFieldUn = null;     
+string[] gyroRollFieldUn = null;     
+float[] gyroYawFactorUn = null;     
+float[] gyroPitchFactorUn = null;     
+float[] gyroRollFactorUn = null;     
+const float GYRO_FACTOR = (float)(Math.PI / 30);     
+     
+bool init;     
+int InputTime;     
+string Debug = "系统正常";    
+string spotlightGroupName = "Spotlight-GES-G"; // 灯光分组名  
+string lcdGroupName = "LCD-GES-G"; // 灯光LCD分组名
+Color flameColorMin = new Color(1, 1, 1); // 最低出力时的颜色, 三个数字的顺序是 红 绿 蓝, 范围 0 - 255  
+Color flameColorMax = new Color(1, 100, 255); // 最高出力时的颜色, 取值范围同上  
+ 
+string projectorRingGroupName = "Projector-Ring-G"; // projector group name  
+List<IMyTerminalBlock> projectorRing = new List<IMyTerminalBlock>();    
+string rotorRingGroupName = "Rotor-Ring-G"; // rotor group name   
+List<IMyTerminalBlock> rotorRing = new List<IMyTerminalBlock>();     
+ 
+string fireLightName = "Interior-Light-FG";  
+Color fireColor = new Color(255, 0, 0); // 开火时颜色  
+Color fireOffColor = new Color(255, 255, 0); // 正常时颜色  
+Color offColor = new Color(255,255, 255); // 关闭时颜色  
+  
+string shieldGenGroupName = "Shield-Gen-G";  
+  
+bool OnOff = true;     
+bool AccurateMode;     
+bool InertiaEliminate = true;     
+bool AttitudeCorrection = true;    
+bool NeedMoveRoll = false;   
+bool fireMode = false;
+int fireType=0;
+List<IMyTerminalBlock> shieldGen = new List<IMyTerminalBlock>();   
+  
+void findByGroup(string groupName, List<IMyTerminalBlock> blocks) {  
+  var group = GridTerminalSystem.GetBlockGroupWithName(groupName);  
+  if (group == null) {  
+    Echo("no group for name " + groupName);  
+    return;  
+  }  
+  group.GetBlocks(blocks);  
+}  
+  
+void SetBlocksValueColor(List<IMyTerminalBlock> blocks, String name, Color v) {  
+	for(int i = 0; i < blocks.Count; i ++)      
+	{      
+		blocks[i].SetValue(name, v);    
+	}    
+}  
+  
+void PlayActionList(List<IMyTerminalBlock> blocks, String action) {    
+	for(int i = 0; i < blocks.Count; i ++)      
+	{      
+		blocks[i].GetActionWithName(action).Apply(blocks[i]);    
+	}    
+}  
+
+void PlayAction(IMyTerminalBlock block, String action) {    
+	block.GetActionWithName(action).Apply(block);
+}  
+
+Program()   
+{   
+    Runtime.UpdateFrequency = UpdateFrequency.Update1;   
+}   
+     
+void Main(string arguments)     
+{     
+	Echo(Debug);     
+	if(!init)     
+	{     
+		GetBlocks();     
+		return;     
+	}
+
+	readStatusBefore();
+     
+	switch (arguments)     
+	{     
+//	case ("ONOFF") :     
+//		OnOff = !OnOff;    
+//		if (OnOff) {    
+//		  PlayActionList(massList, "OnOff_On");    
+//		} else {    
+//		  PlayActionList(massList, "OnOff_Off");    
+//		  PlayActionList(AllGravity, "OnOff_Off");    
+//		  if (Up.Count > 0) {    
+//		    PlayActionList(Up, "OnOff_On");    
+//		    Up[0].SetValueFloat("Gravity", 9.8f);     
+//		  }    
+//		  SetGyroOverride(false);    
+//		}     
+//		break;     
+	case ("MODE") :     
+		AccurateMode = !AccurateMode;     
+		break;     
+//	case ("Z") :     
+//		InertiaEliminate = !InertiaEliminate;     
+//		break;     
+	case ("ATTITUDE") :     
+		AttitudeCorrection = !AttitudeCorrection;     
+		break;     
+	case ("ROLL") :  
+		NeedMoveRoll = !NeedMoveRoll;   
+		break;  
+	case "FIREON" :
+	    if (fireMode) return;
+	    fireType=0;
+	    fireMode = true;  
+	    PlayActionList(massList, "OnOff_Off");  
+		break;  
+	case "FIREOFF" :  
+		fireMode = false;  
+	    PlayActionList(massList, "OnOff_On");  
+		break;  
+	case "FIREONMS" :
+	    if(fireMode) return;
+	    fireType=1;
+	    fireMode = true;  
+	    PlayActionList(massList, "OnOff_Off");  
+		break;  
+	case "FIREOFFMS" :  
+		fireMode = false;  
+	    PlayActionList(massList, "OnOff_On");  
+		break;
+
+	case "INCMERPM":
+	  meRpm += 0.1f;
+	  GyrosMe[0][0].SetValue("Yaw", meRpm);
+	  GyrosMe[1][0].SetValue("Yaw", -meRpm);
+	  meMaxG = 0;
+	break;
+	case "DECMERPM":
+	  meRpm -= 0.1f;
+	  GyrosMe[0][0].SetValue("Yaw", meRpm);
+	  GyrosMe[1][0].SetValue("Yaw", -meRpm);
+	  meMaxG = 0;
+	break;
+	}     
+  
+	if (type == 1 && !fireMode && OnOff != Cockpit.IsUnderControl) {  
+		OnOff = !OnOff;  
+		if (OnOff) {    
+		  PlayActionList(massList, "OnOff_On");    
+		  PlayActionList(projectorRing, "OnOff_On");     
+		} else {    
+		  PlayActionList(massList, "OnOff_Off");    
+		  PlayActionList(AllGravity, "OnOff_Off");    
+		  if (Up.Count > 0) {    
+		    PlayAction(Up[0], "OnOff_On");    
+		    Up[0].SetValueFloat("Gravity", 9.8f);     
+		  } else if (Down.Count > 0) {
+		    PlayAction(Down[0], "OnOff_On");    
+		    Down[0].SetValueFloat("Gravity", -9.8f);     
+		  }
+		  SetGyroOverride(false);    
+		  SetBlocksValueColor(fireLights, "Color", offColor);  
+		  PlayActionList(projectorRing, "OnOff_Off");      
+		} 		  
+	}   
+  
+	bool dampenersOverride = Cockpit.GetValue<bool>("DampenersOverride");    
+    InertiaEliminate = dampenersOverride;    
+     
+	SystemControl();     
+     
+	ShowLCD();
+
+	readStatusAfter();
+}
+
+Vector3D lastSpeedToMe = Vector3D.Zero;
+void readStatusAfter(){
+lastSpeedToMe = newSpeedToMe;
+}
+
+Vector3D newSpeedToMe = Vector3D.Zero;
+void readStatusBefore(){
+MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);
+newSpeedToMe = Vector3D.TransformNormal(Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
+
+var nowG = newSpeedToMe.Y - lastSpeedToMe.Y;
+if (meLastOn && nowG > meMaxG) {
+meMaxG = nowG;
+}
+
+meRpm = GyrosMe[0][0].GetValue<float>("Yaw");
+
+}
+  
+int Roll_I = 1; //圆周运动象限指示变量  
+double Roll_X; //圆周运动所需的自增变量  
+double Roll_Y;  
+void SystemControl()     
+{     
+	if(OnOff)     
+	{     
+		OpenBlocks(AllGravity,true);     
+		float LeftValue = 0;     
+		float UpValue = 0;     
+		float ForwardValue = 0;     
+
+		float ThForwardVaule = 0;     
+		float ThBackwardVaule = 0;     
+		float ThLeftVaule = 0;     
+		float ThRightVaule = 0;     
+		float ThUpVaule = 0;     
+		float ThDownVaule = 0;
+		IMyThrust thrust;
+		if (ThrustsLeft.Count > 0) {
+			thrust = ThrustsLeft[0] as IMyThrust;
+			ThLeftVaule = thrust.CurrentThrust/thrust.MaxEffectiveThrust;
+		}
+		if (ThrustsRight.Count > 0) {
+			thrust = ThrustsRight[0] as IMyThrust;
+			ThRightVaule = thrust.CurrentThrust/thrust.MaxEffectiveThrust;
+		}
+		if (ThrustsUp.Count > 0) {
+			thrust = ThrustsUp[0] as IMyThrust;
+			ThUpVaule = thrust.CurrentThrust/thrust.MaxEffectiveThrust;
+		}
+		if (ThrustsDown.Count > 0) {
+			thrust = ThrustsDown[0] as IMyThrust;
+			ThDownVaule = thrust.CurrentThrust/thrust.MaxEffectiveThrust;
+		}
+		if (ThrustsForward.Count > 0) {
+			thrust = ThrustsForward[0] as IMyThrust;
+			ThForwardVaule = thrust.CurrentThrust/thrust.MaxEffectiveThrust;
+		}
+		if (ThrustsBackward.Count > 0) {
+			thrust = ThrustsBackward[0] as IMyThrust;
+			ThBackwardVaule = thrust.CurrentThrust/thrust.MaxEffectiveThrust;
+		}
+		float thrustLeftValue = (ThLeftVaule - ThRightVaule)*9.8f;     
+		float thrustUpValue = (ThUpVaule - ThDownVaule)*9.8f;     
+		float thrustForwardValue = (ThForwardVaule - ThBackwardVaule)*9.8f; 
+
+		if(InertiaEliminate)     
+		{     
+			if(InertiaAccordingThrust)     
+			{     
+				LeftValue = thrustLeftValue; 
+				UpValue = thrustUpValue;
+				ForwardValue = thrustForwardValue;     
+			}     
+			else if(Cockpit.GetShipVelocities().LinearVelocity.Length() >= InertiaMinLimit) //避免低速卡顿    
+			{     
+				MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);     
+				Vector3D MeVectorToMe = Vector3D.TransformNormal(Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);     
+				//采用指数逼近算法     
+				// y = a^x - 1; y是取值0到1的结果值，需要传给发生器，x是自变量当前速度     
+				// x = 0, y = 0;     
+				// x = MaxWorldSpeed , y = 1;     
+				double a = Math.Pow(2, 1/MaxWorldSpeed);     
+     
+				LeftValue = -9.8f * (float)(Math.Pow(a,Math.Abs(MeVectorToMe.X)) - 1) * CaculatePostive(MeVectorToMe.X) * 9;     
+				UpValue = 9.8f * (float)(Math.Pow(a,Math.Abs(MeVectorToMe.Y)) - 1) * CaculatePostive(MeVectorToMe.Y) * 9;     
+				ForwardValue = -9.8f * (float)(Math.Pow(a,Math.Abs(MeVectorToMe.Z)) - 1) * CaculatePostive(MeVectorToMe.Z) * 9;  
+			}     
+			else{    
+				LeftValue = 0;    
+				UpValue = 0;    
+				ForwardValue = 0;    
+			}  
+			  
+			//增加螺旋运动计算  
+			if(NeedMoveRoll)  
+			{  
+				if(Roll_I == 1){  
+					Roll_X += Roll_Speed;  
+					Roll_Y = Math.Pow( Math.Pow(Roll_R,2) - Math.Pow(Roll_X,2) , 0.5);  
+					if(Roll_X > Roll_R){  
+						Roll_I = 2;  
+					}  
+				}  
+				if(Roll_I == 2){  
+					Roll_X -= Roll_Speed;  
+					Roll_Y = -Math.Pow( Math.Pow(Roll_R,2) - Math.Pow(Roll_X,2) , 0.5);  
+					if(Roll_X < 0){  
+						Roll_I = 3;  
+					}  
+				}  
+				if(Roll_I == 3){  
+					Roll_X -= Roll_Speed;  
+					Roll_Y = -Math.Pow( Math.Pow(Roll_R,2) - Math.Pow(Roll_X,2) , 0.5);  
+					if(Roll_X < -Roll_R){  
+						Roll_I = 4;  
+					}  
+				}  
+				if(Roll_I == 4){  
+					Roll_X += Roll_Speed;  
+					Roll_Y = Math.Pow( Math.Pow(Roll_R,2) - Math.Pow(Roll_X,2) , 0.5);  
+					if(Roll_X > 0){  
+						Roll_I = 1;  
+					}  
+				}  
+				LeftValue += (float)Roll_X;  
+				UpValue += (float)Roll_Y;  
+			}  
+			  
+		}     
+		if(AccurateMode)     
+		{     
+			if(Cockpit.MoveIndicator.X != 0)     
+			{     
+				InputTime ++;     
+				LeftValue = 9.8f*(float)Cockpit.MoveIndicator.X*InputRatio + InputTime*InputRatio*CaculatePostive(Cockpit.MoveIndicator.X);     
+			}     
+			if(Cockpit.MoveIndicator.Y != 0)     
+			{     
+				InputTime ++;     
+				UpValue = -9.8f*(float)Cockpit.MoveIndicator.Y*InputRatio - InputTime*InputRatio*CaculatePostive(Cockpit.MoveIndicator.Y);     
+			}     
+			if(Cockpit.MoveIndicator.Z != 0)     
+			{     
+				InputTime ++;     
+				ForwardValue = 9.8f*(float)Cockpit.MoveIndicator.Z*InputRatio + InputTime*InputRatio*CaculatePostive(Cockpit.MoveIndicator.Z);     
+			}     
+			if(Cockpit.MoveIndicator.X == 0 && Cockpit.MoveIndicator.Y == 0 && Cockpit.MoveIndicator.Z == 0)     
+			{     
+				InputTime = 0;     
+			}     
+		}     
+		else     
+		{     
+			if(Cockpit.MoveIndicator.X != 0)     
+			{     
+				LeftValue = 9.8f*(float)Cockpit.MoveIndicator.X;     
+			}     
+			if(Cockpit.MoveIndicator.Y != 0)     
+			{     
+				UpValue = -9.8f*(float)Cockpit.MoveIndicator.Y;     
+			}     
+			if(Cockpit.MoveIndicator.Z != 0)     
+			{     
+				ForwardValue = 9.8f*(float)Cockpit.MoveIndicator.Z;     
+			}     
+     
+		}
+
+		if (type==2) {
+				//LeftValue = thrustLeftValue; 
+				//UpValue = thrustUpValue;
+				ForwardValue = thrustForwardValue;     
+		}
+
+		if (fireMode) {
+		    if (fireType==0) {
+		        LeftValue = 0;  
+		        UpValue = 0;  
+		        ForwardValue = -9.8f;
+		    } else if (fireType == 1) {
+			LeftValue = 0;  
+			UpValue = 9.8f;  
+			ForwardValue = 0;
+		    }
+		}
+		if (type == 2) {
+			IMyGyro g = GyrosUn[0] as IMyGyro;
+			LeftValue = Cockpit.RotationIndicator.Y * (float)MouseMoveRatio;
+			UpValue = Cockpit.RotationIndicator.X * (float)MouseMoveRatio;
+			debugInfo = "debug" +  thrustUpValue;
+			if (thrustUpValue < -1) {
+				PlayActionList(MergeMeList,"OnOff_On");
+				meLastOn = true;
+			} else {
+				PlayActionList(MergeMeList,"OnOff_Off");
+				meLastOn = false;
+			}
+		}
+		SetBlocksValueFloat(Left,"Gravity",LeftValue);     
+		SetBlocksValueFloat(Right,"Gravity",-LeftValue);     
+		SetBlocksValueFloat(Up,"Gravity",UpValue);     
+		SetBlocksValueFloat(Down,"Gravity",-UpValue);
+		SetBlocksValueFloat(Forward,"Gravity",ForwardValue);     
+		SetBlocksValueFloat(Backward,"Gravity",-ForwardValue);     
+  
+		// a b K  
+		float p = 0;  
+		//if (flameMode == 1) {  
+		//  p = (-ForwardValue/9.8f);  
+		//} else if (flameMode == 2) {  
+		//  p = (float)Cockpit.GetShipVelocities().LinearVelocity.Dot(Cockpit.WorldMatrix.Forward) / 100f;  
+		//}  
+		float p1 = (-ForwardValue/9.8f);  
+		float p2 = (float)Cockpit.GetShipVelocities().LinearVelocity.Dot(Cockpit.WorldMatrix.Forward) / 100f;  
+float p3 = (float)Cockpit.GetShipVelocities().LinearVelocity.Length() / 10f; 
+		p1 = Math.Max(p1, 0);  
+		p2 = Math.Max(p2, 0);  
+		p1 = Math.Min(p1, 1f);  
+		p = (p1 + 4*p2) / 5f;  
+		  
+		if (p < 0) p = 0;  
+		if (p > 1f) p = 1f;  
+		float rr = p*160f;  
+		if (rr < 10f) rr = 10f;  
+		SetBlocksValueFloat(Spotlights, "Radius", rr);  
+		float ii = p*5;  
+		if (ii < 0.5f) ii = 0.5f;  
+		SetBlocksValueFloat(Spotlights, "Intensity", ii);
+		Color nowColor = new Color((int)(p*(flameColorMax.R-flameColorMin.R) + flameColorMin.R),   
+		                                                   (int)(p*(flameColorMax.G-flameColorMin.G) + flameColorMin.G),   
+		                                                   (int) (p*(flameColorMax.B-flameColorMin.B) + flameColorMin.B) );
+		SetBlocksValueColor(Spotlights, "Color", nowColor);  
+		SetBlocksValueColor(lcdList, "BackgroundColor", nowColor);  
+SetBlocksValueFloat(rotorRing, "Velocity", p3);		 
+if (fireMode) {  
+		  SetBlocksValueColor(fireLights, "Color", fireColor);  
+		} else {  
+		  SetBlocksValueColor(fireLights, "Color", fireOffColor);  
+		}  
+		  
+		// end  
+		     
+		//姿态修正部分     
+		if(AttitudeCorrection)     
+		{     
+			MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);     
+			Vector3D AngularVectorToMe = Vector3D.TransformNormal(Cockpit.GetShipVelocities().AngularVelocity, refLookAtMatrix); //角速度转换后，X上+下-（Pitch），Y左+右-（Yaw），ZQ正E负（Roll）     
+			     
+			double AngularLimit = 2*Math.PI*MaxWorldAngularSpeed/360; //把角速度限制转化为弧度，与角速度矢量匹配。     
+			double GyroYaw = (AngularVectorToMe.Y/AngularLimit)*30*AttitudeControlRatio;     
+			double GyroPitch = -(AngularVectorToMe.X/AngularLimit)*30*AttitudeControlRatio;     
+			double GyroRoll = -(AngularVectorToMe.Z/AngularLimit)*30*AttitudeControlRatio;     
+			     
+			//叠加按键效果，其中鼠标移动值通常在0到300之间，QE按键的值为0或+-1     
+			if(Cockpit.RotationIndicator.Y != 0)     
+			{     
+				GyroYaw = Cockpit.RotationIndicator.Y*MouseMoveRatio;     
+			}     
+			if(Cockpit.RotationIndicator.X != 0)     
+			{     
+				GyroPitch = -Cockpit.RotationIndicator.X*MouseMoveRatio;     
+			}     
+			if(Cockpit.RollIndicator != 0)     
+			{     
+				GyroRoll = -Cockpit.RollIndicator*30*MouseMoveRatio;     
+			}     
+			     
+			SetGyroYaw(GyroYaw);     
+			SetGyroPitch(GyroPitch);     
+			SetGyroRoll(GyroRoll);     
+			     
+			SetGyroOverride(true);     
+		}     
+		else     
+		{     
+			SetGyroOverride(false);     
+		}     
+	}     
+}     
+     
+void ShowLCD()     
+{     
+	string info = "";     
+	string br = "\n";     
+	info += "======== MEA重力引擎控制面板 ========" + br;     
+	info += " 系统开关： " + (OnOff ? "开" : " - ") + br;     
+	info += " 精确模式： " + (AccurateMode ? "开" : " - ") + br;     
+	info += " 惯性抑制： " + (InertiaEliminate ? "开" : " - ") + br;     
+	info += " 偏航修正： " + (AttitudeCorrection ? "开" : " - ") + br;     
+	info += " 螺旋运动： " + (NeedMoveRoll ? "开" : " - ") + br;  
+  
+    if (shieldGen.Count > 0) {  
+    	info += shieldGen[0].CustomName + br;  
+    }
+
+	info += " ME maxG : " + (meMaxG*60) + br;
+
+	info += " ME rpm : " + (meRpm) + br;
+	info += " ME GRatio : " + (meMaxG*60/meRpm) + br;
+
+	info += debugInfo;
+  
+	if(LCD != null)     
+	{     
+		LCD.WritePublicText(info);     
+	}     
+}     
+     
+void GetBlocks()     
+{     
+  
+	Cockpit = GridTerminalSystem.GetBlockWithName(CockpitNameTag) as IMyShipController;     
+	if(Cockpit == null)     
+	{     
+		Debug = "未检测到主控座椅： " + CockpitNameTag;     
+		return;     
+	}     
+	LCD = GridTerminalSystem.GetBlockWithName(LCDNameTag) as IMyTextPanel;     
+	if(LCD == null)     
+	{     
+		Debug = "未检测到LCD面板： " + LCDNameTag;     
+		return;     
+	}     
+     
+	AllGravity = new List<IMyTerminalBlock>(); 
+	if(GravityNameTag != "")     
+	{     
+		GridTerminalSystem.SearchBlocksOfName(GravityNameTag, AllGravity);     
+	}     
+	if(AllGravity.Count < 1)     
+	{     
+		GridTerminalSystem.GetBlocksOfType<IMyGravityGenerator> (AllGravity, x => x.CubeGrid == Me.CubeGrid);     
+	}     
+	if(AllGravity.Count < 1)     
+	{     
+		Debug = "未找到任何重力发生器";     
+		return;     
+	}     
+     
+	Up = DistinguishGravity(AllGravity,Cockpit.WorldMatrix.Up);     
+	Down = DistinguishGravity(AllGravity,Cockpit.WorldMatrix.Down);     
+	Left = DistinguishGravity(AllGravity,Cockpit.WorldMatrix.Left);     
+	Right = DistinguishGravity(AllGravity,Cockpit.WorldMatrix.Right);     
+	Forward = DistinguishGravity(AllGravity,Cockpit.WorldMatrix.Forward);     
+	Backward = DistinguishGravity(AllGravity,Cockpit.WorldMatrix.Backward);     
+  
+	GridTerminalSystem.GetBlocksOfType<IMyVirtualMass> (massList);     
+     
+	Thrusts = new List<IMyTerminalBlock>();     
+	ThrustsLeft = new List<IMyTerminalBlock>();     
+	ThrustsRight = new List<IMyTerminalBlock>();     
+	ThrustsUp = new List<IMyTerminalBlock>();     
+	ThrustsDown = new List<IMyTerminalBlock>();     
+	ThrustsForward = new List<IMyTerminalBlock>();     
+	ThrustsBackward = new List<IMyTerminalBlock>();     
+	GridTerminalSystem.GetBlocksOfType<IMyThrust> (Thrusts, x => x.CubeGrid == Me.CubeGrid);     
+	if(Thrusts.Count > 0)     
+	{     
+		ThrustField = new string[Thrusts.Count];     
+		for(int i = 0; i < Thrusts.Count; i ++)     
+		{     
+			Base6Directions.Direction CockpitForward = Thrusts[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Forward);     
+			Base6Directions.Direction CockpitUp = Thrusts[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);     
+			Base6Directions.Direction CockpitLeft = Thrusts[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Left);     
+			switch (CockpitForward)     
+			{     
+			case Base6Directions.Direction.Forward:     
+				ThrustField[i] = "Forward";
+				ThrustsForward.Add(Thrusts[i]);
+				break;     
+			case Base6Directions.Direction.Backward:     
+				ThrustField[i] = "Backward";     
+				ThrustsBackward.Add(Thrusts[i]);
+				break;     
+			}     
+			switch (CockpitUp)     
+			{     
+			case Base6Directions.Direction.Forward:     
+				ThrustField[i] = "Up";     
+				ThrustsUp.Add(Thrusts[i]);
+				break;     
+			case Base6Directions.Direction.Backward:     
+				ThrustField[i] = "Down";     
+				ThrustsDown.Add(Thrusts[i]);
+				break;     
+			}     
+			switch (CockpitLeft)     
+			{     
+			case Base6Directions.Direction.Forward:     
+				ThrustField[i] = "Left";     
+				ThrustsLeft.Add(Thrusts[i]);
+				break;     
+			case Base6Directions.Direction.Backward:     
+				ThrustField[i] = "Right";     
+				ThrustsRight.Add(Thrusts[i]);
+				break;     
+			}     
+		}     
+	}     
+	else     
+	{     
+		InertiaAccordingThrust = false;     
+	}     
+	     
+	Gyroscopes = new List<IMyTerminalBlock>();     
+	GyrosUn = new List<IMyTerminalBlock>();     
+	if(GyroscopesNameTag != "")     
+	{     
+		GridTerminalSystem.SearchBlocksOfName(GyroscopesNameTag, Gyroscopes, x => x.CubeGrid == Me.CubeGrid);
+		GridTerminalSystem.GetBlocksOfType<IMyGyro> (GyrosUn, x => !x.CustomName.Equals(GyroscopesNameTag) && x.CubeGrid == Me.CubeGrid);     		
+	}
+	if(Gyroscopes.Count < 1)     
+	{     
+		GridTerminalSystem.GetBlocksOfType<IMyGyro> (Gyroscopes, x => x.CubeGrid == Me.CubeGrid);     
+	}     
+	if(Gyroscopes.Count < 1)     
+	{     
+		Debug = "没有任何陀螺仪";     
+		return;     
+	}     
+
+	var GyrosMeTmp = new List<IMyTerminalBlock>();     
+	GridTerminalSystem.GetBlocksOfType<IMyGyro> (GyrosMeTmp, x => x.CustomName.Contains("ME") && x.CubeGrid != Me.CubeGrid); 
+	GyrosMe = sortByRelativePosition(GyrosMeTmp, "X", true);
+
+	if(Gyroscopes.Count > 0)     
+	{     
+		gyroYawField = new string[Gyroscopes.Count];     
+		gyroPitchField = new string[Gyroscopes.Count];     
+		gyroYawFactor = new float[Gyroscopes.Count];     
+		gyroPitchFactor = new float[Gyroscopes.Count];     
+		gyroRollField = new string[Gyroscopes.Count];     
+		gyroRollFactor = new float[Gyroscopes.Count];     
+		for (int i = 0; i < Gyroscopes.Count; i++)     
+		{     
+			Base6Directions.Direction gyroUp = Gyroscopes[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);     
+			Base6Directions.Direction gyroLeft = Gyroscopes[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Left);     
+			Base6Directions.Direction gyroForward = Gyroscopes[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Forward);     
+     
+			switch (gyroUp)     
+			{     
+			case Base6Directions.Direction.Up:     
+				gyroYawField[i] = "Yaw";     
+				gyroYawFactor[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Down:     
+				gyroYawField[i] = "Yaw";     
+				gyroYawFactor[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Left:     
+				gyroYawField[i] = "Pitch";     
+				gyroYawFactor[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Right:     
+				gyroYawField[i] = "Pitch";     
+				gyroYawFactor[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Forward:     
+				gyroYawField[i] = "Roll";     
+				gyroYawFactor[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Backward:     
+				gyroYawField[i] = "Roll";     
+				gyroYawFactor[i] = GYRO_FACTOR;     
+				break;     
+			}     
+     
+			switch (gyroLeft)     
+			{     
+			case Base6Directions.Direction.Up:     
+				gyroPitchField[i] = "Yaw";     
+				gyroPitchFactor[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Down:     
+				gyroPitchField[i] = "Yaw";     
+				gyroPitchFactor[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Left:     
+				gyroPitchField[i] = "Pitch";     
+				gyroPitchFactor[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Right:     
+				gyroPitchField[i] = "Pitch";     
+				gyroPitchFactor[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Forward:     
+				gyroPitchField[i] = "Roll";     
+				gyroPitchFactor[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Backward:     
+				gyroPitchField[i] = "Roll";     
+				gyroPitchFactor[i] = GYRO_FACTOR;     
+				break;     
+			}     
+     
+			switch (gyroForward)     
+			{     
+			case Base6Directions.Direction.Up:     
+				gyroRollField[i] = "Yaw";     
+				gyroRollFactor[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Down:     
+				gyroRollField[i] = "Yaw";     
+				gyroRollFactor[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Left:     
+				gyroRollField[i] = "Pitch";     
+				gyroRollFactor[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Right:     
+				gyroRollField[i] = "Pitch";     
+				gyroRollFactor[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Forward:     
+				gyroRollField[i] = "Roll";     
+				gyroRollFactor[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Backward:     
+				gyroRollField[i] = "Roll";     
+				gyroRollFactor[i] = GYRO_FACTOR;     
+				break;     
+			}     
+			Gyroscopes[i].ApplyAction("OnOff_On");     
+			SetGyroOverride(false);     
+		}     
+	}     
+
+	if(GyrosUn.Count > 0)     
+	{     
+		gyroYawFieldUn = new string[GyrosUn.Count];     
+		gyroPitchFieldUn = new string[GyrosUn.Count];     
+		gyroYawFactorUn = new float[GyrosUn.Count];     
+		gyroPitchFactorUn = new float[GyrosUn.Count];     
+		gyroRollFieldUn = new string[GyrosUn.Count];     
+		gyroRollFactorUn = new float[GyrosUn.Count];     
+		for (int i = 0; i < GyrosUn.Count; i++)     
+		{     
+			Base6Directions.Direction gyroUp = GyrosUn[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);     
+			Base6Directions.Direction gyroLeft = GyrosUn[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Left);     
+			Base6Directions.Direction gyroForward = GyrosUn[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Forward);     
+     
+			switch (gyroUp)     
+			{     
+			case Base6Directions.Direction.Up:     
+				gyroYawFieldUn[i] = "Yaw";     
+				gyroYawFactorUn[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Down:     
+				gyroYawFieldUn[i] = "Yaw";     
+				gyroYawFactorUn[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Left:     
+				gyroYawFieldUn[i] = "Pitch";     
+				gyroYawFactorUn[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Right:     
+				gyroYawFieldUn[i] = "Pitch";     
+				gyroYawFactorUn[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Forward:     
+				gyroYawFieldUn[i] = "Roll";     
+				gyroYawFactorUn[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Backward:     
+				gyroYawFieldUn[i] = "Roll";     
+				gyroYawFactorUn[i] = GYRO_FACTOR;     
+				break;     
+			}     
+     
+			switch (gyroLeft)     
+			{     
+			case Base6Directions.Direction.Up:     
+				gyroPitchFieldUn[i] = "Yaw";     
+				gyroPitchFactorUn[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Down:     
+				gyroPitchFieldUn[i] = "Yaw";     
+				gyroPitchFactorUn[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Left:     
+				gyroPitchFieldUn[i] = "Pitch";     
+				gyroPitchFactorUn[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Right:     
+				gyroPitchFieldUn[i] = "Pitch";     
+				gyroPitchFactorUn[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Forward:     
+				gyroPitchFieldUn[i] = "Roll";     
+				gyroPitchFactorUn[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Backward:     
+				gyroPitchFieldUn[i] = "Roll";     
+				gyroPitchFactorUn[i] = GYRO_FACTOR;     
+				break;     
+			}     
+     
+			switch (gyroForward)     
+			{     
+			case Base6Directions.Direction.Up:     
+				gyroRollFieldUn[i] = "Yaw";     
+				gyroRollFactorUn[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Down:     
+				gyroRollFieldUn[i] = "Yaw";     
+				gyroRollFactorUn[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Left:     
+				gyroRollFieldUn[i] = "Pitch";     
+				gyroRollFactorUn[i] = GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Right:     
+				gyroRollFieldUn[i] = "Pitch";     
+				gyroRollFactorUn[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Forward:     
+				gyroRollFieldUn[i] = "Roll";     
+				gyroRollFactorUn[i] = -GYRO_FACTOR;     
+				break;     
+			case Base6Directions.Direction.Backward:     
+				gyroRollFieldUn[i] = "Roll";     
+				gyroRollFactorUn[i] = GYRO_FACTOR;     
+				break;     
+			}     
+			GyrosUn[i].ApplyAction("OnOff_On");     
+		}     
+	}     
+
+
+    findByGroup(spotlightGroupName, Spotlights);  
+    findByGroup(lcdGroupName, lcdList);  
+    findByGroup(fireLightName, fireLights); 
+    findByGroup(projectorRingGroupName, projectorRing);  
+    findByGroup(rotorRingGroupName, rotorRing);  
+  
+    findByGroup(shieldGenGroupName, shieldGen);  
+    findByGroup("Merge-ME-G", MergeMeList);  
+     
+	init = true;     
+}     
+     
+//功能性函数     
+List<IMyTerminalBlock> DistinguishGravity(List<IMyTerminalBlock> Blocks, Vector3D Direction)     
+{     
+	List<IMyTerminalBlock> returnBlocks = new List<IMyTerminalBlock>();     
+	for(int i = 0; i < Blocks.Count; i ++)     
+	{     
+		Base6Directions.Direction BlocksDirection = Blocks[i].WorldMatrix.GetClosestDirection(Direction);     
+		if(BlocksDirection == Base6Directions.Direction.Up)     
+		{     
+			returnBlocks.Add(Blocks[i]);     
+		}     
+	}     
+	return returnBlocks;     
+}     
+     
+void OpenBlocks(List<IMyTerminalBlock> Blocks, bool onoff)     
+{     
+	for(int i = 0; i < Blocks.Count; i ++)     
+	{     
+		Blocks[i].ApplyAction(onoff ? "OnOff_On" : "OnOff_Off");     
+	}     
+}     
+     
+void SetBlocksValueFloat(List<IMyTerminalBlock> Blocks, string ValueName, float Value)     
+{     
+	for(int i = 0; i < Blocks.Count; i ++)     
+	{     
+		Blocks[i].SetValueFloat(ValueName, Value);     
+	}     
+}     
+     
+int CaculatePostive(double Value)     
+{     
+	return (Value > 0 ? 1 : (Value < 0 ? -1 : 0) );     
+}     
+     
+void SetGyroOverride(bool bOverride)     
+{     
+	for (int i = 0; i < Gyroscopes.Count; i++)     
+	{     
+		if (((IMyGyro)Gyroscopes[i]).GyroOverride != bOverride)     
+		{     
+			Gyroscopes[i].ApplyAction("Override");     
+		}     
+	}     
+}     
+     
+void SetGyroYaw(double yawRate)     
+{     
+	for (int i = 0; i < Gyroscopes.Count; i++)     
+	{     
+		Gyroscopes[i].SetValue(gyroYawField[i], (float)yawRate * gyroYawFactor[i]);     
+	}     
+}     
+     
+void SetGyroPitch(double pitchRate)     
+{     
+	for (int i = 0; i < Gyroscopes.Count; i++)     
+	{     
+		Gyroscopes[i].SetValue(gyroPitchField[i], (float)pitchRate * gyroPitchFactor[i]);     
+	}     
+}     
+     
+void SetGyroRoll(double rollRate)     
+{     
+	for (int i = 0; i < Gyroscopes.Count; i++)     
+	{     
+		Gyroscopes[i].SetValue(gyroRollField[i], (float)rollRate * gyroRollFactor[i]);     
+	}     
+}     
+     
+// util
+
+List<List<IMyTerminalBlock>> sortByRelativePosition(List<IMyTerminalBlock> blocks, string dir, bool isAsc) { 
+  MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up); 
+ 
+  IEnumerable<IGrouping<int, IMyTerminalBlock>> grouped; 
+ 
+  switch (dir) { 
+  case "X": 
+    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).X * 10 ))); 
+  break; 
+  case "Y": 
+    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Y * 10 ))); 
+  break; 
+  case "Z": 
+    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Z * 10 ))); 
+  break;
+  case "ZX":
+    grouped = blocks.GroupBy(b=>((int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Z * 10 ))) * 1000 + (int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).X * 10 ))); 
+  break;
+  default: 
+  return null; 
+  } 
+ 
+  if(isAsc) 
+    return grouped.OrderBy(g=>g.Key).Select(g=>g.ToList()).ToList(); 
+  else 
+    return grouped.OrderByDescending(g=>g.Key).Select(g=>g.ToList()).ToList(); 
+} 
