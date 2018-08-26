@@ -45,7 +45,7 @@ double AttitudeControlRatio = 1; //¿ªÆô×ËÌ¬¿ØÖÆºó£¬µ±ÖØÁ¦·¢ÉúÆ÷Ê¹·É´¬²úÉúÆ«º½£¬³
 double MaxWorldSpeed = 100; //ÔÚµ±Ç°ÊÀ½çÖĞÄãµÄ´¬Ö»µÄ×î´óËÙ¶È£¬¼´ÊÀ½çÏŞËÙ¡£ÓÃÓÚ¼ÆËã×ÔÖ÷¹ßĞÔÒÖÖÆµÄÒ»¸ö²Î¿¼ÒòËØ     
 double MaxWorldAngularSpeed = 180; //ÔÚµ±Ç°ÊÀ½çÖĞÄãµÄ´¬Ö»×î´ó½ÇËÙ¶È£¬Ä¬ÈÏµÄÇé¿öÏÂ´ó´¬ÊÇ180£¬Ğ¡´¬ÊÇ360     
 bool InertiaAccordingThrust = false; //ÊÇ·ñĞèÒªÒÀ¾İÍÆ½øÆ÷³öÁ¦½øĞĞ¹ßĞÔÒÖÖÆ¼ÆËã£¬false±íÊ¾¹ßĞÔÒÖÖÆ×ÔÖ÷¼ÆËã£¬true±íÊ¾½öÊ¹ÓÃÍÆ½øÆ÷µÄ³öÁ¦½øĞĞ¹ßĞÔÒÖÖÆ¼ÆËã  
-int type=2;
+int type=1;
 
 // ÂİĞıÔË¶¯²¿·Ö  
 double Roll_R = 40; //Ô²ÖÜÔË¶¯¼ÓËÙ¶È¡°°ë¾¶¡±£¬Õâ¸ö°ë¾¶ÊÇ¼ÓËÙ¶ÈµÄ°ë¾¶£¬¶ø²»ÊÇÕæÊµµÄÔË¶¯°ë¾¶¡£ËüÏàµ±ÓÚÔÚÔ²ÖÜÔË¶¯¹ı³ÌÖĞ¼ÓËÙ¶ÈµÄÏßËÙ¶È´óĞ¡£¬Êµ¼Ê¼ÓËÙ¶ÈĞ§Ó¦Ïàµ±ÓÚÕâ¸öÖµµÄ^0.5  
@@ -57,6 +57,8 @@ double InertiaMinLimit = 0.001; //¹ßĞÔÒÖÖÆ¹Ø±Õ·§Öµ£¬µ÷´ó¿É¼õÉÙµÍËÙÊ±¹ßĞÔÒÖÖÆ²úÉú
 double meMaxG = 0;
 bool meLastOn = false;
 float meRpm;
+int meFullMode = 0;
+float meRpmToggle = 0;
 
 //================== ×Ô¶¨Òå²ÎÊı½áÊø ==============     
      
@@ -70,7 +72,9 @@ List<IMyTerminalBlock> Right;
 List<IMyTerminalBlock> Up;     
 List<IMyTerminalBlock> Down;     
 List<IMyTerminalBlock> Forward;     
-List<IMyTerminalBlock> Backward;     
+List<IMyTerminalBlock> Backward;
+IMyTerminalBlock floor;
+String floorDir;
 List<IMyTerminalBlock> MergeMeList = new List<IMyTerminalBlock>();     
      
 List<IMyTerminalBlock> Thrusts;     
@@ -105,7 +109,7 @@ float[] gyroPitchFactorUn = null;
 float[] gyroRollFactorUn = null;     
 const float GYRO_FACTOR = (float)(Math.PI / 30);     
      
-bool init;     
+bool init = false;     
 int InputTime;     
 string Debug = "ÏµÍ³Õı³£";    
 string spotlightGroupName = "Spotlight-GES-G"; // µÆ¹â·Ö×éÃû  
@@ -238,22 +242,58 @@ void Main(string arguments)
 	  GyrosMe[1][0].SetValue("Yaw", -meRpm);
 	  meMaxG = 0;
 	break;
+	case "MEFULLUP":
+	  if (meFullMode == 1) {
+	    meFullMode = 0;
+	    GyrosMe[0][0].SetValue("Yaw", meRpmToggle);
+	    GyrosMe[1][0].SetValue("Yaw", -meRpmToggle);	    
+	  } else if (meFullMode == 0){
+	    meFullMode = 1;
+	    meRpmToggle = meRpm;
+	    GyrosMe[0][0].SetValue("Yaw", 30f);
+	    GyrosMe[1][0].SetValue("Yaw", -30f);
+	  } else {
+	    meFullMode = 1;
+	    GyrosMe[0][0].SetValue("Yaw", 30f);
+	    GyrosMe[1][0].SetValue("Yaw", -30f);	    
+	  }
+	  meMaxG = 0;
+	break;
+	case "MEFULLDOWN":
+	  if (meFullMode == 2) {
+	    meFullMode = 0;
+	    GyrosMe[0][0].SetValue("Yaw", meRpmToggle);
+	    GyrosMe[1][0].SetValue("Yaw", -meRpmToggle);	    
+	  } else if (meFullMode == 0){
+	    meFullMode = 2;
+	    meRpmToggle = meRpm;
+	    GyrosMe[0][0].SetValue("Yaw", -30f);
+	    GyrosMe[1][0].SetValue("Yaw", 30f);
+	  } else {
+	    meFullMode = 2;
+	    GyrosMe[0][0].SetValue("Yaw", -30f);
+	    GyrosMe[1][0].SetValue("Yaw", 30f);	    
+	  }
+	  meMaxG = 0;
+	break;
 	}     
   
-	if (type == 1 && !fireMode && OnOff != Cockpit.IsUnderControl) {  
+	if (!fireMode && OnOff != Cockpit.IsUnderControl) {  
 		OnOff = !OnOff;  
 		if (OnOff) {    
 		  PlayActionList(massList, "OnOff_On");    
 		  PlayActionList(projectorRing, "OnOff_On");     
 		} else {    
 		  PlayActionList(massList, "OnOff_Off");    
-		  PlayActionList(AllGravity, "OnOff_Off");    
-		  if (Up.Count > 0) {    
-		    PlayAction(Up[0], "OnOff_On");    
-		    Up[0].SetValueFloat("Gravity", 9.8f);     
-		  } else if (Down.Count > 0) {
-		    PlayAction(Down[0], "OnOff_On");    
-		    Down[0].SetValueFloat("Gravity", -9.8f);     
+		  PlayActionList(AllGravity, "OnOff_Off");
+		  if (floor != null) {
+		      Echo("ON");
+		      if (floorDir=="UP") {
+		          floor.SetValueFloat("Gravity", 9.8f);     
+		      } else {
+		          floor.SetValueFloat("Gravity", -9.8f);     
+		      }
+		      PlayAction(floor, "OnOff_On");
 		  }
 		  SetGyroOverride(false);    
 		  SetBlocksValueColor(fireLights, "Color", offColor);  
@@ -286,7 +326,9 @@ if (meLastOn && nowG > meMaxG) {
 meMaxG = nowG;
 }
 
+if (GyrosMe.Count>0) {
 meRpm = GyrosMe[0][0].GetValue<float>("Yaw");
+}
 
 }
   
@@ -295,7 +337,7 @@ double Roll_X; //Ô²ÖÜÔË¶¯ËùĞèµÄ×ÔÔö±äÁ¿
 double Roll_Y;  
 void SystemControl()     
 {     
-	if(OnOff)     
+	if(true)     
 	{     
 		OpenBlocks(AllGravity,true);     
 		float LeftValue = 0;     
@@ -334,7 +376,8 @@ void SystemControl()
 			ThBackwardVaule = thrust.CurrentThrust/thrust.MaxEffectiveThrust;
 		}
 		float thrustLeftValue = (ThLeftVaule - ThRightVaule)*9.8f;     
-		float thrustUpValue = (ThUpVaule - ThDownVaule)*9.8f;     
+		float thrustUpValue = (ThUpVaule - ThDownVaule)*9.8f;
+		debugInfo = "" + thrustUpValue;
 		float thrustForwardValue = (ThForwardVaule - ThBackwardVaule)*9.8f; 
 
 		if(InertiaEliminate)     
@@ -443,7 +486,8 @@ void SystemControl()
 		if (type==2) {
 				//LeftValue = thrustLeftValue; 
 				//UpValue = thrustUpValue;
-				ForwardValue = thrustForwardValue;     
+				ForwardValue = thrustForwardValue;
+				if (Math.Abs(ForwardValue)<0.1)ForwardValue=0;
 		}
 
 		if (fireMode) {
@@ -458,11 +502,15 @@ void SystemControl()
 		    }
 		}
 		if (type == 2) {
-			IMyGyro g = GyrosUn[0] as IMyGyro;
 			LeftValue = Cockpit.RotationIndicator.Y * (float)MouseMoveRatio;
 			UpValue = Cockpit.RotationIndicator.X * (float)MouseMoveRatio;
-			debugInfo = "debug" +  thrustUpValue;
-			if (thrustUpValue < -1) {
+		}
+		if (MergeMeList.Count > 0) {
+			IMyGyro g = GyrosUn[0] as IMyGyro;
+			if (Math.Abs(LeftValue)<0.01)LeftValue=0;
+			if (Math.Abs(UpValue)<0.01)UpValue=0;
+			if ((meFullMode < 2 && thrustUpValue < -5)
+			 || (meFullMode == 2 && thrustUpValue > 5)) {
 				PlayActionList(MergeMeList,"OnOff_On");
 				meLastOn = true;
 			} else {
@@ -470,13 +518,13 @@ void SystemControl()
 				meLastOn = false;
 			}
 		}
+		if(OnOff){
 		SetBlocksValueFloat(Left,"Gravity",LeftValue);     
 		SetBlocksValueFloat(Right,"Gravity",-LeftValue);     
 		SetBlocksValueFloat(Up,"Gravity",UpValue);     
 		SetBlocksValueFloat(Down,"Gravity",-UpValue);
 		SetBlocksValueFloat(Forward,"Gravity",ForwardValue);     
 		SetBlocksValueFloat(Backward,"Gravity",-ForwardValue);     
-  
 		// a b K  
 		float p = 0;  
 		//if (flameMode == 1) {  
@@ -513,7 +561,8 @@ if (fireMode) {
 		}  
 		  
 		// end  
-		     
+		}
+		
 		//×ËÌ¬ĞŞÕı²¿·Ö     
 		if(AttitudeCorrection)     
 		{     
@@ -556,17 +605,18 @@ void ShowLCD()
 {     
 	string info = "";     
 	string br = "\n";     
-	info += "======== MEAÖØÁ¦ÒıÇæ¿ØÖÆÃæ°å ========" + br;     
-	info += " ÏµÍ³¿ª¹Ø£º " + (OnOff ? "¿ª" : " - ") + br;     
-	info += " ¾«È·Ä£Ê½£º " + (AccurateMode ? "¿ª" : " - ") + br;     
-	info += " ¹ßĞÔÒÖÖÆ£º " + (InertiaEliminate ? "¿ª" : " - ") + br;     
-	info += " Æ«º½ĞŞÕı£º " + (AttitudeCorrection ? "¿ª" : " - ") + br;     
-	info += " ÂİĞıÔË¶¯£º " + (NeedMoveRoll ? "¿ª" : " - ") + br;  
+	info += "======== MEA GES ========" + br;     
+	info += " Switch: " + (OnOff ? "On" : " - ") + br;     
+	info += " A.Mode: " + (AccurateMode ? "On" : " - ") + br;     
+	info += " Dampener: " + (InertiaEliminate ? "On" : " - ") + br;     
+	info += " Anti-Roll: " + (AttitudeCorrection ? "On" : " - ") + br;     
+	info += " Fly Round: " + (NeedMoveRoll ? "On" : " - ") + br;  
   
     if (shieldGen.Count > 0) {  
     	info += shieldGen[0].CustomName + br;  
     }
 
+	info += " ME toggleMax : " + (meFullMode == 1? "Up" : meFullMode == 2 ? "DOWN" : "-") + br;
 	info += " ME maxG : " + (meMaxG*60) + br;
 
 	info += " ME rpm : " + (meRpm) + br;
@@ -582,7 +632,6 @@ void ShowLCD()
      
 void GetBlocks()     
 {     
-  
 	Cockpit = GridTerminalSystem.GetBlockWithName(CockpitNameTag) as IMyShipController;     
 	if(Cockpit == null)     
 	{     
@@ -595,7 +644,6 @@ void GetBlocks()
 		Debug = "Î´¼ì²âµ½LCDÃæ°å£º " + LCDNameTag;     
 		return;     
 	}     
-     
 	AllGravity = new List<IMyTerminalBlock>(); 
 	if(GravityNameTag != "")     
 	{     
@@ -908,9 +956,28 @@ void GetBlocks()
     findByGroup(rotorRingGroupName, rotorRing);  
   
     findByGroup(shieldGenGroupName, shieldGen);  
-    findByGroup("Merge-ME-G", MergeMeList);  
-     
-	init = true;     
+    findByGroup("Merge-ME-G", MergeMeList);
+
+    List<IMyTerminalBlock> listFloor = new List<IMyTerminalBlock>();
+    listFloor.AddList(Up);
+    listFloor.AddList(Down);
+
+    List<List<IMyTerminalBlock>> floorSort = sortByRelativePosition(listFloor,"Z",false);
+    if (floorSort.Count>0 && floorSort[0].Count>0) {
+        floor = floorSort[0][0];
+        Base6Directions.Direction floorDirection = floor.WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);     
+        if(floorDirection == Base6Directions.Direction.Up)     
+        {
+	floorDir = "UP";
+        } else {
+	floorDir = "DOWN";
+        }
+    } else {
+        floor = null;
+        floorDir = null;
+    }
+    //floor.ShowOnHUD= true;
+	init = true;
 }     
      
 //¹¦ÄÜĞÔº¯Êı     

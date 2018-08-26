@@ -45,6 +45,20 @@ ScanRange=15000
 liFcsSearchGroupName=Li-fcs-search-G 
 liFcsLockGroupName=Li-fcs-lock-G 
 macAV=0.005
+
+Commands for mother ship programmable block:
+FLYBYON
+  :all drones take off
+DOCKINGON
+  :all drones landing
+ATTACKON
+  :all drones attack enemy locked (need fcs installed on both mother ship and drones)
+ATTACKOFF
+  :all drones withdraw
+WEAPON1
+  :all drones switch to gatlin guns
+WEAPON2
+  :all drones switch to rocket launcher(this will also trigger timer: FireTimer2 's trigger now action)
 */
 
 
@@ -95,6 +109,10 @@ bool motherSignalRotation = false;
 bool isTurning = false;
 bool isBig = false;
 bool dampenersOn = true;
+double droneAttackRange = 0;
+bool isPrinted = false;
+bool isPtdTurnOn = false;
+long ptdSeparatedStart = 0;
 
 bool useMergeEngine = false;
 List<IMyTerminalBlock> meMergeBlockList = new List<IMyTerminalBlock>();
@@ -103,6 +121,7 @@ long lastMotherSignalTime=0;
 
 string Debug;
 bool init = false;
+bool configFinish = false;
 // 初始化方块的函数
 IMyShipController Cockpit;
 IMyTerminalBlock fighterFcs = null;
@@ -115,7 +134,7 @@ float[] gyroYawFactor = null;
 float[] gyroPitchFactor = null;
 float[] gyroRollFactor = null;
 const float GYRO_FACTOR = 1f;
-int t = 0;
+int t = 1;
 Vector3D MePosition = Vector3D.Zero;
 double AimRatio = 0.5; //瞄准力度，力度越大瞄准得越快，正常范围0到1，可以大于1
 double maxAV = 1;
@@ -132,22 +151,33 @@ Vector3D LockTargetVelocity = Vector3D.Zero;
 
 Program()
 {
-Runtime.UpdateFrequency = UpdateFrequency.Update1;
+//Runtime.UpdateFrequency = UpdateFrequency.Update1;
 }
 
 bool firstDebug = true;
 
 void Main(string arguments, UpdateType updateType)
 {
+Runtime.UpdateFrequency = UpdateFrequency.Update1;
+if ((updateType & UpdateType.Update1) != 0) {
+arguments = "";
+}
 //初始化部分
 Debug = "系统正常";
+
+if (!configFinish) {
+ProcessCustomConfiguration();
+configFinish = true;
+}
+
 if(!init)
 {
-ProcessCustomConfiguration();
-GetBlocks();
+GetBlocks(arguments);
+t++;
 return;
 }
-NavigationInfoUpdata(true);//运动信息初更新
+if ((updateType & UpdateType.Update1) !=0)
+  NavigationInfoUpdata(true);//运动信息初更新
 List<IMyTerminalBlock> welderList;
 switch (arguments)
 {
@@ -319,12 +349,15 @@ attackMode = !attackMode;
 break;
 default:
 if (sonCode == null) break;
-if(arguments != "") {
+if(arguments!=null && arguments != "") {
 ParseMaintainSpeed(arguments);
 }
 break;
 }
 
+if ((updateType & UpdateType.Update1) == 0) {
+return;
+}
 switch(commandCache) {
 case "FLYBYON":
 if ( t > commandStart + commandWaitTic) {
@@ -642,10 +675,9 @@ FilterSameGrid(Me.CubeGrid, ref blocks);
 return blocks;
 }
 
-void GetBlocks()
+void GetBlocks(String args)
 {
 List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
-blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyShipConnector>(blocks);
 FilterSameGrid(Me.CubeGrid, ref blocks);
 connectors = blocks;
@@ -654,6 +686,32 @@ isApproach=true;
 PlayActionList(connectors, "Unlock");
 return;
 }
+if (isPrinted) {
+Echo("PTD1");
+if (args.Equals("PTD")) {
+isPtdTurnOn = true;
+cfg.Set("isPrinted","false");
+cfg.Save();
+}
+if (!isPtdTurnOn) {
+return;
+}
+if (ptdSeparatedStart == 0) {
+blocks = new List<IMyTerminalBlock>();
+GridTerminalSystem.GetBlocksOfType<IMyShipMergeBlock>(blocks, b => b.CubeGrid == Me.CubeGrid);
+PlayActionList(blocks, "OnOff_Off");
+ptdSeparatedStart = t;
+}
+
+if (ptdSeparatedStart == 0 || t < ptdSeparatedStart + 60) {
+return;
+}
+
+dockingOn = true;
+isApproach = true;
+
+}
+
 if (!notDocked() && !isBase){
 dockingOn=true;
 }
@@ -665,7 +723,6 @@ if(Cockpit == null)
 LCD = getBlockListByName(DCSLCDNameTag);
 if(LCD.Count < 1)
 {Debug = DCSLCDNameTag  + "未找到";}
-
 
 Gyroscopes = new List<IMyTerminalBlock>();
 if(GyroscopesNameTag != "")
@@ -1421,9 +1478,9 @@ sb.Append(va.Key).Append('=').Append(va.Value).Append('\n');
 block.CustomData = sb.ToString();
 }
 }
-
+CustomConfiguration cfg;
 void ProcessCustomConfiguration(){
-CustomConfiguration cfg = new CustomConfiguration(Me);
+cfg = new CustomConfiguration(Me);
 cfg.Load();
 
 cfg.Get("motherCode", ref motherCode);
@@ -1451,6 +1508,8 @@ cfg.Get("isBig", ref isBig);
 cfg.Get("useMergeEngine", ref useMergeEngine);
 cfg.Get("isDummy", ref isDummy);
 cfg.Get("isBase", ref isBase);
+cfg.Get("droneAttackRange", ref droneAttackRange);
+cfg.Get("isPrinted", ref isPrinted);
 
 cfg.Get("dockingForwardDistance", ref dockingForwardDistance);
 cfg.Get("dockingLeftDistance", ref dockingLeftDistance);
@@ -1596,14 +1655,14 @@ maxAllF = maxAllFd;
 }
 
 percent = (float) needF / maxAllF;
-
+dr+=percent+" "+(incThrusters.Count+decThrusters.Count);
 
 if (percent == 0) {
 for (int i = 0; i < incThrusters.Count; i++) {
-incThrusters[i].SetValue("Override", 0f);
+((IMyThrust)incThrusters[i]).ThrustOverridePercentage = 0;
 }
 for (int i = 0; i < decThrusters.Count; i++) {
-decThrusters[i].SetValue("Override", 0f);
+((IMyThrust)decThrusters[i]).ThrustOverridePercentage = 0;
 }
 } else if (percent > 0) {
 for (int i = 0; i < incThrusters.Count; i++) {
@@ -1622,16 +1681,16 @@ t.ThrustOverridePercentage = 0;
 }
 } else {
 for (int i = 0; i < offGridThrust.Count; i++) {
-offGridThrust[i].SetValue("Override", 0f);
+((IMyThrust)offGridThrust[i]).ThrustOverridePercentage = 0;
 }
 }
 }
 for (int i = 0; i < decThrusters.Count; i++) {
-decThrusters[i].SetValue("Override", 0f);
+((IMyThrust)decThrusters[i]).ThrustOverridePercentage = 0;
 }
 } else {
 for (int i = 0; i < incThrusters.Count; i++) {
-incThrusters[i].SetValue("Override", 0f);
+((IMyThrust)incThrusters[i]).ThrustOverridePercentage = 0;
 }
 for (int i = 0; i < decThrusters.Count; i++) {
 ((IMyThrust)decThrusters[i]).ThrustOverridePercentage =  -percent;
@@ -1938,7 +1997,8 @@ SetGyroOverride(true);
 
 // 维持速度
 if (flyByOn || (dockingOn && notDocked())) {
- DimSpeedAll(maintainSpeedToMe,refLookAtMatrix);
+var dr= DimSpeedAll(maintainSpeedToMe,refLookAtMatrix);
+Echo("Autopiloting..."+displayVector3D(maintainSpeedToMe) + " ynf: " + dr);
  }
 
 // 发射避撞信号
@@ -2213,7 +2273,7 @@ dir = Vector3D.Normalize(dir);
 if (!isBig) {
 double standardAttackAngle = Convert.ToDouble(args[25]);
 MatrixD rd = MatrixD.CreateFromAxisAngle(dir, standardAttackAngle + (commandWaitTic * 1d / commandAllTic) * MathHelper.TwoPi);
-flyByAttackPosition = flyByAimPosition + 1000*rd.Up;
+flyByAttackPosition = flyByAimPosition + 1000*rd.Up + droneAttackRange*rd.Backward;
 }else{
 Vector3D tmp = Vector3D.Reject(dir, shipMatrix.Up);
 if (tmp.Equals(Vector3D.Zero)) {

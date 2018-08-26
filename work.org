@@ -1,0 +1,5 @@
+shipRefFwd
+
+
+railgun 5000m/s 3000m distance
+

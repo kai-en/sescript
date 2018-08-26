@@ -1,0 +1,1489 @@
+﻿/*
+===================== 【MEA】出品 —— FCS武器控制系统 v8.0 by MEA群主 QQ:461353919 ===================
+ 【说明】
+ 1、将本程序全选，复制，然后粘贴到一个编程块中
+ 2、按照 【参数设置】 中的 【方块获取设置】 设置好相关的方块名字，这是为了让程序知道哪些方块是你为FCS准备的
+ 3、通过运行编程块并写上对应的指令来控制FCS程序，指令如下：
+ 
+ 【指令】
+ 指令部分我们简化了之前的指令，去掉了繁琐的操作和功能，同样是使用运行编程块，写入指令的方法来下达指令。
+ 新的指令如下：
+ OnOff    - 开关常规搜索
+ Aim      - 瞄准模式（预瞄模式是计算弹道的，自由模式下是瞄准中心，这时使用鼠标可控制瞄准位置，进行精确锁定）
+ Lock     - 精确锁定（在锁定状态下查看任意摄像头，下达精确锁定指令，会立刻使用该摄像头直射激光锁定瞄准的这个位置，并将预瞄点改为这个精确锁定点。精确锁定成功后会立刻切换到预瞄模式）
+ Weapon   - 切换武器类型，这会采用不同的子弹参数去计算预瞄
+ Speed    - 开关速度匹配
+ Fire     - 开关自动开火
+ Pulse    - 脉冲搜索（按下以后执行一次脉冲搜索，会对设定距离进行一次脉冲阵面搜索，搜索到目标自动转入锁定，前提是摄像头储能足够）
+ Go:x,y,z - 自动飞行，飞船会自动控制推进器前往该坐标点。同时也支持直接复制GPS座标作为指令，与这个指令等效
+ 
+ 【更新说明】
+ v8.0 这是一个全新的版本：
+	在本版本中，相比之前的v7.2版本，主要区别如下：
+	a) 程序架构重写，使用了通用的Ship类和Target类来封装飞船和目标相关控制，让整个程序非常简洁清晰
+	b) 发现了摄像头的储能机制，并增加了脉冲阵列扫描方式，允许在一个程序帧内对某个区域执行范围扫描，无视摄像头数量，仅和摄像头储能有关
+	c) 重写了追踪目标的激光算法和逻辑，在算法上抛弃了之前的算法（旧算法只是碰巧正确），新的算法在理论上已经达到极限效率。同时在追踪逻辑上采用了更智能的方法
+	d) 重写了导航算法，同时新增了导航功能。根据飞船的实际质量和各向推进器自动判断飞船的运动属性，并由此获得了效率最大的导航算法。新的导航算法时间最优，而且不存在在目标点附近震荡的问题。
+	
+	优化：在追踪目标的时候，现在采用的是一旦常规追踪失效，就对目标采用脉冲阵列扫描。这时采用的是一定完成扫描，并筛选出扫描结果中匹配目标EntityId的那个，这样比较浪费储能，可以做个新的函数，只要扫描到就不继续扫，这样能节省
+*/
+
+// ==== 参数设置开始 ====
+// ---- 方块获取设置 ----
+// 在设置名字时，编组名和方块名共同作用，结果是两者的并集。不填写则不采用这种方式，例如填写了编组名，不填写方块名，就只采用编组里的方块。
+static string CockpitNameTag = "NOT_EXIST_COCKPIT"; //控制座椅名字，设为AUTO时自动使用主控座椅。必须
+static string LCDNameTag = "NOT_EXIST_LCD"; //信息面板方块名（设为ALL采用所有的）
+static string[] CamerasNameTag = {"", "NOT_EXIST_CAMERA"}; //摄像头编组名、方块名（设为ALL采用所有的）
+static string[] GyroscopesNameTag = {"", "NOT_EXIST_GYRO"}; //陀螺仪编组名、方块名（设为ALL采用所有的）
+static string[] ThurstsNameTag = {"", "NOT_EXIST_THRUST"}; //推进器编组名、方块名（设为ALL采用所有的）
+static string[] WeaponsNameTag = {"", "NOT_EXIST_WEAPON"}; //固定武器编组名，方块名（设为ALL采用所有的）
+// add by kaien
+string homingTurretName = "NOT_EXIST_TURRET";
+bool useTurretAsAimer=false;
+Vector3D flyByAimPosition = Vector3D.Zero;
+int flyByAimTTL = 0;
+string fireTimerName="FireTimer";
+IMyTerminalBlock FireTimer2;
+
+// --------- 搜索参数设置 ------------
+double SearchDistance = 5000;//常规搜索距离
+
+double PulseDistance = 3000;//脉冲搜索距离
+double PulseRadius = 150;//脉冲搜索的区域半径，扫描区域是以正前方设定的距离点为中心，上下左右分别延伸出一个半径的区域
+double PulseInterval = 10; //脉冲搜索扫描区域的扫描线终点的间隔
+//注意：脉冲搜索区域半径不要太大，脉冲搜索间隔不要太小，否则可能程序复杂而中断
+
+// --------- 武器参数设置 ------------
+double AutoFireDistance = 950; //自动开火距离
+
+double Weapon_1_BulletInitialSpeed = 400; //武器1，子弹初速度，加特林机枪的默认子弹初速度是400   
+double Weapon_1_BulletAcceleration = 0; //武器1，子弹加速度，加特林机枪默认子弹加速度是0   
+double Weapon_1_BulletMaxSpeed = 400; //武器1，子弹最大速度，加特林机枪默认最大速度是400   
+
+double Weapon_2_BulletInitialSpeed = 170; //武器2，子弹初速度，火箭弹默认初速度是100   
+double Weapon_2_BulletAcceleration = 10; //武器2，子弹加速度，火箭弹默认加速度是600   
+double Weapon_2_BulletMaxSpeed = 190; //武器2，子弹最大速度，火箭弹默认最大速度是700。火箭弹的这几个参数不正确，所以打不准，请自己测试出正确的参数
+
+// --------- 目标阵营选择，选中请设为true，不选中请设为false ---------
+bool Target_Enemies = true; //是否锁定敌对目标
+bool Target_NoOwnership = true; //是否锁定无人所属的目标
+bool Target_Owner = false; //是否锁定自己归属的目标（包括自己）
+bool Target_FactionShare = false; //是否锁定同盟派系
+bool Target_Neutral = false; //是否锁定自然目标（小行星、星球）
+
+// ----- 瞄准控制系统设置 -----
+// PID控制
+static double MouseAimRatio = 0.02; //自由瞄准模式下鼠标的灵敏度
+static double AimRatio = 3; //瞄准精度，单位：度。用来是否瞄准，以便其他动作判断。不影响瞄准的效率。当瞄准块的正前方向量与瞄准块和目标的连线向量夹角小于这个值时，整个系统判定瞄准了目标。
+static int AimPID_T = 5; //PID 采样周期（单位：帧），周期越小效果越好，但太小的周期会让积分系数难以发挥效果
+static double AimPID_P = 0.8; //比例系数：可以理解为整个PID控制的总力度，建议范围0到1.2，1是完全出力。
+static double AimPID_I = 3; //积分系数：增加这个系数会让静态误差增加（即高速环绕误差），但会减少瞄准的震荡。反之同理
+static double AimPID_D = 10; //微分系数：增加这个系数会减少瞄准的震荡幅度，但会加剧在小角度偏差时的震荡幅度。反之同理
+
+// ----- 进阶设置 -----
+bool IsUnlockWhenLockBack = false; //是否在精确锁定点运动到目标背面后解除精确锁定
+bool IsAimDeviation = true; //是否在预瞄时瞄准实际激光跟踪点而不是目标中心（由于某些飞船结构复杂，其中心可能是空心的，而激光跟踪点一定是存在方块的位置）
+
+Vector3I BackgroundColorWhenIdle = new Vector3I(0,76,255); //待命时LCD背景色
+Vector3I BackgroundColorWhenSearch = new Vector3I(255,255,76); //搜索时LCD背景色
+Vector3I BackgroundColorWhenTarget = new Vector3I(255,76,0); //锁定时LCD背景色
+Vector3I BackgroundColorWhenTLock = new Vector3I(255,0,0); //精确锁定时LCD背景色
+
+// a b K
+Vector3D myPositionOffset = new Vector3D(0,0,0);
+// ==== 参数设置结束 ====
+
+// ==== 主函数 ====
+static bool NeedScan;
+static int NeedAimMode;
+static int NeedWeaponMode;
+static bool NeedSpeedMatch;
+static bool NeedAutoFire;
+static bool NeedNavigation;
+static bool NeedManeuverRoll;
+
+static int t; //时间
+static Ship MyShip; //飞船
+static Target MyTarget = new Target();
+Vector3D NavigationPosition;
+
+// add by kaien
+string debugInfo="";
+
+void execCommand(string arguments) {
+String[] kv = arguments.Split(':');
+String[] args = new String[]{};
+if (kv.Count() > 1) {
+args = kv[1].Split(',');
+}
+Echo(kv[0]);
+switch(kv[0]) {
+case ("REINIT"):
+CockpitNameTag = args[0];
+LCDNameTag = args[1]; 
+CamerasNameTag = new string[]{"", "ALL"}; 
+GyroscopesNameTag = new string[]{"", "ALL"}; 
+ThurstsNameTag = new string[]{"", "ALL"}; 
+WeaponsNameTag = new string[]{"", "ALL"};
+double.TryParse(args[2], out SearchDistance);
+homingTurretName = args[3];
+useTurretAsAimer=args[4].Equals("True");
+GetBlocks();
+break;
+case ("ALLON"):
+NeedScan = true;
+NeedAimMode = 1;
+NeedAutoFire=true;
+break;
+case ("ALLOFF"):
+NeedScan = false;
+NeedAimMode = 0;
+NeedAutoFire=false;
+MyTarget = new Target();
+break;
+case ("WEAPON1"):
+NeedWeaponMode=0;
+break;
+case ("WEAPON2"):
+NeedWeaponMode=1;
+break;
+case ("FLYBYAIM"):
+flyByAimPosition=new Vector3D(Convert.ToDouble(args[0]),Convert.ToDouble(args[1]),Convert.ToDouble(args[2]));
+flyByAimTTL = t;
+break;
+}
+}
+
+string displayVector3D(Vector3D tar) {
+return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
+}
+
+
+void Main(string arguments)
+{
+	// add by kaien
+	execCommand(arguments);
+
+	//初始化飞船
+	if(MyShip == null || MyShip.Cockpit == null){ 
+		//这里一定要用Cockpit来判断MyShip是否初始化成功，class的初始化虽然在Cockpit未找到的时候return了，不会因为使用Cockpit去处理推进器陀螺仪而报错，但MyShip不再是null了。
+		Echo("Cockpit Not Found!");
+		GetBlocks();return;
+	}
+	
+	t ++;
+	
+	//报告飞船状态到Echo中
+	EchoShip();
+	
+	//更新飞船状态信息和停止动作
+	MyShip.MotionInit();
+	MyShip.UpdateMotionInfo();
+	
+	//接受指令
+	switch(arguments){
+		case("OnOff"):NeedScan = !NeedScan; MyTarget = new Target(); break;
+		case("Aim"):NeedAimMode += 1; if(NeedAimMode > 2){NeedAimMode = 0;}; break;
+		case("Lock"):ShipLock(); break;
+		case("Weapon"):NeedWeaponMode += 1; if(NeedWeaponMode > 1){NeedWeaponMode = 0;}; break;
+		case("Fire"):NeedAutoFire = !NeedAutoFire; break;
+		case("Speed"):NeedSpeedMatch = !NeedSpeedMatch; break;
+		case("Pulse"):ShipPulseScan(); return;
+		case("Roll"):NeedManeuverRoll = !NeedManeuverRoll; break;
+	}
+	if(arguments.StartsWith("Go:") || arguments.StartsWith("GPS:")){
+		ShipNavigation(arguments);
+	}
+	
+	
+	if(NeedScan){
+		ShipScan(); //扫描和锁定
+	}
+	if(NeedAimMode > 0){
+		ShipAim(); //瞄准
+	}
+	if(NeedSpeedMatch){
+		ShipSpeedMatch(); //速度匹配
+	}
+	if(NeedAutoFire){
+		ShipAutoFire(); //自动开火
+	}
+	if(NeedNavigation){
+		if(MyShip.NavigationTo(NavigationPosition)){
+			NeedNavigation = false; //执行导航
+		}
+	}
+	
+	//if(NeedManeuverRoll && MyTarget.EntityId != 0){
+	//	ShipManeuverRoll();
+	//}
+	
+	ShowInfoLCD();
+	EchoTarget(); //输出目标信息
+	
+	//Debug();
+
+	// add by kaien
+	// remove flyByAimPosition
+	if ( t > flyByAimTTL + 200) {
+		flyByAimPosition = Vector3D.Zero;
+	}
+}
+
+void Debug(){
+	//Debug
+	List<IMyTextPanel> debugLCD = new List<IMyTextPanel>();
+	GridTerminalSystem.GetBlocksOfType(debugLCD, b => b.CustomName == "FCS_Debug_LCD");
+	
+	/*
+	MyShipMass ShipMass = MyShip.Cockpit.CalculateShipMass();
+	double MaxThrust = 0;
+	double MaxEffectiveThrust = 0;
+	for(int i = 0; i < MyShip.Thrusts.Count; i ++){
+		if(MyShip.ThrustField[i] == "Backward"){
+			MaxThrust += MyShip.Thrusts[i].MaxThrust;
+			MaxEffectiveThrust += MyShip.Thrusts[i].MaxEffectiveThrust;
+		}
+	}
+	
+	string infodebug = ""; string br = "\n";
+	infodebug += " BaseMass:" + ShipMass.BaseMass + br;
+	infodebug += " TotalMass:" + ShipMass.TotalMass + br;
+	infodebug += " PhysicalMass:" + ShipMass.PhysicalMass + br + br;
+	//BaseMass应该是基础方块的质量
+	//实际测量中BaseMass和PhysicalMass差不多，人坐进去以后PhysicalMass会增加100，应该是包括了乘员的质量
+	//TotalMass是最大的，它还包括了货物质量
+	//但在物理运算的时候，并不是用TotalMass在算，K社表现得异常奇怪。这个PhysicalMass是新加入的
+	//实际无论怎么算都是MaxEffectiveThrust/PhysicalMass才能得到正确结果
+	
+	infodebug += " MaxThrust:" + MaxThrust + br;
+	infodebug += " MaxEffectiveThrust:" + MaxEffectiveThrust + br + br;
+	//MaxEffectiveThrust应该是在大气下的最大实际推力
+	
+	MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), MyShip.Cockpit.WorldMatrix.Forward, MyShip.Cockpit.WorldMatrix.Up);
+	Vector3D AToMe =  Vector3D.TransformNormal(MyShip.Acceleration, refLookAtMatrix);
+	infodebug += " 理论加速度:" + Math.Round(MaxEffectiveThrust/ShipMass.PhysicalMass, 2) + br;
+	infodebug += " 实际加速度:" + Vector3D.Round(AToMe, 2).Z + br;
+	*/
+	debugLCD.ForEach(delegate(IMyTextPanel lcd){lcd.WritePublicText("");});
+	
+	//验证了实际加速度就是所有该方向推进器 MaxEffectiveThrust 产生的推力和 除以 Cockpit.CalculateShipMass().PhysicalMass
+}
+
+// ==== 主要功能方法 ====
+// add by kaien
+Vector3D CalculateTurretViewVector(IMyLargeTurretBase turret)
+{
+Vector3D direction;
+Vector3D.CreateFromAzimuthAndElevation(turret.Azimuth, turret.Elevation, out direction);
+
+return Vector3D.TransformNormal(direction, turret.WorldMatrix);
+}
+
+// 扫描目标并自动锁定
+void ShipScan(){
+	if(MyTarget.EntityId == 0){
+		//Vector3D Point = MyShip.Cockpit.GetPosition() + MyShip.Cockpit.WorldMatrix.Forward*SearchDistance;
+		// foreach(IMyCameraBlock c in MyShip.Cameras){
+		// 	if(c.IsActive){
+		// 		Point = c.GetPosition() + c.WorldMatrix.Forward*SearchDistance;
+		// 	}
+		// }
+
+		// add by kaien
+		var offset = (MyShip.offsetAngleCount % 20 - 10) / 1000d;
+		Vector3D direction;
+		MyDetectedEntityInfo targetEntity = new MyDetectedEntityInfo();
+		bool tHas = false;
+		foreach(var t in MyShip.AutoWeapons) {
+			if (t.HasTarget) {
+				targetEntity = t.GetTargetedEntity();
+				tHas = true;
+			}
+		}
+		Vector3D targetPosition = Vector3D.Zero;
+		if (tHas) {
+		Vector3D.TryParse(targetEntity.Position.ToString(), out targetPosition);
+
+		direction = Vector3D.Normalize(targetPosition - MyShip.homingTurret.GetPosition());
+		} else if(useTurretAsAimer)  {
+		direction = CalculateTurretViewVector(MyShip.homingTurret)+ (offset/10 + 0.001) * MyShip.Cockpit.WorldMatrix.Up ;
+		} else if (MyShip.Cockpit.IsUnderControl) {
+		direction = Vector3D.Normalize(MyShip.Cockpit.WorldMatrix.Forward);
+		}
+		else if (!flyByAimPosition.Equals(Vector3D.Zero)) {
+		direction = Vector3D.Normalize(flyByAimPosition - MyShip.Cockpit.GetPosition());
+		tHas = true;
+		targetPosition = flyByAimPosition;
+		}
+		else {
+		direction = Vector3D.Normalize(MyShip.Cockpit.WorldMatrix.Forward + offset * MyShip.Cockpit.WorldMatrix.Up);
+		}
+		
+		Vector3D Point = MyShip.Cockpit.GetPosition() + direction*SearchDistance;
+		// a b K
+		if (tHas) {
+			Point = targetPosition;
+		}
+
+		MyDetectedEntityInfo FoundTarget = MyShip.ScanPoint(Point);
+		if(!FoundTarget.IsEmpty()){
+			//根据设置筛选关系正确的目标
+			if(JudgeTargetRelationship(FoundTarget)	){
+				MyTarget = new Target(FoundTarget);
+			}
+		}
+	}
+	else{
+		
+		MyDetectedEntityInfo TrackTarget = MyShip.TrackTarget(MyTarget);
+		if(!TrackTarget.IsEmpty() && TrackTarget.EntityId == MyTarget.EntityId
+		// add by kaien
+		&& (TrackTarget.Position - MyShip.Cockpit.GetPosition()).Length() < SearchDistance
+		){
+			MyTarget.UpdateMotionInfo(TrackTarget);
+		}
+		else if(t - MyTarget.TimeStamp >= 60){
+			MyTarget = new Target();
+			// mod by kaien
+			// NeedScan = false;
+		}
+	}
+}
+
+// 脉冲搜索并转入锁定
+void ShipPulseScan(){
+	Vector3D CenterPoint = MyShip.Cockpit.GetPosition() + MyShip.Cockpit.WorldMatrix.Forward*PulseDistance;
+	foreach(IMyCameraBlock c in MyShip.Cameras){
+		if(c.IsActive){
+			CenterPoint = c.GetPosition() + c.WorldMatrix.Forward*PulseDistance;
+		}
+	}
+	List<Vector3D> Points = new List<Vector3D>();
+	Points.Add(CenterPoint);
+	for(double x = 0; x < PulseRadius; x += PulseInterval){
+		for(double y = 0; y < PulseRadius; y += PulseInterval){
+			Points.Add(CenterPoint + MyShip.Cockpit.WorldMatrix.Right*x + MyShip.Cockpit.WorldMatrix.Up*y);
+			Points.Add(CenterPoint + MyShip.Cockpit.WorldMatrix.Left*x + MyShip.Cockpit.WorldMatrix.Up*y);
+			Points.Add(CenterPoint + MyShip.Cockpit.WorldMatrix.Right*x + MyShip.Cockpit.WorldMatrix.Down*y);
+			Points.Add(CenterPoint + MyShip.Cockpit.WorldMatrix.Left*x + MyShip.Cockpit.WorldMatrix.Down*y);
+		}
+	}
+	
+	MyDetectedEntityInfo Target = MyShip.PulseScanSingle(Points);
+	if(!Target.IsEmpty() && JudgeTargetRelationship(Target)){
+		MyTarget = new Target(Target);
+		NeedScan = true;
+	}
+}
+
+// 执行精确锁定
+void ShipLock(){
+	if(MyTarget.EntityId != 0){
+		foreach(IMyCameraBlock c in MyShip.Cameras){
+			if(c.IsActive){
+				double distance = Vector3D.Distance(c.GetPosition(), MyTarget.Position) + MyTarget.Diameter + 100;
+				MyDetectedEntityInfo target = c.Raycast(distance,0,0);
+				if(!target.IsEmpty()){
+					Vector3D HitPoint = new Vector3D();
+					Vector3D.TryParse(target.HitPosition.ToString(), out HitPoint);
+					MatrixD TargetMainMatrix = target.Orientation;   
+					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
+					MyTarget.AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - target.Position, TargetLookAtMatrix);
+					NeedAimMode = 1;
+				}
+				else{
+					MyTarget.AccurateLockPositionToTarget = new Vector3D();
+				}
+			}
+		}
+	}
+}
+
+// 执行各种瞄准模式
+Vector3D AimOffSetVector; //瞄准偏移量
+void ShipAim(){
+	if(MyTarget.EntityId != 0){
+		MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), MyTarget.Orientation.Forward, MyTarget.Orientation.Up);
+		
+		Vector3D TargetPosition = MyTarget.Position;
+		if(IsAimDeviation){
+			Vector3D dev_move = Vector3D.TransformNormal(MyShip.TrackDeviationToTarget, MyTarget.Orientation);
+			TargetPosition = TargetPosition + dev_move;
+		}
+		
+		//精确瞄准修正
+		if(MyTarget.AccurateLockPositionToTarget.Length() != 0){
+			Vector3D posmove = Vector3D.TransformNormal(MyTarget.AccurateLockPositionToTarget, MyTarget.Orientation);
+			//当瞄准点到目标背面后是否解除
+			if(IsUnlockWhenLockBack){
+				double D_PointMe = Vector3D.Distance(TargetPosition - posmove, MyShip.Position);
+				double D_TargetMe = Vector3D.Distance(TargetPosition, MyShip.Position);
+				if(D_PointMe > D_TargetMe){
+					MyTarget.AccurateLockPositionToTarget = new Vector3D();
+				}
+			}
+			TargetPosition = MyTarget.Position + posmove;
+		}
+
+		// a b K
+		TargetPosition -= myPositionOffset.Y * MyShip.Cockpit.WorldMatrix.Up;
+		
+		Vector3D HitPosition = new Vector3D();
+		if(NeedAimMode == 1){//预瞄
+			if(NeedWeaponMode == 0)   
+			{HitPosition = HitPointCaculate(MyShip.Position, MyShip.Velocity, MyShip.Acceleration, TargetPosition, MyTarget.Velocity, MyTarget.Acceleration, Weapon_1_BulletInitialSpeed,Weapon_1_BulletAcceleration,Weapon_1_BulletMaxSpeed);}   
+			if(NeedWeaponMode == 1)   
+			{
+			// add by kaien
+			var mv = MyShip.Velocity * 0.16;
+			HitPosition = HitPointCaculate(MyShip.Position, mv, MyShip.Acceleration, TargetPosition, MyTarget.Velocity, MyTarget.Acceleration, Weapon_2_BulletInitialSpeed,Weapon_2_BulletAcceleration,Weapon_2_BulletMaxSpeed);
+			}
+		}
+		else if(NeedAimMode == 2){//直瞄+自由
+			AimOffSetVector.X -= MyShip.Cockpit.RotationIndicator.Y*MouseAimRatio;
+			AimOffSetVector.Y -= MyShip.Cockpit.RotationIndicator.X*MouseAimRatio;
+			HitPosition = TargetPosition + MyShip.Cockpit.WorldMatrix.Left*AimOffSetVector.X + MyShip.Cockpit.WorldMatrix.Up*AimOffSetVector.Y;
+		}
+		if(NeedAimMode != 2){
+			AimOffSetVector = new Vector3D();
+		}
+		MyShip.AimAtPosition(HitPosition);
+	}
+	//考虑瞄准过程中QE控制的问题
+	MyShip.SetGyroValue("Roll", -MyShip.Cockpit.RollIndicator*30);
+}
+
+// 执行速度匹配
+void ShipSpeedMatch(){
+	if(MyTarget.EntityId != 0){
+		MyShip.NavigationTo(MyShip.Cockpit.GetPosition(), MyTarget.Velocity);
+	}
+}
+
+// 执行导航指令
+void ShipNavigation(string arguments){
+	string x = "";
+	string y = "";
+	string z = "";
+	if(arguments.StartsWith("Go:") && arguments.Split(':').Length == 2 && arguments.Split(':')[1].Split(',').Length == 3){
+		x = arguments.Split(':')[1].Split(',')[0];
+		y = arguments.Split(':')[1].Split(',')[1];
+		z = arguments.Split(':')[1].Split(',')[2];
+	}
+	if(arguments.StartsWith("GPS:") && arguments.Split(':').Length == 6){
+		x = arguments.Split(':')[2];
+		y = arguments.Split(':')[3];
+		z = arguments.Split(':')[4];
+	}
+	bool nav_right = true;
+	if(!double.TryParse(x, out NavigationPosition.X)){nav_right = false;}
+	if(!double.TryParse(y, out NavigationPosition.Y)){nav_right = false;}
+	if(!double.TryParse(z, out NavigationPosition.Z)){nav_right = false;}
+	if(nav_right){
+		NeedNavigation = true;
+	}
+}
+
+// 执行自动开火
+void ShipAutoFire(){
+	if(NeedAutoFire && NeedAimMode == 1 && MyTarget.EntityId != 0){
+		if(Vector3D.Distance(MyShip.Position, MyTarget.Position) <= AutoFireDistance){
+			MyShip.WeaponsShoot();
+		}
+		// add by kaien
+		if (NeedWeaponMode == 1) {
+			PlayAction(FireTimer2,"TriggerNow");
+		}
+	}
+}
+void PlayAction(IMyTerminalBlock block, String action) {
+if (block != null) {
+var a = block.GetActionWithName(action);
+if (a!=null) a.Apply(block);
+}
+}
+
+
+// 基于锁定目标方向的垂直螺旋机动（调试中）
+double MRoll_X_Value = -100;
+double MRoll_Y_Value = 0;
+int MRoll_ZF = -1;
+void ShipManeuverRoll(){
+	MRoll_X_Value += 0.167*MRoll_ZF;
+	if(MRoll_X_Value > 100 || MRoll_X_Value < -100){MRoll_ZF = -MRoll_ZF;}
+	MRoll_Y_Value = Math.Pow(10000 - MRoll_X_Value*MRoll_X_Value, 0.5);
+	
+	Vector3D TargetToMeVector = MyTarget.Position - MyShip.Position;
+	Vector3D V_X = CaculateVerticalVector(TargetToMeVector, MyShip.Position);
+	Vector3D V_Y = Vector3D.Normalize(Vector3D.Cross(TargetToMeVector, V_X));
+	//把上述两个向量分别分解到自己的6向，获得推进器的数值
+	
+	double LR = MRoll_X_Value*Vector3D.Dot(V_X, MyShip.Cockpit.WorldMatrix.Left) + MRoll_Y_Value*Vector3D.Dot(V_Y, MyShip.Cockpit.WorldMatrix.Left);
+	if(LR > 0){
+		MyShip.SetThrustOverride("Left", LR);
+	}
+	else{
+		MyShip.SetThrustOverride("Right", -LR);
+	}
+	double FB = MRoll_X_Value*Vector3D.Dot(V_X, MyShip.Cockpit.WorldMatrix.Forward) + MRoll_Y_Value*Vector3D.Dot(V_Y, MyShip.Cockpit.WorldMatrix.Forward);
+	if(FB > 0){
+		MyShip.SetThrustOverride("Backward", FB);
+	}
+	else{
+		MyShip.SetThrustOverride("Forward", -FB);
+	}
+	double UD = MRoll_X_Value*Vector3D.Dot(V_X, MyShip.Cockpit.WorldMatrix.Up) + MRoll_Y_Value*Vector3D.Dot(V_Y, MyShip.Cockpit.WorldMatrix.Up);
+	if(UD > 0){
+		MyShip.SetThrustOverride("Up", UD);
+	}
+	else{
+		MyShip.SetThrustOverride("Down", -UD);
+	}
+	Echo(LR.ToString());
+}
+
+//显示LCD信息
+void ShowInfoLCD(){
+	string info = ""; string br = "\n";
+	MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), MyShip.Cockpit.WorldMatrix.Forward, MyShip.Cockpit.WorldMatrix.Up);
+	
+	info += "----------------- MEA FCS --------------------" + br;   
+	info += " OnOff: " + (NeedScan ? (MyTarget.EntityId == 0 ? "Searching" : (MyTarget.AccurateLockPositionToTarget.Length() == 0 ? MyTarget.Name : "[Lock]" + MyTarget.Name)) : " - ") + br;   
+	info += " Auto-Aim: " + (NeedAimMode==0 ? " - " : (NeedAimMode == 1 ? "Pri-Aim" : "Direct")) + "     Weapon: " + (NeedWeaponMode == 0 ? "1" : "2") + br;
+	info += " Speed-Match: " + (NeedSpeedMatch ? "On" : " - ") + "     Auto-Fire: " + (NeedAutoFire ? "On" : " - ") + br;
+	double CamerasEnergy = 0;
+	GetRightAngleCameras(MyShip.Cameras, MyShip.Cockpit.GetPosition() + MyShip.Cockpit.WorldMatrix.Forward*SearchDistance).ForEach(delegate(IMyCameraBlock c){CamerasEnergy += c.AvailableScanRange;});
+	CamerasEnergy = Math.Round(CamerasEnergy, 0);
+	info += " Cameras Energy(Forward): " + CamerasEnergy + br;
+	if(MyTarget.EntityId == 0)   
+	{   
+		info += "--------------------- Ship Info ---------------------" + br;   
+		info += " Location" + br;   
+		info += " X: " + Math.Round(MyShip.Cockpit.GetPosition().X,2) + br;   
+		info += " Y: " + Math.Round(MyShip.Cockpit.GetPosition().Y,2) + br;   
+		info += " Z: " + Math.Round(MyShip.Cockpit.GetPosition().Z,2) + br ;   
+		info += " Direction" + br;   
+		info += Vector3D.Round(MyShip.Cockpit.WorldMatrix.Forward,2) + br ;   
+		info += " Speed" + br;   
+		Vector3D MeVectorToMe = Vector3D.TransformNormal(MyShip.Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);   
+		info += ( MeVectorToMe.Z > 0 ? (" Backward: " + Math.Round(MeVectorToMe.Z,2)) : (MeVectorToMe.Z < 0 ? (" Forward: " + -Math.Round(MeVectorToMe.Z,2)): " F-B: 0")) + br;   
+		info += ( MeVectorToMe.X > 0 ? (" Right: " + Math.Round(MeVectorToMe.X,2)) : (MeVectorToMe.X < 0 ? (" Left: " + -Math.Round(MeVectorToMe.X,2)): " L-R: 0")) + br;   
+		info += ( MeVectorToMe.Y > 0 ? (" Up: " + Math.Round(MeVectorToMe.Y,2)) : (MeVectorToMe.Y < 0 ? (" Down: " + -Math.Round(MeVectorToMe.Y,2)): " U-D: 0")) + br;   
+	}   
+	else   
+	{   
+		info += "--------------------- Target Info ---------------------" + br;   
+		info += " Size: " + Math.Round(MyTarget.Diameter,2) + br;  
+		info += " Distance: " + Math.Round(Vector3D.Distance(MyShip.Position, MyTarget.Position) - MyTarget.Diameter/2 - MyShip.Diameter/2,2) + br + br;   
+		info += " Direction " + br;   
+		Vector3D TargetPositionToMe = Vector3D.TransformNormal(MyShip.Cockpit.GetPosition()-MyTarget.Position, refLookAtMatrix);   
+		info += ( TargetPositionToMe.Z > 0 ? (" Backward: " + Math.Round(TargetPositionToMe.Z,2)) : (TargetPositionToMe.Z < 0 ? (" Forward: " + -Math.Round(TargetPositionToMe.Z,2)): " F-B: 0")) + br;   
+		info += ( TargetPositionToMe.X > 0 ? (" Right: " + Math.Round(TargetPositionToMe.X,2)) : (TargetPositionToMe.X < 0 ? (" Left: " + -Math.Round(TargetPositionToMe.X,2)): " L-R: 0")) + br;   
+		info += ( TargetPositionToMe.Y > 0 ? (" Up: " + Math.Round(TargetPositionToMe.Y,2)) : (TargetPositionToMe.Y < 0 ? (" Down: " + -Math.Round(TargetPositionToMe.Y,2)): " U-D: 0")) + br + br;   
+		info += " Speed: " + Math.Round(MyTarget.Velocity.Length(),2) + "         " + "Accel.: " + Math.Round(MyTarget.Acceleration.Length(),2) + br;     
+		Vector3D TargetVectorToMe = Vector3D.TransformNormal(MyTarget.Velocity, refLookAtMatrix);   
+		info += ( TargetVectorToMe.Z > 0 ? (" Backward: " + Math.Round(TargetVectorToMe.Z,2)) : (TargetVectorToMe.Z < 0 ? (" Forward: " + -Math.Round(TargetVectorToMe.Z,2)): " F-B: 0")) + br;   
+		info += ( TargetVectorToMe.X > 0 ? (" Right: " + Math.Round(TargetVectorToMe.X,2)) : (TargetVectorToMe.X < 0 ? (" Left: " + -Math.Round(TargetVectorToMe.X,2)): " L-R: 0")) + br;   
+		info += ( TargetVectorToMe.Y > 0 ? (" Up: " + Math.Round(TargetVectorToMe.Y,2)) : (TargetVectorToMe.Y < 0 ? (" Down: " + -Math.Round(TargetVectorToMe.Y,2)): " U-D: 0")) + br + br;   
+	}
+	info += MyShip.debugInfo;
+	info += debugInfo;
+	foreach(IMyTextPanel lcd in InfoLCD){
+		if(!NeedScan){
+		// mod by kaien
+			lcd.SetValue("FontColor",new Color(BackgroundColorWhenIdle.X, BackgroundColorWhenIdle.Y, BackgroundColorWhenIdle.Z));
+		}
+		else if(MyTarget.EntityId == 0){
+		// mod by kaien
+			lcd.SetValue("FontColor",new Color(BackgroundColorWhenSearch.X, BackgroundColorWhenSearch.Y, BackgroundColorWhenSearch.Z));
+		}
+		else if(MyTarget.AccurateLockPositionToTarget.Length() == 0){
+		// mod by kaien
+			lcd.SetValue("FontColor",new Color(BackgroundColorWhenTarget.X, BackgroundColorWhenTarget.Y, BackgroundColorWhenTarget.Z));
+		}
+		else{
+		// mod by kaien
+			lcd.SetValue("FontColor",new Color(BackgroundColorWhenTLock.X, BackgroundColorWhenTLock.Y, BackgroundColorWhenTLock.Z));
+		}
+		lcd.ShowPublicTextOnScreen();
+		lcd.WritePublicText(info);
+	}
+}
+
+// ==== 输出飞船到Echo中 ====
+void EchoShip(){
+	if(MyShip == null){return;}
+	string ec = "";
+	ec += "ShipStatu:" + MyShip.Debug + "\n";
+	ec += "Cockpit:" + MyShip.Cockpit.CustomName + "\n";
+	ec += "Cameras:" + MyShip.Cameras.Count() + "\n";
+	ec += "Gyroscopes:" + MyShip.Gyroscopes.Count() + "\n";
+	ec += "Thrusts:" + MyShip.Thrusts.Count() + "\n";
+	ec += "Weapons:" + (MyShip.Guns.Count() + MyShip.Rockets.Count()) + "\n";
+	ec += "System Runing " + (t%60 <= 45 ? (t%60 <= 30 ? (t%60 <= 15 ? "\\" : "|") : "/"): "---") + "\n";
+	Echo(ec);
+}
+
+// ==== 输出目标信息到CustomData中 ====
+void EchoTarget(){
+	string info = ""; string br = "\n";
+	info += "[FCS_TargetInfo]" + br;
+	info += "Name=" + MyTarget.Name + br;
+	info += "EntityId=" + MyTarget.EntityId + br;
+	info += "Position=" + MyTarget.Position + br;
+	info += "Velocity=" + MyTarget.Velocity + br;
+	info += "Acceleration=" + MyTarget.Acceleration + br;
+	info += "Orientation=" + MyTarget.Orientation + br; //指向矩阵
+	info += "Diameter=" + MyTarget.Diameter + br;//直径
+	info += "TimeStamp=" + (t - MyTarget.TimeStamp) + br;//发现到现在过去的帧数
+	info += "[\\FCS_TargetInfo]" + br; //这里的第一个\是转义符号，实际输出的只有一个\符号
+	Me.CustomData = info;
+}
+
+// ==== 获取飞船方块 ====
+List<IMyTextPanel> InfoLCD = new List<IMyTextPanel>();
+void GetBlocks(){
+	//获取LCD
+	GridTerminalSystem.GetBlocksOfType(InfoLCD, b => (LCDNameTag == "" ? (LCDNameTag == "ALL" ? true : false) : b.CustomName.Contains(LCDNameTag)));
+	
+	//获取其他方块
+	List<IMyTerminalBlock> BK = new List<IMyTerminalBlock>();
+	List<IMyTerminalBlock> BK_Temp = new List<IMyTerminalBlock>();
+	
+	//把主控座椅搞进来
+	if(CockpitNameTag == "AUTO"){
+		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b is IMyShipController && (b as IMyShipController).IsMainCockpit);
+	}
+	else{
+		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b is IMyShipController && b.CustomName.Contains(CockpitNameTag));
+	}
+	if(BK_Temp.Count() > 0){
+		BK.Add(BK_Temp[0]);
+	}
+	
+	//把设置了分组的方块搞进来
+	List<IMyBlockGroup> groups = new List<IMyBlockGroup>();
+	GridTerminalSystem.GetBlockGroups(groups);
+	foreach(IMyBlockGroup g in groups){
+		if(g.Name == CamerasNameTag[0] || g.Name == GyroscopesNameTag[0] || g.Name == ThurstsNameTag[0] || g.Name == WeaponsNameTag[0]){
+			List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+			g.GetBlocks(blocks);
+			BK.AddList(blocks);
+		}
+	}
+	
+	//把设置了名字的方块搞进来
+	if(CamerasNameTag[0] == ""){
+		BK_Temp = new List<IMyTerminalBlock>();
+		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b is IMyCameraBlock && (CamerasNameTag[1] == "ALL" ? true : CamerasNameTag[1] == "" ? false : b.CustomName.Contains(CamerasNameTag[1])));
+		BK.AddList(BK_Temp);
+	}
+	
+	if(GyroscopesNameTag[0] == ""){
+		BK_Temp = new List<IMyTerminalBlock>();
+		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CubeGrid == Me.CubeGrid && b is IMyGyro && (GyroscopesNameTag[1] == "ALL" ? true : GyroscopesNameTag[1] == "" ? false : b.CustomName.Contains(GyroscopesNameTag[1])));
+		BK.AddList(BK_Temp);
+	}
+	
+	if(ThurstsNameTag[0] == ""){
+		BK_Temp = new List<IMyTerminalBlock>();
+		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CubeGrid == Me.CubeGrid && b is IMyThrust && (ThurstsNameTag[1] == "ALL" ? true : ThurstsNameTag[1] == "" ? false : b.CustomName.Contains(ThurstsNameTag[1])));
+		BK.AddList(BK_Temp);
+	}
+	
+	if(WeaponsNameTag[0] == ""){
+		BK_Temp = new List<IMyTerminalBlock>();
+		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CubeGrid == Me.CubeGrid && b is IMyUserControllableGun && !(b is IMyLargeTurretBase) && (WeaponsNameTag[1] == "ALL" ? true : WeaponsNameTag[1] == "" ? false : b.CustomName.Contains(WeaponsNameTag[1])));
+		BK.AddList(BK_Temp);
+	}
+
+	// a b K
+	BK_Temp = new List<IMyTerminalBlock>();
+	GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CubeGrid == Me.CubeGrid && b is IMyLargeTurretBase);
+	BK.AddList(BK_Temp);
+
+	//初始化飞船类
+	MyShip = new Ship(BK);
+
+	// add by kaien
+	MyShip.myPositionOffset = myPositionOffset;
+	BK_Temp = new List<IMyTerminalBlock>();
+	GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CubeGrid == Me.CubeGrid && b is IMyLargeTurretBase  && b.CustomName.Contains(homingTurretName));
+	if (BK_Temp.Count > 0)	MyShip.homingTurret = BK_Temp[0] as IMyLargeTurretBase;
+
+	BK_Temp = new List<IMyTerminalBlock>();
+	GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CustomName.Equals(fireTimerName+"2"));
+	if (BK_Temp.Count > 0)	FireTimer2 = BK_Temp[0] ;
+}
+
+// ==== 飞船类 ====
+/*
+ Ship类的说明：
+ Ship类是一个将飞船对象化的类，其中最基础的成员是飞船上的方块
+ 该类内置了很多类型的方块，只需要在实例化这个类的时候传入一个List<IMyTerminalBlock>方块列表，类会自动识别不同类型的方块并放入不同的变量中
+ 最核心的的方块是Cockpit
+ 该类提供了飞船的基础运动信息，并且包括加速度的运算，这是单纯用Cockpit获取不到的。如需更新运动信息，请在每个循环中调用Ship.UpdateMotionInfo()方法
+ 
+ 该类不使用任何外部变量，因此可以整体搬运迁移
+ 主要内置了3类方法
+ 1、对方块的基础控制方法，如：TurnBlocksOnOff()SetGyroOverride()等
+ 2、工具类方法，如：MotionInit()可以放在程序头部，用来恢复一些方块的开关状态，防止异常运动。
+ 3、指令类方法，如ScanPoint()、AimAtPosition()等
+*/
+public class Ship
+{
+	// ----- 运动信息和相关变量 -----
+	public Vector3D Position;
+	public Vector3D Velocity;
+	public Vector3D Acceleration;
+	public double Diameter;
+
+	public string debugInfo;
+	
+	// ----- 方块类变量 -----
+	public IMyShipController Cockpit;
+	public IMyShipConnector Connector;
+	public IMyShipConnector MotherConnector;
+	public List<IMyLargeTurretBase> AutoWeapons = new List<IMyLargeTurretBase>();
+	public List<IMySmallGatlingGun> Guns = new List<IMySmallGatlingGun>();
+	public List<IMySmallMissileLauncher> Rockets = new List<IMySmallMissileLauncher>();
+	public List<IMyCameraBlock> Cameras = new List<IMyCameraBlock>();
+	public List<IMyGyro> Gyroscopes = new List<IMyGyro>();
+	public List<IMyThrust> Thrusts = new List<IMyThrust>();
+	public List<string> ThrustField = new List<string>();
+	public List<string> gyroYawField = new List<string>();
+	public List<string> gyroPitchField = new List<string>();
+	public List<string> gyroRollField = new List<string>();
+	public List<float> gyroYawFactor = new List<float>();
+	public List<float> gyroPitchFactor = new List<float>();
+	public List<float> gyroRollFactor = new List<float>();
+	public string Debug = "Normal"; //错误报告，通过这个变量判断是否初始化成功
+
+	// add by kaien
+	public IMyLargeTurretBase homingTurret = null;
+	public int offsetAngleCount = 0;
+	public Vector3D myPositionOffset = Vector3D.Zero;
+
+	// 初始化方块方法
+	public Ship(){}
+	public Ship(List<IMyTerminalBlock> Blocks)
+	{
+		//这里面可以写入更详细的判断方块是否需要获取的条件，例如名字匹配
+		foreach(IMyTerminalBlock b in Blocks){
+			if(b is IMyShipController){
+				Cockpit = b as IMyShipController;
+			}
+			if(b is IMyCameraBlock){
+				Cameras.Add(b as IMyCameraBlock);
+			}
+			if(b is IMyLargeTurretBase){
+				AutoWeapons.Add(b as IMyLargeTurretBase);
+			}
+			if(b is IMySmallGatlingGun){
+				Guns.Add(b as IMySmallGatlingGun);
+			}
+			if(b is IMySmallMissileLauncher){
+				Rockets.Add(b as IMySmallMissileLauncher);
+			}
+			if(b is IMyGyro){
+				Gyroscopes.Add(b as IMyGyro);
+			}
+			if(b is IMyThrust){
+				Thrusts.Add(b as IMyThrust);
+			}
+			if(b is IMyShipConnector && (b as IMyShipConnector).OtherConnector != null){
+				Connector = b as IMyShipConnector;
+				MotherConnector = Connector.OtherConnector;
+			}
+		}
+		
+		if(Cockpit == null) {Debug = "Cockpit Not Found"; return;}
+		Cameras.ForEach(delegate(IMyCameraBlock cam){cam.ApplyAction("OnOff_On");cam.EnableRaycast = true;});
+		
+		//处理推进器
+		for(int i = 0; i < Thrusts.Count; i ++)   
+		{
+			Base6Directions.Direction CockpitForward = Thrusts[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Forward);   
+			Base6Directions.Direction CockpitUp = Thrusts[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);   
+			Base6Directions.Direction CockpitLeft = Thrusts[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Left);   
+			switch (CockpitForward)   
+			{ case Base6Directions.Direction.Forward: ThrustField.Add("Forward"); break; case Base6Directions.Direction.Backward: ThrustField.Add("Backward"); break; }   
+			switch (CockpitUp)   
+			{ case Base6Directions.Direction.Forward: ThrustField.Add("Up"); break; case Base6Directions.Direction.Backward: ThrustField.Add("Down"); break; }   
+			switch (CockpitLeft)   
+			{ case Base6Directions.Direction.Forward: ThrustField.Add("Left"); break; case Base6Directions.Direction.Backward: ThrustField.Add("Right"); break; }
+			
+			Thrusts[i].ApplyAction("OnOff_On");
+		}
+		
+		//处理陀螺仪
+		for (int i = 0; i < Gyroscopes.Count; i++)   
+		{   
+			Base6Directions.Direction gyroUp = Gyroscopes[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);   
+			Base6Directions.Direction gyroLeft = Gyroscopes[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Left);   
+			Base6Directions.Direction gyroForward = Gyroscopes[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Forward);   
+			switch (gyroUp)   
+			{ case Base6Directions.Direction.Up: gyroYawField.Add("Yaw"); gyroYawFactor.Add(1f); break;   
+			  case Base6Directions.Direction.Down: gyroYawField.Add("Yaw"); gyroYawFactor.Add(-1f); break;   
+			  case Base6Directions.Direction.Left: gyroYawField.Add("Pitch"); gyroYawFactor.Add(1f); break;   
+			  case Base6Directions.Direction.Right: gyroYawField.Add("Pitch"); gyroYawFactor.Add(-1f); break;   
+			  case Base6Directions.Direction.Forward: gyroYawField.Add("Roll"); gyroYawFactor.Add(-1f); break;   
+			  case Base6Directions.Direction.Backward: gyroYawField.Add("Roll"); gyroYawFactor.Add(1f); break;   
+			}   
+			switch (gyroLeft)   
+			{ case Base6Directions.Direction.Up: gyroPitchField.Add("Yaw"); gyroPitchFactor.Add(1f); break;   
+			  case Base6Directions.Direction.Down: gyroPitchField.Add("Yaw"); gyroPitchFactor.Add(-1f); break;   
+			  case Base6Directions.Direction.Left: gyroPitchField.Add("Pitch"); gyroPitchFactor.Add(1f); break;   
+			  case Base6Directions.Direction.Right: gyroPitchField.Add("Pitch"); gyroPitchFactor.Add(-1f); break;   
+			  case Base6Directions.Direction.Forward: gyroPitchField.Add("Roll"); gyroPitchFactor.Add(-1f); break;   
+			  case Base6Directions.Direction.Backward: gyroPitchField.Add("Roll"); gyroPitchFactor.Add(1f); break;   
+			}   
+   
+			switch (gyroForward)   
+			{ case Base6Directions.Direction.Up: gyroRollField.Add("Yaw"); gyroRollFactor.Add(1f); break;   
+			  case Base6Directions.Direction.Down: gyroRollField.Add("Yaw"); gyroRollFactor.Add(-1f); break;   
+			  case Base6Directions.Direction.Left: gyroRollField.Add("Pitch"); gyroRollFactor.Add(1f); break;   
+			  case Base6Directions.Direction.Right: gyroRollField.Add("Pitch"); gyroRollFactor.Add(-1f); break;   
+			  case Base6Directions.Direction.Forward: gyroRollField.Add("Roll"); gyroRollFactor.Add(-1f); break;   
+			  case Base6Directions.Direction.Backward: gyroRollField.Add("Roll"); gyroRollFactor.Add(1f); break;   
+			}
+			
+			Gyroscopes[i].ApplyAction("OnOff_On");
+		}
+	}
+	
+	// ----- 指令类方法 -----
+	// 持续搜索座标
+	private int SP_Now_i;
+	public MyDetectedEntityInfo ScanPoint(Vector3D Point){
+		MyDetectedEntityInfo FoundTarget = new MyDetectedEntityInfo();
+		
+		List<IMyCameraBlock> RightAngleCameras = GetCanScanCameras(this.Cameras, Point);
+		if(SP_Now_i >= RightAngleCameras.Count){SP_Now_i=0;}
+		double ScanSpeed = (RightAngleCameras.Count*2000)/(Vector3D.Distance(Point, this.Position)*60);//每个循环可用于扫描的摄像头个数   
+		   
+		if(ScanSpeed >= 1)//每循环可扫描多个   
+		{
+			FoundTarget = RightAngleCameras[SP_Now_i].Raycast(Point);
+			// add by kaien
+			offsetAngleCount ++;
+
+			SP_Now_i += 1;
+			if(SP_Now_i >= RightAngleCameras.Count){SP_Now_i=0;}
+		}   
+		else
+		{
+			if(t%Math.Round(1/ScanSpeed,0)==0)
+			{ 
+				FoundTarget = RightAngleCameras[SP_Now_i].Raycast(Point);
+				// add by kaien
+				offsetAngleCount ++;
+
+				SP_Now_i += 1;
+			}   
+		}
+		return FoundTarget;
+	}
+	
+	//瞬时多点扫描，返回第一个碰到的目标，可传入一个参考目标进行匹配
+	public MyDetectedEntityInfo PulseScanSingle(List<Vector3D> Points, long EntityId = 0){
+		MyDetectedEntityInfo FoundTarget = new MyDetectedEntityInfo();
+		
+		int x = 0;//这样做是为了减少不必要的运算量
+		foreach(Vector3D p in Points){
+			for(int i = x; i < this.Cameras.Count; i ++){
+				if(this.Cameras[i].CanScan(p)){
+					FoundTarget = this.Cameras[i].Raycast(p);
+					if(!FoundTarget.IsEmpty()){
+						if(EntityId == 0){
+							return FoundTarget;
+						}
+						else if(FoundTarget.EntityId == EntityId){
+							return FoundTarget;
+						}
+					}
+					x = i;
+					break;
+				}
+			}
+		}
+		
+		return FoundTarget;
+	}
+	
+	// 瞬时多点扫描，返回所有碰到的目标（运算量较大）
+	public List<MyDetectedEntityInfo> PulseScanMultiple(List<Vector3D> Points){
+		List<MyDetectedEntityInfo> FoundTargets = new List<MyDetectedEntityInfo>();
+		
+		int x = 0;//这样做是为了减少不必要的运算量
+		foreach(Vector3D p in Points){
+			for(int i = x; i < this.Cameras.Count; i ++){
+				if(this.Cameras[i].CanScan(p)){
+					MyDetectedEntityInfo FoundTarget = this.Cameras[i].Raycast(p);
+					if(!FoundTarget.IsEmpty()){
+						FoundTargets.Add(FoundTarget);
+					}
+					x = i;
+					break;
+				}
+			}
+		}
+		
+		return FoundTargets;
+	}
+	
+	//追踪目标
+	private int TT_Now_i;
+	public Vector3D TrackDeviationToTarget; //基于目标坐标系的偏移量，用来修正中心锁定的问题
+	public MyDetectedEntityInfo TrackTarget(Target Tgt){
+		
+		MyDetectedEntityInfo FoundTarget = new MyDetectedEntityInfo();
+		
+		Vector3D posmove = Vector3D.TransformNormal(this.TrackDeviationToTarget, Tgt.Orientation);
+		
+		Vector3D lidarHitPoint = Tgt.Position + posmove + (t - Tgt.TimeStamp)*Tgt.Velocity/60; //这个碰撞点算法是最正确的
+		
+		List<IMyCameraBlock> RightAngleCameras = GetCanScanCameras(this.Cameras, lidarHitPoint);//获取方向正确的摄像头数量
+		if(TT_Now_i >= RightAngleCameras.Count){TT_Now_i=0;}
+	   
+	    //执行常规追踪
+		double ScanSpeed = (RightAngleCameras.Count*2000)/((Vector3D.Distance(lidarHitPoint, this.Position))*60);//每个循环可用于扫描的摄像头个数		
+		if(ScanSpeed >= 1)
+		{
+			for(int i = 1; i < ScanSpeed; i ++){
+				FoundTarget = RightAngleCameras[TT_Now_i].Raycast(lidarHitPoint);
+				TT_Now_i += 1;
+				if(TT_Now_i >= RightAngleCameras.Count){TT_Now_i=0;}
+				if(!FoundTarget.IsEmpty() && FoundTarget.EntityId == Tgt.EntityId){
+					return FoundTarget;
+				}
+			}
+		}   
+		else
+		{
+			//这里向上取整实际上是采用了更低一点的频率在扫描，有利于恢复储能
+			if(t%Math.Ceiling(1/ScanSpeed)==0)   
+			{
+				FoundTarget = RightAngleCameras[TT_Now_i].Raycast(lidarHitPoint);
+				TT_Now_i += 1;
+				if(TT_Now_i >= RightAngleCameras.Count){TT_Now_i=0;}
+				if(!FoundTarget.IsEmpty() && FoundTarget.EntityId == Tgt.EntityId){
+					return FoundTarget;
+				}
+				
+				//常规未找到，继续遍历摄像头进行搜索
+				if(FoundTarget.IsEmpty() || FoundTarget.EntityId != Tgt.EntityId){
+					for(int i = 0; i < RightAngleCameras.Count; i ++){
+						FoundTarget = RightAngleCameras[TT_Now_i].Raycast(lidarHitPoint);
+						TT_Now_i += 1;
+						if(TT_Now_i >= RightAngleCameras.Count){TT_Now_i=0;}
+						if(!FoundTarget.IsEmpty() && FoundTarget.EntityId == Tgt.EntityId){
+							return FoundTarget;
+						}
+					}
+				}
+			}
+		}
+			//遍历搜索也未找到，进行脉冲阵面扫描
+		if(FoundTarget.IsEmpty() || FoundTarget.EntityId != Tgt.EntityId){
+			if(ScanSpeed >= 1 || t%Math.Ceiling(1/ScanSpeed)==0){
+				int LostTick = t - Tgt.TimeStamp;
+				double S_Radius = Tgt.Diameter*1.5; //搜索半径为目标直径1.5倍
+				double S_Interval = Tgt.Diameter/5; //搜索间隙是目标直径的1/5
+				Vector3D CenterPoint = Tgt.Position + Tgt.Velocity*LostTick/60 + Vector3D.Normalize(Tgt.Position - this.Position)*Tgt.Diameter/2;
+				List<Vector3D> Points = new List<Vector3D>();
+				Points.Add(CenterPoint);
+				
+				//这里计算出与飞船和目标连线垂直，且互相垂直的两个向量，用作x和y方向遍历
+				Vector3D Vertical_X = CaculateVerticalVector((CenterPoint - this.Position), CenterPoint);
+				Vector3D Vertical_Y = Vector3D.Normalize(Vector3D.Cross((CenterPoint - this.Position), Vertical_X));
+				for(double x = 0; x < S_Radius; x += S_Interval){
+					for(double y = 0; y < S_Radius; y += S_Interval){
+						Points.Add(CenterPoint + Vertical_X*x + Vertical_Y*y);
+						Points.Add(CenterPoint + Vertical_X*(-x) + Vertical_Y*y);
+						Points.Add(CenterPoint + Vertical_X*x + Vertical_Y*(-y));
+						Points.Add(CenterPoint + Vertical_X*(-x) + Vertical_Y*(-y));
+					}
+				}
+				
+				FoundTarget = this.PulseScanSingle(Points, Tgt.EntityId);
+				if(!FoundTarget.IsEmpty() && FoundTarget.EntityId == Tgt.EntityId){
+					MatrixD TargetMainMatrix = FoundTarget.Orientation;   
+					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
+					Vector3D hitpoint = new Vector3D();
+					Vector3D.TryParse(FoundTarget.HitPosition.ToString(), out hitpoint);
+					hitpoint = hitpoint + Vector3D.Normalize(hitpoint - this.Position)*2;
+					this.TrackDeviationToTarget = Vector3D.TransformNormal(hitpoint - FoundTarget.Position, TargetLookAtMatrix);
+					return FoundTarget;
+				}
+			}
+		}
+		
+		return FoundTarget;
+	}
+	
+	// ----- 工具类方法 -----
+	//运动类方块初始化
+	public void MotionInit(){
+		this.SetThrustOverride("All",0);
+		this.SetGyroOverride(false);
+	}
+	
+	public void UpdateMotionInfo(){
+		this.Diameter = (this.Cockpit.CubeGrid.Max - this.Cockpit.CubeGrid.Min).Length() * this.Cockpit.CubeGrid.GridSize;
+		this.Acceleration = ((this.Cockpit.GetPosition() - this.Position) * 60 - this.Velocity) * 60;
+
+		this.debugInfo = Math.Round(this.Acceleration.Length()) + "";
+
+		this.Velocity = (this.Cockpit.GetPosition() - this.Position) * 60;
+		this.Position = this.Cockpit.GetPosition();
+	}
+
+string displayVector3D(Vector3D tar) {
+return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
+}
+
+	
+	// ----- 运动控制算法 -----
+	// PID瞄准目标函数
+	private List<Vector3D> Aim_PID_Data = new List<Vector3D>();
+	public bool AimAtPosition(Vector3D TargetPos)
+	{
+		MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.Cockpit.WorldMatrix.Forward, this.Cockpit.WorldMatrix.Up);
+		Vector3D PositionToMe = Vector3D.Normalize(Vector3D.TransformNormal(TargetPos - this.Position, refLookAtMatrix));
+		
+		//储存采样点
+		if(Aim_PID_Data.Count < AimPID_T){
+			for(int i = 0; i < AimPID_T; i ++){
+				Aim_PID_Data.Add(new Vector3D());
+			}
+		}
+		else{Aim_PID_Data.Remove(Aim_PID_Data[0]); Aim_PID_Data.Add(PositionToMe);}
+		
+		//获得采样点积分
+		double X_I = 0;
+		double Y_I = 0;
+		foreach(Vector3D datapoint in Aim_PID_Data){
+			X_I += datapoint.X;
+			Y_I += datapoint.Y;
+		}
+		
+		//计算输出
+		double YawValue = AimPID_P*(PositionToMe.X + (1/AimPID_I)*X_I + AimPID_D*(Aim_PID_Data[AimPID_T-1].X - Aim_PID_Data[0].X)/AimPID_T) * 60;
+		double PitchValue = AimPID_P*(PositionToMe.Y + (1/AimPID_I)*Y_I + AimPID_D*(Aim_PID_Data[AimPID_T-1].Y - Aim_PID_Data[0].Y)/AimPID_T) * 60;
+		this.SetGyroValue(YawValue, PitchValue, 0);
+		this.SetGyroOverride(true);
+		
+		// 计算当前与预期瞄准点的瞄准夹角
+		Vector3D V_A = TargetPos - this.Position;
+		Vector3D V_B = this.Cockpit.WorldMatrix.Forward;
+		double Angle = Math.Acos(Vector3D.Dot(V_A,V_B)/(V_A.Length() * V_B.Length())) * 180 / Math.PI;
+		if(Angle <= AimRatio){return true;}
+		else{return false;}
+	}
+	
+	//坐标点导航函数
+	//支持传入一个参考速度来跟踪目标进行速度匹配
+	//依赖SingleDirectionThrustControl()方法来执行对xyz三轴的独立运算，运算考虑了推进器是否可以工作，但不考虑供电带来的效率问题。
+	//本方法的结果路径是一个加速-减速-停止路径，通常不会错过目标，在此前提下本方法时间最优，在减速阶段处于对向推进器频繁满载震荡状态，在物理结果上是匀减速运动。
+	public bool NavigationTo(Vector3D Pos, Vector3D TargetVelocity = new Vector3D())
+	{
+		double ShipMass = this.Cockpit.CalculateShipMass().PhysicalMass;
+		//这个ThrustsPowers经过计算后，分别代表前后左右上下6个方向的理论最大加速度
+		double[] ThrustsPowers = new double[6];
+		for(int i = 0; i < this.Thrusts.Count; i ++){
+			if(this.Thrusts[i].IsFunctional){
+				switch(this.ThrustField[i]){
+					case("Backward"): ThrustsPowers[0] += this.Thrusts[i].MaxEffectiveThrust; break;
+					case("Forward"): ThrustsPowers[1] += this.Thrusts[i].MaxEffectiveThrust; break;
+					case("Right"): ThrustsPowers[2] += this.Thrusts[i].MaxEffectiveThrust; break;
+					case("Left"): ThrustsPowers[3] += this.Thrusts[i].MaxEffectiveThrust; break;
+					case("Down"): ThrustsPowers[4] += this.Thrusts[i].MaxEffectiveThrust; break;
+					case("Up"): ThrustsPowers[5] += this.Thrusts[i].MaxEffectiveThrust; break;
+				}
+			}
+		}
+		for(int i = 0; i < ThrustsPowers.Length; i ++){
+			ThrustsPowers[i] /= ShipMass;
+		}
+		
+		MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.Cockpit.WorldMatrix.Forward, this.Cockpit.WorldMatrix.Up);
+		//这里的PosToMe表示目标坐标基于自己坐标系的座标，x左-右+，y下-上+，z前-后+，MeVelocityToMe使用相同的坐标系规则，表示自己的速度基于自己坐标系
+		Vector3D PosToMe =  Vector3D.TransformNormal(Pos - this.Position, refLookAtMatrix);
+		Vector3D MeVelocityToMe = Vector3D.TransformNormal(this.Velocity, refLookAtMatrix);
+		
+		this.SingleDirectionThrustControl(PosToMe.Z, MeVelocityToMe.Z, ThrustsPowers[0], ThrustsPowers[1], "Backward", "Forward", 0.5);
+		this.SingleDirectionThrustControl(PosToMe.X, MeVelocityToMe.X, ThrustsPowers[2], ThrustsPowers[3], "Right", "Left", 0.5);
+		this.SingleDirectionThrustControl(PosToMe.Y, MeVelocityToMe.Y, ThrustsPowers[5], ThrustsPowers[4], "Up", "Down", 0.5);
+		
+		if(TargetVelocity.Length() != 0){
+			Vector3D TargetVelocityToMe = Vector3D.TransformNormal(TargetVelocity - this.Velocity, refLookAtMatrix);
+			if(TargetVelocityToMe.X > 0){SetThrustOverride("Left", 100);}else if(TargetVelocityToMe.X < 0){SetThrustOverride("Right", 100);}
+			if(TargetVelocityToMe.Y > 0){SetThrustOverride("Down", 100);}else if(TargetVelocityToMe.Y < 0){SetThrustOverride("Up", 100);}
+			if(TargetVelocityToMe.Z > 0){SetThrustOverride("Forward", 100);}else if(TargetVelocityToMe.X < 0){SetThrustOverride("Backward", 100);}
+		}
+		
+		if(PosToMe.Length() <= 1){return true;}
+		return false;
+	}
+	
+	//单向推进器导航点控制函数（用于辅助NavigationTo()方法）
+	//传入基于自己坐标系的目标单向方向，自己的单向速度，正向加速度，反向加速度，正向推进器方向名，反向推进器方向名，导航精度
+	public void SingleDirectionThrustControl(double PosToMe, double VelocityToMe, double PostiveMaxAcceleration, double NagtiveMaxAcceleration, string PostiveThrustDirection, string NagtiveThrustDirection, double StopRatio){
+		if(PosToMe < -StopRatio){
+			double StopTime = -VelocityToMe/NagtiveMaxAcceleration;
+			if(StopTime < 0){
+				this.SetThrustOverride(PostiveThrustDirection, 100);
+				this.SetThrustOverride(NagtiveThrustDirection, 0);
+			}
+			else{
+				double StopDistance = -VelocityToMe*StopTime + 0.5*NagtiveMaxAcceleration*StopTime*StopTime;
+				if(Math.Abs(PosToMe) > StopDistance){
+					this.SetThrustOverride(PostiveThrustDirection, 100);
+					this.SetThrustOverride(NagtiveThrustDirection, 0);
+				}
+				else{
+					this.SetThrustOverride(PostiveThrustDirection, 0);
+					this.SetThrustOverride(NagtiveThrustDirection, 100);
+				}
+			}
+		}
+		else if(PosToMe > StopRatio){
+			double StopTime = VelocityToMe/NagtiveMaxAcceleration;
+			if(StopTime < 0){
+				//此时目标在后，运动速度是向前的
+				this.SetThrustOverride(PostiveThrustDirection, 0);
+				this.SetThrustOverride(NagtiveThrustDirection, 100);
+			}
+			else{
+				double StopDistance = VelocityToMe*StopTime + 0.5*NagtiveMaxAcceleration*StopTime*StopTime;
+				if(Math.Abs(PosToMe) > StopDistance){
+					//实际距离大于刹车距离，执行推进
+					this.SetThrustOverride(PostiveThrustDirection, 0);
+					this.SetThrustOverride(NagtiveThrustDirection, 100);
+				}
+				else{
+					//实际距离小于刹车距离，执行刹车
+					this.SetThrustOverride(PostiveThrustDirection, 100);
+					this.SetThrustOverride(NagtiveThrustDirection, 0);
+				}
+			}
+		}
+		else{
+			this.SetThrustOverride(PostiveThrustDirection, 0);
+			this.SetThrustOverride(NagtiveThrustDirection, 0);
+		}
+	}
+	
+	// ----- 基础控制类方法 -----
+	public void TurnBlocksOnOff(List<IMyTerminalBlock> B, bool o)
+	{
+		foreach(var b in B){
+			b.ApplyAction(o?"OnOff_On":"OnOff_Off");
+		}
+	}
+	public void TurnBlocksOnOff(List<IMyGyro> B, bool o){
+		List<IMyTerminalBlock> BList = new List<IMyTerminalBlock>();
+		foreach(var b in B){
+			BList.Add(b as IMyTerminalBlock);
+		}
+		TurnBlocksOnOff(BList,o);
+	}
+	public void TurnBlocksOnOff(List<IMyThrust> B, bool o){
+		List<IMyTerminalBlock> BList = new List<IMyTerminalBlock>();
+		foreach(var b in B){
+			BList.Add(b as IMyTerminalBlock);
+		}
+		TurnBlocksOnOff(BList,o);
+	}
+	public void TurnBlocksOnOff(List<IMyLargeTurretBase> B, bool o){
+		List<IMyTerminalBlock> BList = new List<IMyTerminalBlock>();
+		foreach(var b in B){
+			BList.Add(b as IMyTerminalBlock);
+		}
+		TurnBlocksOnOff(BList,o);
+	}
+	
+	public void SetThrustOverride(string Direction, double Value)   
+	{
+		if(Value > 100){Value = 100;}
+		if(Value < 0){Value = 0;}
+		for(int i = 0; i < this.Thrusts.Count; i ++){
+			if(Direction == "All"){this.Thrusts[i].ThrustOverridePercentage = (float)Value;}
+			else{if(this.ThrustField[i] == Direction){this.Thrusts[i].ThrustOverridePercentage = (float)Value;}}
+		}
+	}
+	public void SetGyroOverride(bool bOverride)   
+	{
+		foreach(IMyGyro g in this.Gyroscopes){g.GyroOverride = bOverride;} 
+	}
+	public void SetGyroValue(double Y, double P, double R)
+	{
+		for (int i = 0; i < this.Gyroscopes.Count; i++){
+			this.Gyroscopes[i].SetValue(gyroYawField[i], (float)Y * gyroYawFactor[i]);
+			this.Gyroscopes[i].SetValue(gyroPitchField[i], (float)P * gyroPitchFactor[i]);
+			this.Gyroscopes[i].SetValue(gyroRollField[i], (float)R * gyroRollFactor[i]);
+		}
+	}
+	public void SetGyroValue(string Field, double Value)
+	{
+		switch(Field){
+			case("Yaw"):
+			for (int i = 0; i < this.Gyroscopes.Count; i++){
+				this.Gyroscopes[i].SetValue(gyroYawField[i], (float)Value * gyroYawFactor[i]);
+			}
+			break;
+			case("Pitch"):
+			for (int i = 0; i < this.Gyroscopes.Count; i++){
+				this.Gyroscopes[i].SetValue(gyroPitchField[i], (float)Value * gyroPitchFactor[i]);
+			}
+			break;
+			case("Roll"):
+			for (int i = 0; i < this.Gyroscopes.Count; i++){
+				this.Gyroscopes[i].SetValue(gyroRollField[i], (float)Value * gyroRollFactor[i]);
+			}
+			break;
+		}
+		
+	}
+	public void WeaponsShoot()
+	{
+		// add by kaien
+		if (NeedWeaponMode == 0)
+		this.Guns.ForEach(delegate(IMySmallGatlingGun g){g.ApplyAction("ShootOnce");});
+		else 
+		this.Rockets.ForEach(delegate(IMySmallMissileLauncher g){g.ApplyAction("ShootOnce");});
+	}
+}
+
+// ==== 目标类 ====
+/*
+ 目标类的说明：
+ 目标类是一个独立的类，不依赖任何外部变量
+ 内置的实例化方法支持将 MyDetectedEntityInfo 类型直接用来实例化成Target类
+ 不使用任何参数实例化Target类时，会实例化一个空Target类，使用EntityId == 0来判断是否是空Target类
+ 使用这个类来代替 MyDetectedEntityInfo 的好处是可以方便的计算其更多的运动信息，如加速度等
+*/
+public class Target
+{
+	public string Name;
+	public long EntityId;
+	public double Diameter;
+	public int TimeStamp;
+	public MyDetectedEntityType Type;
+	public Vector3D Position;
+	public Vector3D Velocity;
+	public Vector3D Acceleration;
+	public Vector3D HitPosition;
+	public MatrixD Orientation;
+	public Vector3D AccurateLockPositionToTarget;
+	
+	public Target(){
+		this.EntityId = 0;
+		this.TimeStamp = t;
+	}
+	public Target(MyDetectedEntityInfo thisEntity){
+		this.EntityId = thisEntity.EntityId;
+		this.Name = thisEntity.Name;
+		this.Diameter = Vector3D.Distance(thisEntity.BoundingBox.Max, thisEntity.BoundingBox.Min)/2;
+		Vector3D.TryParse(thisEntity.Position.ToString(), out this.Position);
+		Vector3D.TryParse(thisEntity.Velocity.ToString(), out this.Velocity);
+		Vector3D.TryParse(thisEntity.HitPosition.ToString(), out this.HitPosition);
+		this.Acceleration = new Vector3D();
+		this.Orientation = thisEntity.Orientation;
+		this.TimeStamp = t;
+	}
+	public void UpdateMotionInfo(MyDetectedEntityInfo NewInfo){
+		this.Diameter = Vector3D.Distance(NewInfo.BoundingBox.Max, NewInfo.BoundingBox.Min)/2;
+		Vector3D.TryParse(NewInfo.Position.ToString(), out this.Position);
+		Vector3D.TryParse(NewInfo.HitPosition.ToString(), out this.HitPosition);
+		Vector3D velocity = new Vector3D();
+		Vector3D.TryParse(NewInfo.Velocity.ToString(), out velocity);
+		this.Acceleration = (velocity - this.Velocity)*60/(t - this.TimeStamp > 0 ? t - this.TimeStamp : 1);
+		this.Velocity = velocity;
+		this.Orientation = NewInfo.Orientation;
+		this.TimeStamp = t;
+	}
+}
+
+// ==== 纯计算类函数 ====
+
+// -- 计算角度正确的摄像头 --
+public static List<IMyCameraBlock> GetRightAngleCameras(List<IMyCameraBlock> Cams, Vector3D Point)
+{
+	List<IMyCameraBlock> res = new List<IMyCameraBlock>();
+	foreach(IMyCameraBlock cm in Cams){
+		Vector3D PointToCm = Vector3D.TransformNormal(Point - cm.GetPosition(), MatrixD.CreateLookAt(new Vector3D(), cm.WorldMatrix.Forward, cm.WorldMatrix.Up));
+		if(PointToCm.Z < 0 && 
+			Math.Abs(PointToCm.X)/Math.Abs(PointToCm.Z) <= Math.Tan(45 * Math.PI / 180) &&
+			Math.Abs(PointToCm.Y)/Math.Abs(PointToCm.Z) <= Math.Tan(45 * Math.PI / 180) &&
+			cm.IsFunctional
+		){
+			res.Add(cm);
+		}
+	}
+	return res;
+}
+// -- 计算可扫描的摄像头 --
+public static List<IMyCameraBlock> GetCanScanCameras(List<IMyCameraBlock> Cams, Vector3D Point)
+{
+	List<IMyCameraBlock> res = new List<IMyCameraBlock>();
+	foreach(IMyCameraBlock cm in Cams){
+		if(cm.IsFunctional && cm.CanScan(Point)){
+			res.Add(cm);
+		}
+	}
+	return res;
+}
+// -- 计算锁定激光发射座标 --
+public static Vector3D LidarPointCaculate(Vector3D Me_Position, Vector3D Target_Position, Vector3D Target_Velocity, Vector3D Target_Acceleration)   
+{   
+	double time = Vector3D.Distance(Target_Position,Me_Position)/120000;   
+	Vector3D HitPosition = Target_Position + time*Target_Velocity + 0.5*time*time*Target_Acceleration;   
+	return HitPosition;   
+}
+// -- 计算子弹碰撞点 --
+public static Vector3D HitPointCaculate(Vector3D Me_Position, Vector3D Me_Velocity, Vector3D Me_Acceleration, Vector3D Target_Position, Vector3D Target_Velocity, Vector3D Target_Acceleration,    
+							double Bullet_InitialSpeed, double Bullet_Acceleration, double Bullet_MaxSpeed)   
+{   
+	//迭代算法   
+	Vector3D HitPoint = new Vector3D();   
+	Vector3D Smt = Target_Position - Me_Position;//发射点指向目标的矢量   
+	Vector3D Velocity = Target_Velocity - Me_Velocity; //目标飞船和自己飞船总速度   
+	Vector3D Acceleration = Target_Acceleration; //目标飞船和自己飞船总加速度   
+	   
+	double AccTime = (Bullet_Acceleration == 0 ? 0 : (Bullet_MaxSpeed - Bullet_InitialSpeed)/Bullet_Acceleration);//子弹加速到最大速度所需时间   
+	double AccDistance = Bullet_InitialSpeed*AccTime + 0.5*Bullet_Acceleration*AccTime*AccTime;//子弹加速到最大速度经过的路程   
+	   
+	double HitTime = 0;   
+	   
+	if(AccDistance < Smt.Length())//目标在炮弹加速过程外   
+	{   
+		HitTime = (Smt.Length() - Bullet_InitialSpeed*AccTime - 0.5*Bullet_Acceleration*AccTime*AccTime + Bullet_MaxSpeed*AccTime)/Bullet_MaxSpeed;   
+		HitPoint = Target_Position + Velocity*HitTime + 0.5*Acceleration*HitTime*HitTime;   
+	}   
+	else//目标在炮弹加速过程内 
+	{   
+		double HitTime_Z = (-Bullet_InitialSpeed + Math.Pow((Bullet_InitialSpeed*Bullet_InitialSpeed + 2*Bullet_Acceleration*Smt.Length()),0.5))/Bullet_Acceleration;   
+		double HitTime_F = (-Bullet_InitialSpeed - Math.Pow((Bullet_InitialSpeed*Bullet_InitialSpeed + 2*Bullet_Acceleration*Smt.Length()),0.5))/Bullet_Acceleration;   
+		HitTime = (HitTime_Z > 0 ? (HitTime_F > 0 ? (HitTime_Z < HitTime_F ? HitTime_Z : HitTime_F) : HitTime_Z) : HitTime_F);   
+		HitPoint = Target_Position + Velocity*HitTime + 0.5*Acceleration*HitTime*HitTime;   
+	}   
+	//迭代，仅迭代更新碰撞时间，每次迭代更新右5位数量级   
+	for(int i = 0; i < 3; i ++)   
+	{   
+		if(AccDistance < Vector3D.Distance(HitPoint,Me_Position))//目标在炮弹加速过程外   
+		{   
+			HitTime = (Vector3D.Distance(HitPoint,Me_Position) - Bullet_InitialSpeed*AccTime - 0.5*Bullet_Acceleration*AccTime*AccTime + Bullet_MaxSpeed*AccTime)/Bullet_MaxSpeed;   
+			HitPoint = Target_Position + Velocity*HitTime + 0.5*Acceleration*HitTime*HitTime;   
+		}   
+		else//目标在炮弹加速过程内   
+		{   
+			double HitTime_Z = (-Bullet_InitialSpeed + Math.Pow((Bullet_InitialSpeed*Bullet_InitialSpeed + 2*Bullet_Acceleration*Vector3D.Distance(HitPoint,Me_Position)),0.5))/Bullet_Acceleration;   
+			double HitTime_F = (-Bullet_InitialSpeed - Math.Pow((Bullet_InitialSpeed*Bullet_InitialSpeed + 2*Bullet_Acceleration*Vector3D.Distance(HitPoint,Me_Position)),0.5))/Bullet_Acceleration;   
+			HitTime = (HitTime_Z > 0 ? (HitTime_F > 0 ? (HitTime_Z < HitTime_F ? HitTime_Z : HitTime_F) : HitTime_Z) : HitTime_F);   
+			HitPoint = Target_Position + Velocity*HitTime + 0.5*Acceleration*HitTime*HitTime;   
+		}   
+	}   
+	return HitPoint;   
+}
+// -- 计算目标阵营是否满足设定 --
+List<MyRelationsBetweenPlayerAndBlock> NeedLockRelations = new List<MyRelationsBetweenPlayerAndBlock>();
+public bool JudgeTargetRelationship(MyDetectedEntityInfo FoundTarget)
+{
+	if(NeedLockRelations.Count == 0){
+		if(Target_Enemies){
+			NeedLockRelations.Add(MyRelationsBetweenPlayerAndBlock.Enemies);
+		}
+		if(Target_Owner){
+			NeedLockRelations.Add(MyRelationsBetweenPlayerAndBlock.Owner);
+		}
+		if(Target_FactionShare){
+			NeedLockRelations.Add(MyRelationsBetweenPlayerAndBlock.FactionShare);
+		}
+		if(Target_Neutral){
+			NeedLockRelations.Add(MyRelationsBetweenPlayerAndBlock.Neutral);
+		}
+		if(Target_NoOwnership){
+			NeedLockRelations.Add(MyRelationsBetweenPlayerAndBlock.NoOwnership);
+		}
+	}
+	
+	bool this_target_right = false;
+	for(int i = 0; i < NeedLockRelations.Count; i++)
+	{
+		if(FoundTarget.Relationship == NeedLockRelations[i]){
+			this_target_right = true;
+		}
+	}
+	return this_target_right;
+}
+// -- 航线内垂点计算函数 --
+// pos1 是航线外的点，pos2和pos3是航线的两个端点   
+// 本函数返回pos1与航线的垂线，与该航线的交点座标   
+public static Vector3D RouteVerticalPoint(Vector3D pos1, Vector3D pos2, Vector3D pos3)   
+{   
+	var Ratio_t = ((pos2.X - pos1.X)*(pos3.X - pos2.X) + (pos2.Y - pos1.Y)*(pos3.Y - pos2.Y) + (pos2.Z - pos1.Z)*(pos3.Z - pos2.Z))   
+					/( Math.Pow(pos3.X-pos2.X,2) + Math.Pow(pos3.Y-pos2.Y,2) + Math.Pow(pos3.Z - pos2.Z,2));   
+	double x = pos2.X - (pos3.X - pos2.X)*Ratio_t;   
+	double y = pos2.Y - (pos3.Y - pos2.Y)*Ratio_t;   
+	double z = pos2.Z - (pos3.Z - pos2.Z)*Ratio_t;   
+	return new Vector3D(x,y,z);   
+}
+// -- 计算某向量的垂直向量 --
+// 传入一个向量，和一个点，返回沿这个点出发与传入向量垂直的归一化向量
+public static Vector3D CaculateVerticalVector(Vector3D Vector, Vector3D Point)
+{
+	double x = 1;
+	double y = 1;
+	double z = (Point.X*Vector.X + Point.Y*Vector.Y + Point.Z*Vector.Z)/Vector.Z;
+	return Vector3D.Normalize(new Vector3D(x,y,z));
+}
+// ==== 调起保存后自动运行 ====
+Program(){
+	Runtime.UpdateFrequency = UpdateFrequency.Update1;
+}
+
+/*
+ ===== 开发随笔 =====
+ 1、在本次FCS的重构过程中，发现了摄像头的新特性，记录如下：
+ 使用摄像头的 AvailableScanRange 方法查看某个摄像头的可扫描距离
+ 发现摄像头一旦使用 EnableRaycast = true 开启扫描功能后
+ 扫描距离以每秒2000米的速度增加，最大值超过1000万数量级。
+ 
+ 然后使用程序去触发摄像头的扫描指令，让它扫描前方1000米
+ 每次触发这个指令，摄像头的 AvailableScanRange 就减少1000
+ 当 AvailableScanRange 足够减的时候，程序可以实时调用摄像头的扫描指令，没有冷却
+ 当 AvailableScanRange 减少到不够的时候，程序调用摄像头扫描的指令失效，直到这个摄像头的 AvailableScanRange 自己恢复到再次大于 1000，才触发一次扫描
+ 
+ 由此可见，摄像头的冷却是可以积累的。就是说，当摄像头长时间不用，它积累的 AvailableScanRange 可以供它去做一个高频扫描，直到AvailableScanRange用尽
+ 
+ 顺便重申一下，当对摄像头使用扫描指令时，只要这个扫描位置或距离小于等于摄像头的 AvailableScanRange，它就能立即发射射线，且在瞬间返回射线碰撞到的物体，无论距离多远
+ 由此可见，“激光”是瞬时的，没有所谓的“光速”，这个2000/s只是摄像头自我恢复 AvailableScanRange 的速度。
+ 
+ 2、后续测试
+ 在后续测试过程中发现，当摄像头储存了足够的 AvailableScanRange 后，不仅可以在每一帧中进行扫描，而且使用for循环让其在每一帧中做多次扫描，也是有效的，其中每次扫描的结果都是有效的。
+ 在测试中使用for循环对一个储存了足够多 AvailableScanRange 的摄像头进行了每帧100次的扫描测试，结果是成功的，可以扫描到物体。
+ 
+ 3、使用程序验证摄像头的 AvailableScanRange 自增加速度，结果是2040/秒
+ 
+ 4、关于 AvailableScanRange 属性的测试
+ 关闭摄像头不会清空 AvailableScanRange，但会停止 AvailableScanRange 的增加
+ 从蓝图取出会导致 AvailableScanRange 清空
+ 
+ === 关于遍历所有方块 ===
+ 直接对编程块使用获取网格方法
+ Me.CubeGrid
+ 然后获取其最大点和最小点 Vector3I、Me.CubeGrid.Max、Me.CubeGrid.Min
+ 然后遍历x y z
+ 用Me.CubeGrid.CubeExists(new Vector3I(x,y,z))来判断该点是否有方块，有任何方块都会返回true，否则返回false
+ 然后遍历上一步中获得的存在方块的座标
+ 用Me.CubeGrid.GetCubeBlock(new Vector3I(x,y,z))方法获取这个座标上的方块，如果返回null，表示该方块是非IMyCubeBlock类型，表示装甲或其他普通方块
+ 如果不返回null，返回值是一个IMySlimBlock类型，它是某个方块的某个具体座标空间里的类型，可以用IMySlimBlock.FatBlock方法获取其实际的方块，再用is IMyTextPanel类似的方法来判断其具体类型
+ 
+ === 关于扫描频率的问题 ===
+ 之前的算法采用
+ double ScanSpeed = (RightAngleCameras.Count*2000)/(Vector3D.Distance(Point, this.Position)*60);//每个循环可用于扫描的摄像头个数
+ 实际上是在用保守频率扫描，即采用这种频率扫描任意距离的物体，摄像头的总储能既不增加也不减少，刚好恢复速度足够消耗速度。而实际上，这个方法由于t%取整的问题，还会让储能缓慢增加，也就是说比预期的效果要差一些
+*/
