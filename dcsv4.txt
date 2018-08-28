@@ -2,6 +2,12 @@
 Kaien's drone control system V4
 -- include rotor manager and vtol script, exclude MEA-fcs
 
+update history:
+v4.1 20180826
+add RPW RPP RPD commands for record relative position to custom data
+for mother ship, you need to run program once to activate it
+add isPrinted=true parameter for printed drones. when printed, run PTD command to activate printed drones
+
 custom data sample for son ship:
 
 sonCode=1st     
@@ -47,6 +53,12 @@ liFcsLockGroupName=Li-fcs-lock-G
 macAV=0.005
 
 Commands for mother ship programmable block:
+RPW
+  :record current position as windman position
+RPP
+  :record current position as pre-landing position
+RPD
+  :record current position as landing position
 FLYBYON
   :all drones take off
 DOCKINGON
@@ -347,6 +359,95 @@ if (flyByOn) {
 attackMode = !attackMode;
 }
 break;
+case "RPW":
+{
+double l,u,f;
+string h,t;
+l = u = f = 0;
+h = t = "";
+recordNp(out l,out u,out f,out h,out t);
+switch(t) {
+case("UP"):
+if (Math.Abs(l)>20) {
+cfg.Set("flyByOffsetDirection", "LEFT");
+cfg.Set("flyByDistance",""+l);
+cfg.Set("flyByForwardDistance", ""+f);
+cfg.Set("flyByUpDistance", ""+u);
+} else if (h=="BACKWORD") {
+cfg.Set("flyByOffsetDirection", "BACKWARD");
+cfg.Set("flyByDistance",""+(-f));
+cfg.Set("flyByUpDistance", ""+u);
+} else {
+cfg.Set("flyByDistance",""+u);
+cfg.Set("flyByOffsetDirection", "UP");
+cfg.Set("flyByForwardDistance", ""+f);
+}
+break;
+case("DOWN"):
+cfg.Set("flyByDistance",""+(-u));
+cfg.Set("flyByOffsetDirection", "DOWN");
+cfg.Set("flyByForwardDistance", ""+f);
+break;
+case("LEFT"):
+cfg.Set("flyByDistance",""+l);
+cfg.Set("flyByOffsetDirection", "LEFT");
+cfg.Set("flyByForwardDistance", ""+f);
+cfg.Set("flyByUpDistance", ""+u);
+break;
+case("RIGHT"):
+cfg.Set("flyByDistance",""+(-l));
+cfg.Set("flyByOffsetDirection", "RIGHT");
+cfg.Set("flyByForwardDistance", ""+f);
+cfg.Set("flyByUpDistance", ""+u);
+break;
+}
+cfg.Save();
+}
+break;
+case "RPP":
+{
+double l,u,f;
+string h,t;
+l = u = f = 0;
+h = t = "";
+recordNp(out l,out u,out f,out h,out t);
+cfg.Set("dockingApproachDistanceLeft",""+l);
+cfg.Set("dockingApproachDistanceUp",""+u);
+cfg.Set("dockingApproachDistanceForward",""+f);
+cfg.Save();
+}
+break;
+case "RPD":
+{
+double l,u,f;
+string h,t;
+l = u = f = 0;
+h = t = "";
+recordNp(out l,out u,out f,out h,out t);
+if (connectors.Count>0){
+Base6Directions.Direction cUp = connectors[0].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);
+switch (cUp)
+{
+case Base6Directions.Direction.Forward:
+u += -4;
+break;
+case Base6Directions.Direction.Backward:
+u += 4;
+break;
+default:
+f += 4;
+break;
+}
+}
+
+cfg.Set("dockingForward",h);
+cfg.Set("dockingUp",t);
+cfg.Set("dockingLeftDistance",""+l);
+cfg.Set("dockingUpDistance",""+u);
+cfg.Set("dockingForwardDistance",""+f);
+cfg.Save();
+}
+break;
 default:
 if (sonCode == null) break;
 if(arguments!=null && arguments != "") {
@@ -631,10 +732,16 @@ string br = "\n";
 string info = "";
 info += (rulerOn?"Turning":"") + "  Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (isApproach ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") + br;
 info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") +br;
-info += "Location " + distanceInfo + br;
+info += " Location " + distanceInfo + br;
 if (gcTargetPanel != null) {
-info += "Target: " + gcTargetPanel.GetPublicTitle() + "\n";
+info += " Target: " + gcTargetPanel.GetPublicTitle() + "\n";
 }
+
+info += " Relative Position: (l u f h t)\n";
+info += " Wing: " + op2npd(flyByOffsetDirection, upMode, flyByDistance, flyByUpDistance, flyByForwardDistance) + "\n";
+info += " Prepare: " + r2(dockingApproachDistanceLeft) + " # " + r2(dockingApproachDistanceUp) + " # " + r2(dockingApproachDistanceForward) + " # " + dd(dockingForward) + " # " + dd(dockingUp) + "\n";
+info += " Dock: " + r2(dockingLeftDistance) + " # " + r2(dockingUpDistance) + " # " + r2(dockingForwardDistance) + " # " + dd(dockingForward) + " # " + dd(dockingUp) + "\n";
+
 info += debugInfo + br;
 
 for(int i = 0; i < LCD.Count; i ++)
@@ -650,6 +757,120 @@ SetBlocksValueColor(LCD,"FontColor", new Color(0,76,255));
 }
 }
 
+void recordNp(out double l, out double u , out double f, out string h, out string t) {
+Vector3D shipPosition = new Vector3D(shipMatrix.M41, shipMatrix.M42, shipMatrix.M43);
+Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
+Vector3D myToShipPosition = myPosition - shipPosition;
+MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
+myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
+l = Math.Round(-myToShipPosition.X,2);
+u = Math.Round(myToShipPosition.Y,2);
+f = Math.Round(-myToShipPosition.Z,2);
+Base6Directions.Direction s2mh = shipMatrix.GetClosestDirection(Cockpit.WorldMatrix.Forward);
+switch (s2mh)
+{
+case Base6Directions.Direction.Forward:
+h="FORWARD";
+break;
+case Base6Directions.Direction.Backward:
+h="BACKWARD";
+break;
+case Base6Directions.Direction.Up:
+h="UP";
+break;
+case Base6Directions.Direction.Down:
+h="DOWN";
+break;
+case Base6Directions.Direction.Left:
+h="LEFT";
+break;
+case Base6Directions.Direction.Right:
+h="RIGHT";
+break;
+default:
+h="";
+break;
+}
+Base6Directions.Direction s2mt = shipMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);
+switch (s2mt)
+{
+case Base6Directions.Direction.Forward:
+t="FORWARD";
+break;
+case Base6Directions.Direction.Backward:
+t="BACKWARD";
+break;
+case Base6Directions.Direction.Up:
+t="UP";
+break;
+case Base6Directions.Direction.Down:
+t="DOWN";
+break;
+case Base6Directions.Direction.Left:
+t="LEFT";
+break;
+case Base6Directions.Direction.Right:
+t="RIGHT";
+break;
+default:
+t="";
+break;
+}
+}
+
+string op2npd(string dir, bool isUp, double d, double u, double f) {
+string r="";
+switch(dir) {
+case("FORWARD"):
+r = "0" + " # " + r2(u) + " # " + r2(d) + " # " + "f" + " # " + "u"; 
+break;
+case("BACKWARD"):
+r = "0" + " # " + r2(u) + " # " + r2(-d) + " # " + (isUp?"f":"b") + " # " + "u"; 
+break;
+case("UP"):
+r = "0" + " # " + r2(d) + " # " + r2(f) + " # " + "f" + " # " + "u"; 
+break;
+case("DOWN"):
+r = "0" + " # " + r2(-d) + " # " + r2(f) + " # " + "f" + " # " + (isUp?"u":"d"); 
+break;
+case("LEFT"):
+r = r2(d) + " # " + r2(u) + " # " + r2(f) + " # " + "f" + " # " + (isUp?"u":"l"); 
+break;
+case("RIGHT"):
+r = r2(-d) + " # " + r2(u) + " # " + r2(f) + " # " + "f" + " # " + (isUp?"u":"r"); 
+break;
+}
+return r;
+}
+
+string r2 (double d) {
+return "" + Math.Round(d, 2);
+}
+
+string dd(string dir) {
+string r = "";
+switch(dir) {
+case("FORWARD"):
+r = "f";
+break;
+case("BACKWARD"):
+r = "f";
+break;
+case("UP"):
+r = "u";
+break;
+case("DOWN"):
+r = "d";
+break;
+case("LEFT"):
+r = "l";
+break;
+case("RIGHT"):
+r = "r";
+break;
+}
+return r;
+}
 
 void SetBlocksValueColor(List<IMyTerminalBlock> blocks, String name, Color v) {  
 for(int i = 0; i < blocks.Count; i ++)      
@@ -681,7 +902,7 @@ List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyShipConnector>(blocks);
 FilterSameGrid(Me.CubeGrid, ref blocks);
 connectors = blocks;
-if (!TestNotConnected(connectors)) {
+if (ptdSeparatedStart == 0 && !TestNotConnected(connectors)) {
 isApproach=true;
 PlayActionList(connectors, "Unlock");
 return;
@@ -703,12 +924,19 @@ PlayActionList(blocks, "OnOff_Off");
 ptdSeparatedStart = t;
 }
 
-if (ptdSeparatedStart == 0 || t < ptdSeparatedStart + 60) {
-return;
+if (ptdSeparatedStart > 0 && t > ptdSeparatedStart && t < ptdSeparatedStart + 182) {
+PlayActionList(connectors, "Lock");
 }
 
-dockingOn = true;
+if (ptdSeparatedStart > 0 && t > ptdSeparatedStart + 182 && t < ptdSeparatedStart + 200) {
+PlayActionList(connectors, "Unlock");
+flyByOn = true;
 isApproach = true;
+}
+
+if (ptdSeparatedStart == 0 || t < ptdSeparatedStart + 200) {
+return;
+}
 
 }
 
@@ -1998,7 +2226,7 @@ SetGyroOverride(true);
 // 维持速度
 if (flyByOn || (dockingOn && notDocked())) {
 var dr= DimSpeedAll(maintainSpeedToMe,refLookAtMatrix);
-Echo("Autopiloting..."+displayVector3D(maintainSpeedToMe) + " ynf: " + dr);
+//Echo("Autopiloting..."+displayVector3D(maintainSpeedToMe) + " ynf: " + dr);
  }
 
 // 发射避撞信号

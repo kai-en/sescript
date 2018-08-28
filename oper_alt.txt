@@ -369,6 +369,17 @@ public void Main(string argument, UpdateType updateSource)
     addSeq(msPBSorted, "Run", 120, argumentList);
 }
   break;
+  case "PTD":
+  {
+    String cmd = "PTD"; 
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();
+    argumentList.Add(tap);  
+    List<IMyTerminalBlock> dronePB = getBlockListByName("Programmable block dcs drone", false); 
+    List<List<IMyTerminalBlock>> dronePBSorted = sortByRelativePosition(dronePB, "X", true);
+    addSeq(dronePBSorted, "Run", 120, argumentList);  
+  }
+  break;
 } 
  
   runSeq(); 
