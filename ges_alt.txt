@@ -675,7 +675,7 @@ void GetBlocks()
 	ThrustsDown = new List<IMyTerminalBlock>();     
 	ThrustsForward = new List<IMyTerminalBlock>();     
 	ThrustsBackward = new List<IMyTerminalBlock>();     
-	GridTerminalSystem.GetBlocksOfType<IMyThrust> (Thrusts, x => x.CubeGrid == Me.CubeGrid);     
+	GridTerminalSystem.GetBlocksOfType<IMyThrust> (Thrusts, x => x.CubeGrid == Me.CubeGrid);
 	if(Thrusts.Count > 0)     
 	{     
 		ThrustField = new string[Thrusts.Count];     

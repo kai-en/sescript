@@ -3,7 +3,12 @@ Kaien's drone control system V4
 -- include rotor manager and vtol script, exclude MEA-fcs
 
 update history:
+v4.1.1 20180909
+-----------------
+if the mother signal is lost, remember the last known mother position and speed.
+
 v4.1 20180826
+----------------
 add RPW RPP RPD commands for record relative position to custom data
 for mother ship, you need to run program once to activate it
 add isPrinted=true parameter for printed drones. when printed, run PTD command to activate printed drones
@@ -103,6 +108,8 @@ bool rulerOn = false;
 
 Vector3D flyByAimPosition = new Vector3D(0,0,0);
 Vector3D flyByAttackPosition = new Vector3D(0,0,0);
+Vector3D shipPosition = new Vector3D(0,0,0);
+Vector3D shipSpeed = new Vector3D(0,0,0);
 Vector3D flyByAimSpeed = new Vector3D(0,0,0);
 bool needFlyByAim = false;
 List<IMyTerminalBlock> liFcsSearchList = new List<IMyTerminalBlock>();
@@ -902,7 +909,7 @@ List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyShipConnector>(blocks);
 FilterSameGrid(Me.CubeGrid, ref blocks);
 connectors = blocks;
-if (ptdSeparatedStart == 0 && !TestNotConnected(connectors)) {
+if (ptdSeparatedStart == 0 && !TestNotConnected(connectors) && !isBase) {
 isApproach=true;
 PlayActionList(connectors, "Unlock");
 return;
@@ -1770,7 +1777,7 @@ GridTerminalSystem.GetBlocksOfType<IMyLandingGear>(blocks);
 FilterSameGrid(Me.CubeGrid, ref blocks);
 landingGears = blocks;
 
-if (!TestNotLocked()) {
+if (!TestNotLocked() && !isBase) {
 dockingOn=true;
 isApproach = true;
 }
@@ -2067,6 +2074,8 @@ return needSpeedToMe;
 }
 
 void MaintainSpeed() {
+RefreshMaintainSpeed();
+
 MatrixD refWorldMatrix = Cockpit.WorldMatrix;
 MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), refWorldMatrix.Forward, refWorldMatrix.Up);
 Vector3D maintainSpeedToMe = calcSpeedToMeAndAvoid(maintainSpeed);
@@ -2477,18 +2486,12 @@ Convert.ToDouble(args[4]),Convert.ToDouble(args[5]),Convert.ToDouble(args[6]),Co
 Convert.ToDouble(args[8]),Convert.ToDouble(args[9]),Convert.ToDouble(args[10]),Convert.ToDouble(args[11]),
 Convert.ToDouble(args[12]),Convert.ToDouble(args[13]),Convert.ToDouble(args[14]),Convert.ToDouble(args[15]));
 
-MatrixD refWorldMatrix = Cockpit.WorldMatrix;
-MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), refWorldMatrix.Forward, refWorldMatrix.Up);
 Vector3D shipPosition = new Vector3D(shipMatrix.M41, shipMatrix.M42, shipMatrix.M43);
-Vector3D targetPosition = new Vector3D(0,0,0);
 
-Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
-Vector3D myToShipPosition = myPosition - shipPosition;
 MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
-myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
-distanceInfo=Math.Round(-myToShipPosition.X,2) + " " + Math.Round(myToShipPosition.Y,2) + " " + Math.Round(-myToShipPosition.Z,2);
 
-targetPosition = calcApproach(myToShipPosition, shipPosition, ref isApproach);
+shipSpeed = new Vector3D(Convert.ToDouble(args[16]), Convert.ToDouble(args[17]), Convert.ToDouble(args[18]));
+
 if (args.Count() >= 25) {
 flyByAimPosition = new Vector3D(Convert.ToDouble(args[19]),Convert.ToDouble(args[20]),Convert.ToDouble(args[21]));
 flyByAimSpeed = new Vector3D(Convert.ToDouble(args[22]),Convert.ToDouble(args[23]),Convert.ToDouble(args[24]));
@@ -2533,8 +2536,22 @@ flyByAttackPosition = flyByAimPosition + 1500*off - 100*dir;
 } else {
 needFlyByAim = false;
 }
+}
 
+void RefreshMaintainSpeed(){
 // º∆À„ÀŸ∂»
+Vector3D shipPosition = new Vector3D(shipMatrix.M41, shipMatrix.M42, shipMatrix.M43);
+MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
+
+MatrixD refWorldMatrix = Cockpit.WorldMatrix;
+MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), refWorldMatrix.Forward, refWorldMatrix.Up);
+
+Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
+Vector3D myToShipPosition = myPosition - shipPosition;
+myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
+distanceInfo=Math.Round(-myToShipPosition.X,2) + " " + Math.Round(myToShipPosition.Y,2) + " " + Math.Round(-myToShipPosition.Z,2);
+Vector3D targetPosition = new Vector3D(0,0,0);
+targetPosition = calcApproach(myToShipPosition, shipPosition, ref isApproach);
 
 if (flyByOn) {
 if (!isApproach) {
@@ -2596,7 +2613,6 @@ targetPosition = flyByAttackPosition;
 }
 
 Vector3D diffPosition = targetPosition - myPosition;
-Vector3D shipSpeed = new Vector3D(Convert.ToDouble(args[16]), Convert.ToDouble(args[17]), Convert.ToDouble(args[18]));
 
 if (attackMode) {
 shipSpeed = flyByAimSpeed;
