@@ -1,8 +1,13 @@
 /*
 Kaien's drone control system V4
 -- include rotor manager and vtol script, exclude MEA-fcs
+http://steamcommunity.com/sharedfiles/filedetails/?id=1406061291
 
 update history:
+v4.1.2 20180918
+-----------------
+add a flash mark when sending or receiving singals.
+
 v4.1.1 20180909
 -----------------
 if the mother signal is lost, remember the last known mother position and speed.
@@ -80,7 +85,6 @@ WEAPON2
 
 
 // TODO
-// …˘“Ù
 // µ∆
 
 string CockpitNameTag = "Cockpit";
@@ -168,6 +172,9 @@ float shipMass;
 Vector3D LockTargetPosition = Vector3D.Zero;
 Vector3D LockTargetVelocity = Vector3D.Zero;
 
+int lastSendingTime = 0;
+int lastReceivingTime = 0;
+
 Program()
 {
 //Runtime.UpdateFrequency = UpdateFrequency.Update1;
@@ -200,22 +207,6 @@ if ((updateType & UpdateType.Update1) !=0)
 List<IMyTerminalBlock> welderList;
 switch (arguments)
 {
-case ("ONOFF"):
-// ScanOnOff = !ScanOnOff;
-// if(!ScanOnOff)
-// {
-// HaveFoundTarget = false;
-// PlayAction(FoundSoundBlock, "StopSound");
-// PlayActionList(liFcsSearchList, "OnOff_Off");
-// PlayActionList(liFcsLockList, "OnOff_Off");
-// HaveAccurateLock = false;
-// LockTarget = new MyDetectedEntityInfo();
-// FoundObjectInfo = new MyDetectedEntityInfo();
-// AccurateLockPositionToTarget = new Vector3D();
-// } else {
-// PlayActionList(liFcsSearchList, "OnOff_On");
-// }
-break;
 case ("FLYBY"):
 if (sonCode == null) break;
 attackMode=false;
@@ -459,11 +450,13 @@ default:
 if (sonCode == null) break;
 if(arguments!=null && arguments != "") {
 ParseMaintainSpeed(arguments);
-}
+lastReceivingTime=t;
+} 
 break;
 }
 
 if ((updateType & UpdateType.Update1) == 0) {
+ShowLCD();
 return;
 }
 switch(commandCache) {
@@ -738,7 +731,7 @@ string br = "\n";
 
 string info = "";
 info += (rulerOn?"Turning":"") + "  Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (isApproach ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") + br;
-info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") +br;
+info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") + (t - lastSendingTime<120 && t%60<30 ?"=>":"") + (t - lastReceivingTime<120 && t%60<30?"<=":"") + br;
 info += " Location " + distanceInfo + br;
 if (gcTargetPanel != null) {
 info += " Target: " + gcTargetPanel.GetPublicTitle() + "\n";
@@ -2000,6 +1993,7 @@ Vector3D pointTarget = currentPos + direction * pointDis;
 message += "," + pointTarget.X + "," + pointTarget.Y + "," + pointTarget.Z + "," + speed.X + "," + speed.Y + "," + speed.Z;
 }
 ant.TransmitMessage(message);
+lastSendingTime=t;
 }
 
 i = (i+1) % 40;
