@@ -342,6 +342,27 @@ void ShipScan(){
 		&& (TrackTarget.Position - MyShip.Cockpit.GetPosition()).Length() < SearchDistance
 		){
 			MyTarget.UpdateMotionInfo(TrackTarget);
+			// add by kaien TOTEST
+			MyDetectedEntityInfo targetEntity = new MyDetectedEntityInfo();
+			bool tHas = false;
+			Vector3D td = Vector3D.Zero;
+			foreach(var t in MyShip.AutoWeapons) {
+				if (t.HasTarget) {
+					targetEntity = t.GetTargetedEntity();
+					tHas = true;
+					td = CalculateTurretViewVector(t);
+				}
+			}
+			Vector3D targetPosition = Vector3D.Zero;
+			if (tHas && TrackTarget.EntityId == targetEntity.EntityId && !MyShip.Cockpit.IsUnderControl) {
+				Vector3D HitPoint = targetEntity.Position;
+				MatrixD TargetMainMatrix = TrackTarget.Orientation;   
+				MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
+				MyTarget.AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - TrackTarget.Position, TargetLookAtMatrix);
+			} else if (!MyShip.Cockpit.IsUnderControl){
+				MyTarget.AccurateLockPositionToTarget = Vector3D.Zero;
+			}
+			
 		}
 		else if(t - MyTarget.TimeStamp >= 60){
 			MyTarget = new Target();
@@ -1034,7 +1055,7 @@ public class Ship
 		this.Diameter = (this.Cockpit.CubeGrid.Max - this.Cockpit.CubeGrid.Min).Length() * this.Cockpit.CubeGrid.GridSize;
 		this.Acceleration = ((this.Cockpit.GetPosition() - this.Position) * 60 - this.Velocity) * 60;
 
-		this.debugInfo = Math.Round(this.Acceleration.Length()) + "";
+		//this.debugInfo = Math.Round(this.Acceleration.Length()) + "";
 
 		this.Velocity = (this.Cockpit.GetPosition() - this.Position) * 60;
 		this.Position = this.Cockpit.GetPosition();
