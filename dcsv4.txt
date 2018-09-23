@@ -105,6 +105,7 @@ string rulerProjectorName = "Projector Ruler";
 double shipWidth = 100;
 double shipHeight = 40;
 double shipLength = 180;
+int flyByAttackRoundTime = 9000;
 
 IMySoundBlock FoundSoundBlock;
 
@@ -1985,7 +1986,7 @@ if (!LockTargetPosition.Equals( Vector3D.Zero)) {
 Vector3D dir = LockTargetPosition - currentPos;
 dir = Vector3D.Normalize(dir);
 Vector3D pos = LockTargetPosition;
-message += "," + pos.X + "," + pos.Y + "," + pos.Z + "," + LockTargetVelocity.X+ "," + LockTargetVelocity.Y+ "," + LockTargetVelocity.Z + "," + (((t % 9000)/9000D) * MathHelper.TwoPi);
+message += "," + pos.X + "," + pos.Y + "," + pos.Z + "," + LockTargetVelocity.X+ "," + LockTargetVelocity.Y+ "," + LockTargetVelocity.Z + "," + (((t % flyByAttackRoundTime)/(flyByAttackRoundTime*1.0D)) * MathHelper.TwoPi);
 } else if (motherPointerMode) {
 Vector3D direction;
 direction = CalculateTurretViewVector(homingTurret);
@@ -2498,7 +2499,7 @@ dir = Vector3D.Normalize(dir);
 if (!isBig) {
 double standardAttackAngle = Convert.ToDouble(args[25]);
 MatrixD rd = MatrixD.CreateFromAxisAngle(dir, standardAttackAngle + (commandWaitTic * 1d / commandAllTic) * MathHelper.TwoPi);
-flyByAttackPosition = flyByAimPosition + 1000*rd.Up + droneAttackRange*rd.Backward;
+flyByAttackPosition = flyByAimPosition + 800*rd.Up + droneAttackRange*rd.Backward;
 }else{
 Vector3D tmp = Vector3D.Reject(dir, shipMatrix.Up);
 if (tmp.Equals(Vector3D.Zero)) {

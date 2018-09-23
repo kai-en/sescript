@@ -1,0 +1,222 @@
+string HeadRotorNameTag = "rotor fire";//头转子名字
+string RotorNameTag = "rotor yb";//其他部分转子名字
+//string FireTimerNameTag = "Fire_Timer"; //开火定时块名字，这个定时块要设置执行所有头部转子的添加转子头动作
+
+int ShootTimes = 5; //射击次数，0是扫射（就是开启后一直射击除非手动关闭开火），输入其他数字就会每次执行这个次数的开火
+
+bool DebugMode = false; //把这个设为true开启调试模式，调试模式中会使用下方设定的自定义序列来执行动作
+int[] DoStep_1 = {4,1,2,3,0,0}; //执行步骤，每一个数字都在一个独立帧中执行，0代表不执行动作，1代表收缩，2代表伸出，3代表脱离，4代表添加转子头，5代表取消开火状态
+int[] DoStep_2 = {0,0,0,0,0,0}; 
+int[] DoStep_3 = {0,0,0,0,0,0}; 
+
+/*
+能成功开火的一个顺序是
+int[] DoStep_1 = {0,1,2,3,0,0};
+int[] DoStep_2 = {4,0,0,0,0,0}; 
+int[] DoStep_3 = {0,0,0,0,0,0}; 
+*/
+
+bool isfire = false;
+int t;
+bool init;
+int shoot_times;
+void Main(string arguments)
+{
+	t ++;
+	if(!init){GetBlocks();return;}
+	
+	if(arguments == "Fire"){
+		if(!isfire){
+			shoot_times = 0;
+			isfire = true;
+		}
+		else{
+			if(!DebugMode && step == 3){
+				isfire = false;
+			}
+			if(DebugMode && New_Step == DoStep_1.Length - 1){
+				isfire = false;
+			}
+		}
+	}
+	
+	//开火次数识别
+	if(ShootTimes > 0 && shoot_times >= ShootTimes){
+		if(!DebugMode && step == 3){
+			isfire = false;
+		}
+		if(DebugMode && New_Step == DoStep_1.Length - 1){
+			isfire = false;
+		}
+	}
+
+	if(isfire){
+		if(DebugMode){
+			DebugFire();
+		}
+		else{
+			Fire();
+		}
+	}
+}
+
+//IMyTerminalBlock FireTimer;
+List<IMyTerminalBlock> Rotor_Head;
+List<IMyTerminalBlock> Rotors;
+void GetBlocks()
+{
+	Runtime.UpdateFrequency = UpdateFrequency.Update1;
+	
+//	FireTimer = GridTerminalSystem.GetBlockWithName(FireTimerNameTag);
+	
+	Rotor_Head = new List<IMyTerminalBlock>();
+	GridTerminalSystem.SearchBlocksOfName(HeadRotorNameTag, Rotor_Head);//名字完全匹配
+
+	Rotors = new List<IMyTerminalBlock>();
+	//GridTerminalSystem.GetBlocksOfType(Rotors, b => b.CustomName == RotorNameTag);//名字完全匹配
+	GridTerminalSystem.SearchBlocksOfName(RotorNameTag, Rotors);
+
+//	if(FireTimer == null){
+//		Echo("Fire Timer Not Found");
+//		return;
+//	}
+	
+	init = true;
+}
+
+int New_Step;
+void DebugFire()
+{
+	if(DoStep_1[New_Step] == 1){
+		for(int i = 0; i < Rotors.Count; i ++)
+		{
+			Rotors[i].SetValueFloat("Displacement" , -1f);
+		}
+	}
+	else if(DoStep_1[New_Step] == 2){
+		for(int i = 0; i < Rotors.Count; i ++)
+		{
+			Rotors[i].SetValueFloat("Displacement" , 1f);
+		}
+	}
+	else if(DoStep_1[New_Step] == 3){
+		ActionRotors(Rotor_Head, "Detach");
+	}
+	else if(DoStep_1[New_Step] == 4){
+		//FireTimer.ApplyAction("TriggerNow");
+		PlayActionListWithName(Rotor_Head, "Add Rotor Head");
+	}
+	else if(DoStep_1[New_Step] == 5){
+		isfire = false;
+	}
+	
+	if(New_Step < DoStep_2.Length){
+		if(DoStep_2[New_Step] == 1){
+			for(int i = 0; i < Rotors.Count; i ++)
+			{
+				Rotors[i].SetValueFloat("Displacement" , -1f);
+			}
+		}
+		else if(DoStep_2[New_Step] == 2){
+			for(int i = 0; i < Rotors.Count; i ++)
+			{
+				Rotors[i].SetValueFloat("Displacement" , 1f);
+			}
+		}
+		else if(DoStep_2[New_Step] == 3){
+			ActionRotors(Rotor_Head, "Detach");
+		}
+		else if(DoStep_2[New_Step] == 4){
+			//FireTimer.ApplyAction("TriggerNow");
+			PlayActionListWithName(Rotor_Head, "Add Rotor Head");
+		}
+		else if(DoStep_2[New_Step] == 5){
+			isfire = false;
+		}
+	}
+	
+	if(New_Step < DoStep_3.Length){
+		if(DoStep_3[New_Step] == 1){
+			for(int i = 0; i < Rotors.Count; i ++)
+			{
+				Rotors[i].SetValueFloat("Displacement" , -1f);
+			}
+		}
+		else if(DoStep_3[New_Step] == 2){
+			for(int i = 0; i < Rotors.Count; i ++)
+			{
+				Rotors[i].SetValueFloat("Displacement" , 1f);
+			}
+		}
+		else if(DoStep_3[New_Step] == 3){
+			ActionRotors(Rotor_Head, "Detach");
+		}
+		else if(DoStep_3[New_Step] == 4){
+			//FireTimer.ApplyAction("TriggerNow");
+			PlayActionListWithName(Rotor_Head, "Add Rotor Head");
+		}
+		else if(DoStep_3[New_Step] == 5){
+			isfire = false;
+		}
+	}
+	
+	New_Step += 1;
+	if(New_Step >= DoStep_1.Length){
+		New_Step = 0;
+	}
+}
+
+int step;
+void Fire()
+{
+	if(step == 0)
+	{
+		//FireTimer.ApplyAction("TriggerNow");
+		PlayActionListWithName(Rotor_Head, "Add Rotor Head");
+	}
+	else if(step == 1)
+	{
+		for(int i = 0; i < Rotors.Count; i ++)
+		{
+			Rotors[i].SetValueFloat("Displacement" , -1f);
+		}
+	}
+	else if(step == 2)
+	{
+		for(int i = 0; i < Rotors.Count; i ++)
+		{
+			Rotors[i].SetValueFloat("Displacement" , 1f);
+		}
+		ActionRotors(Rotor_Head, "Detach");
+		shoot_times += 1;
+	}
+	
+	step += 1;
+	if(step > 3)
+	{
+		step = 0;
+	}
+}
+
+void ActionRotors(List<IMyTerminalBlock> Rotors, string Action)
+{
+	for(int i = 0; i < Rotors.Count; i ++)
+	{
+		Rotors[i].ApplyAction(Action);
+	}
+}
+
+void PlayActionListWithName(List<IMyTerminalBlock> blocks, String action) {
+    if(blocks == null) return;
+	for(int i = 0; i < blocks.Count; i ++)
+	{
+		List<ITerminalAction> resultList = new List<ITerminalAction>();
+		blocks[i].GetActions(resultList);
+		foreach(var a in resultList) {
+			string name = a.Name.ToString();
+			if (name.Equals(action)) {
+				a.Apply(blocks[i]);
+			}
+		}
+	}
+}
