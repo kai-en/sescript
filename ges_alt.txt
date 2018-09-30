@@ -92,6 +92,7 @@ List<List<IMyTerminalBlock>> GyrosMe;
   
 List<IMyTerminalBlock> massList = new List<IMyTerminalBlock>();    
 List<IMyTerminalBlock> Spotlights = new List<IMyTerminalBlock>();   
+List<IMyTerminalBlock> Lights = new List<IMyTerminalBlock>();   
 List<IMyTerminalBlock> lcdList = new List<IMyTerminalBlock>();   
 List<IMyTerminalBlock> fireLights = new List<IMyTerminalBlock>();   
   
@@ -114,6 +115,7 @@ int InputTime;
 string Debug = "系统正常";    
 string spotlightGroupName = "Spotlight-GES-G"; // 灯光分组名  
 string lcdGroupName = "LCD-GES-G"; // 灯光LCD分组名
+string lightGroupName = "Light-GES-G"; // 散热灯分组名
 Color flameColorMin = new Color(1, 1, 1); // 最低出力时的颜色, 三个数字的顺序是 红 绿 蓝, 范围 0 - 255  
 Color flameColorMax = new Color(1, 100, 255); // 最高出力时的颜色, 取值范围同上  
  
@@ -534,7 +536,8 @@ void SystemControl()
 		//}  
 		float p1 = (-ForwardValue/9.8f);  
 		float p2 = (float)Cockpit.GetShipVelocities().LinearVelocity.Dot(Cockpit.WorldMatrix.Forward) / 100f;  
-float p3 = (float)Cockpit.GetShipVelocities().LinearVelocity.Length() / 10f; 
+float p3 = (float)Cockpit.GetShipVelocities().LinearVelocity.Length() / 10f;
+float p4 = p3 / 10f;
 		p1 = Math.Max(p1, 0);  
 		p2 = Math.Max(p2, 0);  
 		p1 = Math.Min(p1, 1f);  
@@ -551,7 +554,11 @@ float p3 = (float)Cockpit.GetShipVelocities().LinearVelocity.Length() / 10f;
 		Color nowColor = new Color((int)(p*(flameColorMax.R-flameColorMin.R) + flameColorMin.R),   
 		                                                   (int)(p*(flameColorMax.G-flameColorMin.G) + flameColorMin.G),   
 		                                                   (int) (p*(flameColorMax.B-flameColorMin.B) + flameColorMin.B) );
+		Color p4Color = new Color((int)(p4*(flameColorMax.R-flameColorMin.R) + flameColorMin.R),   
+		                                                   (int)(p4*(flameColorMax.G-flameColorMin.G) + flameColorMin.G),   
+		                                                   (int) (p4*(flameColorMax.B-flameColorMin.B) + flameColorMin.B) );
 		SetBlocksValueColor(Spotlights, "Color", nowColor);  
+		SetBlocksValueColor(Lights, "Color", p4Color);  
 		SetBlocksValueColor(lcdList, "BackgroundColor", nowColor);  
 SetBlocksValueFloat(rotorRing, "Velocity", p3);		 
 if (fireMode) {  
@@ -950,6 +957,7 @@ void GetBlocks()
 
 
     findByGroup(spotlightGroupName, Spotlights);  
+    findByGroup(lightGroupName, Lights);  
     findByGroup(lcdGroupName, lcdList);  
     findByGroup(fireLightName, fireLights); 
     findByGroup(projectorRingGroupName, projectorRing);  
