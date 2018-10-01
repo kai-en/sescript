@@ -2858,7 +2858,8 @@ refreshTime += 1.0/60.0;
 // if (!isSetup || refreshTime >= refreshInterval)
 if (!isSetup )
 {
-isSetup = GrabBlocks();
+GrabBlocks();
+isSetup = true;
 refreshTime = 0;
 }
 
