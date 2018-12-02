@@ -8,15 +8,7 @@ v4.1.2 20180918
 -----------------
 add a flash mark when sending or receiving singals.
 
-v4.1.1 20180909
------------------
-if the mother signal is lost, remember the last known mother position and speed.
-
-v4.1 20180826
-----------------
-add RPW RPP RPD commands for record relative position to custom data
-for mother ship, you need to run program once to activate it
-add isPrinted=true parameter for printed drones. when printed, run PTD command to activate printed drones
+...
 
 custom data sample for son ship:
 
@@ -175,6 +167,9 @@ Vector3D LockTargetVelocity = Vector3D.Zero;
 
 int lastSendingTime = 0;
 int lastReceivingTime = 0;
+
+// float mode
+bool floatModeOn = false;
 
 Program()
 {
@@ -582,6 +577,37 @@ PlayAction(thrusters[i], "OnOff_On");
 thrusters[i].SetValue("Override", 0f);
 }
 }
+}
+}
+
+if (floatModeOn) {
+// CODING
+double elevation = 0;
+bool getted = Cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevation);
+if (getted) {
+var naturalGravityNormal = Vector3D.Normalize(naturalGravity);
+Vector3D aSpeed;
+if (elevation > 3) {
+aSpeed = 2 * naturalGravityNormal;
+} else if (elevation < 1) {
+aSpeed = -2 * naturalGravityNormal;
+} else {
+aSpeed = (elevation - 2) * naturalGravityNormal;
+}
+
+Vector3D needSpeed = aSpeed - MeVelocity;
+MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);
+Vector3D maintainSpeedToMe = Vector3D.TransformNormal(needSpeed, refLookAtMatrix);
+Vector3D nowSpeedToMe = Vector3D.TransformNormal(Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
+if (isDown) {
+maintainSpeedToMe = new Vector3D(0,-11,0) - nowSpeedToMe;
+}else if (isLaunch){
+maintainSpeedToMe = new Vector3D(0,90,0) - nowSpeedToMe;
+}
+forwardMoveIndicator=0;
+var nud = Cockpit.WorldMatrix.Up.Dot(naturalGravity);
+DimSpeed(maintainSpeedToMe.Y, upThrusters, downThrusters, uggs,dggs,ref thrusterPercentY, nowSpeedToMe.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
+lastSpeedY = nowSpeedToMe.Y;
 }
 }
 
@@ -1936,10 +1962,6 @@ setMeZPercent(-1);
 // }
 }
 
-// new method do not support gravity engine
-//SetBlocksValueFloat(incggs, "Gravity", -9.8f * percent);
-//SetBlocksValueFloat(decggs, "Gravity", 9.8f * percent);
-
 return dr;
 }
 
@@ -2045,7 +2067,6 @@ double elevation = 0;
 bool getted = Cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevation);
 if (getted) {
 double rate = 0.1;
-debugInfo = elevation+"";
 var naturalGravityNormal = Vector3D.Normalize(naturalGravity);
 var apDiff = naturalGravityNormal * elevation;
 if (apDiff.Length() < 50) {
@@ -3175,22 +3196,6 @@ return strRunningSymbol;
 
 /*
 /// CHANGE LOG ///
-v24
-* Added ignoreThrustNameTag to allow users to ignore certain thrusters
-* Added slow refresh rate warning
-* Added more comments
-
-v25
-* Added dampenerScalingFactor to scale how fast dampeners react
-
-v26
-* Added a 10 second refresh interval to minimize lag on larger grids
-
-v27
-* Added argument support to the code to control various parts of the code
-* Added Vector3D.TransformNormal instead of what I was doing
-* Added gravity compensation
-
 v29
 * Changed code to ignore any grids with connectors on them when ignoreThrustersOnConnectors is set to true
 * Removed need for timers!
