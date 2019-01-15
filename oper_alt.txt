@@ -8,6 +8,7 @@ string missileWelderGroupName = "Welder-Missile-G";
 string gcLightGroupName = "Light-GC-G";
 
 List<List<IMyTerminalBlock>> missileRotorsSort = null; 
+List<IMyTerminalBlock> missileWelders = null;
 List<List<IMyTerminalBlock>> missileWeldersSort = null; 
 List<List<IMyTerminalBlock>> gcWeldersSort = null; 
 List<List<IMyTerminalBlock>> gcLightSort = null; 
@@ -100,7 +101,10 @@ List<List<IMyTerminalBlock>> sortByPosition(List<IMyTerminalBlock> blocks, strin
   break; 
   case "Z": 
     grouped = blocks.GroupBy(b=>(int)b.Position.Z); 
-  break; 
+  break;
+  case "ZX":
+    grouped = blocks.GroupBy(b=>(int)b.Position.Z * 1000 + (int)b.Position.X);   
+  break;
   default: 
   return null; 
   } 
@@ -229,10 +233,10 @@ void init() {
  
   missileRotorsSort = sortByPosition(missileRotors, "Z", true); 
  
-  List<IMyTerminalBlock> missileWelders = new List<IMyTerminalBlock>(); 
+  missileWelders = new List<IMyTerminalBlock>(); 
   findByGroup(missileWelderGroupName, missileWelders); 
  
-  missileWeldersSort = sortByPosition(missileWelders, "Z", true);
+  missileWeldersSort = sortByPosition(missileWelders, "ZX", true);
 
   List<IMyTerminalBlock> gcLights = new List<IMyTerminalBlock>();
   findByGroup(gcLightGroupName, gcLights);
@@ -269,12 +273,27 @@ public void Main(string argument, UpdateType updateSource)
   break; 
   case "ToggleMissileWelder": 
     addSeq(missileWeldersSort, "OnOff", 120); 
-  break; 
+  break;
+  case "LoadMissile":
+  {
+    List<IMyTerminalBlock> msPB = getBlockListByName("Programmable block Missile", false);
+    List<IMyTerminalBlock> blankWelderList = missileWelders.Where(w=>{
+      foreach(IMyTerminalBlock p in msPB) {
+        if ((p.GetPosition() - w.GetPosition()).Length() < 4) {
+          return false;
+        }
+      }
+      return true;
+    }).ToList();
+    List<List<IMyTerminalBlock>> bwls = sortByPosition(blankWelderList, "ZX", true);
+    addSeq(bwls, "OnOff_On", 120);
+  }
+  break;
   case "FireMissile":
-    if (fireGCMode > 0) return;
-    fireGCMode = 2;
-    fireGCStart = counter;
-    addSeq(missileWeldersSort, "OnOff_Off", 120); 
+    // if (fireGCMode > 0) return;
+    // fireGCMode = 2;
+    // fireGCStart = counter;
+    PlayActionList(missileWelders, "OnOff_Off");
 {
 {
     String cmd = ""; 
@@ -285,16 +304,32 @@ public void Main(string argument, UpdateType updateSource)
     List<List<IMyTerminalBlock>> msPBSorted = sortByRelativePosition(msPB, "ZX", true);
     addSeq(msPBSorted, "Run", 40, argumentList);
 }
-    { 
-    String cmd = "FIREONMS"; 
-    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
-    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>(); 
-    argumentList.Add(tap); 
-    PlayAction(gesBlock, "Run", argumentList); 
-    } 
+    // { 
+    // String cmd = "FIREONMS"; 
+    // TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    // List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>(); 
+    // argumentList.Add(tap); 
+    // PlayAction(gesBlock, "Run", argumentList); 
+    // } 
 
 }
-  break; 
+  break;
+  case "FireMiddleMissile":
+  PlayActionList(missileWelders, "OnOff_Off");
+  {
+    String cmd = ""; 
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();
+    argumentList.Add(tap);  
+    List<IMyTerminalBlock> msPB = getBlockListByName("Programmable block Missile", false); 
+    List<List<IMyTerminalBlock>> msPBSorted = sortByRelativePosition(msPB, "ZX", true);
+    if (msPBSorted.Count >=5 ) {
+      List<List<IMyTerminalBlock>> toL = new List<List<IMyTerminalBlock>>();
+      toL.Add(msPBSorted[4]);
+      addSeq(toL, "Run", 40, argumentList);
+    }
+  }
+  break;
   case "LaunchFighters":
   {
     List<IMyTerminalBlock> fighterFcs = getBlockListByName(fighterFcsName, false); 
@@ -334,7 +369,6 @@ public void Main(string argument, UpdateType updateSource)
 }
   break;
   case "FireMissileRight":
-
 {
     String cmd = ""; 
     TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
@@ -392,7 +426,7 @@ public void Main(string argument, UpdateType updateSource)
     List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();
     argumentList.Add(tap);  
     List<IMyTerminalBlock> gcPB = getBlockListByName("Programmable block GC", false); 
-    List<List<IMyTerminalBlock>> gcPBSorted = sortByRelativePosition(gcPB, "Z", true); 
+    List<List<IMyTerminalBlock>> gcPBSorted = sortByRelativePosition(gcPB, "ZX", true); 
     //Echo(gcPB.Count+"");
     addSeq(gcPBSorted, "Run", 20, argumentList); 
     fireGCMode = 2; 

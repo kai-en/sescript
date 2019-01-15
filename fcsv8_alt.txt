@@ -697,7 +697,7 @@ void GetBlocks(){
 	//把设置了名字的方块搞进来
 	if(CamerasNameTag[0] == ""){
 		BK_Temp = new List<IMyTerminalBlock>();
-		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b is IMyCameraBlock && (CamerasNameTag[1] == "ALL" ? true : CamerasNameTag[1] == "" ? false : b.CustomName.Contains(CamerasNameTag[1])));
+		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b is IMyCameraBlock && (CamerasNameTag[1] == "ALL" ? !b.CustomName.Contains("[Excluded]") : CamerasNameTag[1] == "" ? false : b.CustomName.Contains(CamerasNameTag[1])));
 		BK.AddList(BK_Temp);
 	}
 	
