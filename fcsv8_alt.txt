@@ -54,7 +54,7 @@ double PulseInterval = 10; //脉冲搜索扫描区域的扫描线终点的间隔
 //注意：脉冲搜索区域半径不要太大，脉冲搜索间隔不要太小，否则可能程序复杂而中断
 
 // --------- 武器参数设置 ------------
-double AutoFireDistance = 950; //自动开火距离
+double AutoFireDistance = 920; //自动开火距离
 
 double Weapon_1_BulletInitialSpeed = 400; //武器1，子弹初速度，加特林机枪的默认子弹初速度是400   
 double Weapon_1_BulletAcceleration = 0; //武器1，子弹加速度，加特林机枪默认子弹加速度是0   
