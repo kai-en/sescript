@@ -42,6 +42,7 @@ int missileRightStage = 0;
 long missileRightNext = 0;
 List<IMyTerminalBlock> rotorMissileRight = null;
 string rotorMissileRightGN = "Rotor-Missile-Right-Open";
+int decoyMissileCount=0;
 string debugInfo="";
  
 public Program() 
@@ -317,15 +318,15 @@ public void Main(string argument, UpdateType updateSource)
   case "FireMiddleMissile":
   PlayActionList(missileWelders, "OnOff_Off");
   {
-    String cmd = ""; 
+    String cmd = "";
     TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
     List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();
     argumentList.Add(tap);  
     List<IMyTerminalBlock> msPB = getBlockListByName("Programmable block Missile", false); 
     List<List<IMyTerminalBlock>> msPBSorted = sortByRelativePosition(msPB, "ZX", true);
-    if (msPBSorted.Count >=5 ) {
+    if (msPBSorted.Count > decoyMissileCount ) {
       List<List<IMyTerminalBlock>> toL = new List<List<IMyTerminalBlock>>();
-      toL.Add(msPBSorted[4]);
+      toL.Add(msPBSorted[decoyMissileCount]);
       addSeq(toL, "Run", 40, argumentList);
     }
   }

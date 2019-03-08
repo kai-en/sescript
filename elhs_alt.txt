@@ -106,8 +106,11 @@ double AIM_I = 0;
 double AIM_D = 0;
 double AIM_LIMIT = 6.3;
 
-double INTEGRAL_WINDUP_UPPER_LIMIT = 0;
-double INTEGRAL_WINDUP_LOWER_LIMIT = 0;
+//double INTEGRAL_WINDUP_UPPER_LIMIT = 0;
+//double INTEGRAL_WINDUP_LOWER_LIMIT = 0;
+// DEF
+double INTEGRAL_WINDUP_UPPER_LIMIT = 2;
+double INTEGRAL_WINDUP_LOWER_LIMIT = 2;
 
 //------------------------------ Script Parameters Configuration ------------------------------
 
@@ -117,9 +120,12 @@ bool outputMissileStatus = true;
 
 //------------------------------ Important Constants ------------------------------
 
-const double DEF_SMALL_GRID_P = 31.42;
-const double DEF_SMALL_GRID_I = 0;
-const double DEF_SMALL_GRID_D = 10.48;
+//const double DEF_SMALL_GRID_P = 31.42;
+//const double DEF_SMALL_GRID_I = 0;
+//const double DEF_SMALL_GRID_D = 10.48;
+const double DEF_SMALL_GRID_P = 2;
+const double DEF_SMALL_GRID_I = 0.05;
+const double DEF_SMALL_GRID_D = 0;
 
 const double DEF_BIG_GRID_P = 15.71;
 const double DEF_BIG_GRID_I = 0;
@@ -274,6 +280,8 @@ int counterAll = 0;
 int ttlSec = 45;
 List<IMyTerminalBlock> rotorScatterList = null;
 string debugInfo="";
+bool isAeroDynamic=false;
+double lastDis = 1000000;
 
 Program()
 {
@@ -284,7 +292,15 @@ void Main(string arguments, UpdateType updateSource)
 {
 // a b K
 counterAll++;
-if (counterAll > ttlSec * 60) {
+bool isNeer = false;
+if (targetSetK) {
+  var nowDis = (targetPositionK-remoteControl.GetPosition()).Length();
+  if (nowDis < 15 && nowDis > lastDis) isNeer = true;
+  lastDis = nowDis;
+  if (nowDis < 2) isNeer = true;
+}
+
+if (counterAll > ttlSec * 60 || isNeer) {
 List<IMyTerminalBlock> wl = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyWarhead>(wl);
 foreach(var w in wl) {
@@ -1946,6 +1962,10 @@ if (targetSetK) {
 
 	Vector3D AimLine = targetPositionOffset - remoteControl.GetPosition();
 	Vector3D TargetVelecity = targetVelocityK;
+	//CODING test adjust targetvelecity as minus gravity;
+	if(isAeroDynamic) {
+	TargetVelecity += - 10 * naturalGravity;
+	}
 	Vector3D TotalVelocity = TargetVelecity - remoteControl.GetShipVelocities().LinearVelocity;
 	Vector3D TotalVelocityToAimLine = TotalVelocity - Vector3D.Normalize(AimLine)*(Vector3D.Dot(TotalVelocity,AimLine)/AimLine.Length());
 
@@ -1954,7 +1974,7 @@ if (targetSetK) {
 	Vector3D tvn = Vector3D.Normalize(TotalVelocity);
 	Vector3D dn = Vector3D.Normalize(AimLine);
 	Vector3D vota = TotalVelocity.Length() * Vector3D.Reject(tvn,dn);
-	debugInfo = vota.Length() + "";
+	//debugInfo = vota.Length() + "";
 	TotalVelocityToAimLineToMe = Vector3D.TransformNormal(vota, refLookAtMatrix);
 
 	// 100m/s = 90degree(0.5*PI)
@@ -1964,24 +1984,20 @@ if (targetSetK) {
 
 	Vector3D targetDirectionAim = Vector3D.Normalize(Vector3D.TransformNormal(targetPositionOffset - remoteControl.GetPosition(), refLookAtMatrix));
 
-    double AimForceRatio = 2;
 	double PitchValue = 0;
 	double YawValue = 0;
-	//if (boolNaturalDampener == true ) {
-		var p = pow2(maxToPercent(targetDirectionAim.Y +Pitch, 0.5*Math.PI)); // point to target first, plus velocity diff correction
-//		if (Math.Abs(p) > 0.5)
-		PitchValue = p*60*0.5*Math.PI;
-//		else
-//		PitchValue = 8*p*p*p*60;
-		var y = pow2(maxToPercent(targetDirectionAim.X + Yaw, 0.5*Math.PI));
-//		if(Math.Abs(y)>0.5)
-		YawValue = y*60*0.5*Math.PI;
-//		else
-//		YawValue = 8*y*y*y*60;
-	//} else {
-	//	PitchValue = (targetDirectionAim.Y + Pitch) *90*AimForceRatio;
-	//	YawValue = (targetDirectionAim.X + Yaw) *90*AimForceRatio;
-	//}
+
+	var p = pow2(maxToPercent(targetDirectionAim.Y +Pitch, 0.5*Math.PI)); // point to target first, plus velocity diff correction
+	PitchValue = p*60*0.5*Math.PI;
+
+	//CODING
+	PitchValue = pitchController.Filter(targetDirectionAim.Y +Pitch,2);
+
+	var y = pow2(maxToPercent(targetDirectionAim.X + Yaw, 0.5*Math.PI));
+	YawValue = y*60*0.5*Math.PI;
+
+	//CODING
+	YawValue = yawController.Filter(targetDirectionAim.X + Yaw,2);
 
 	gyroControl.SetGyroYaw((float)YawValue);
 	gyroControl.SetGyroPitch((float)PitchValue);
@@ -2422,6 +2438,7 @@ cfg.Get("outputMissileStatus", ref outputMissileStatus);
 cfg.Get("ttlSec", ref ttlSec);
 cfg.Get("aimOffsetX", ref aimOffsetX);
 cfg.Get("aimOffsetY", ref aimOffsetY);
+cfg.Get("isAeroDynamic", ref isAeroDynamic);
 }
 
 void ProcessConfigurationCommand(string commandLine)

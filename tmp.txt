@@ -1,0 +1,79 @@
+(* (cos (/ (sqrt 5) 2)) (/ 180 float-pi))
+
+1
+
+(* (asin (/ 1 (sqrt 5))) (/ 180 float-pi))
+
+(sqrt 5)
+
+
+missileLaunchType=4
+strDirectionRefBlockTag=MISSILE_FORWARD    
+excludeFriendly=true    
+LIDAR_MAX_LOCK_DISTANCE=6000  
+useOffsetTargeting=true  
+useOffsetRaycasting=true
+launchSeconds=3
+strShipRefTargetPanel=LCD Panel GC Target
+strShipRefLidar=R_LIDAR_OC
+strShipRefForward=R_FORWARD_OC
+ttlSec=140
+aimOffsetX=-50
+
+// var tup=new Vector3D(1,0,0);
+// var tupt = Vector3D.TransformNormal(tup,aimMatrix);
+// var tp = flyByAimPosition + 800*tupt;
+// MatrixD refWorldMatrix = Cockpit.WorldMatrix;
+// MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), refWorldMatrix.Forward, refWorldMatrix.Up);
+// var tptome = Vector3D.TransformNormal(tp-MePosition, refLookAtMatrix);
+// debugInfo = "    " + displayVector3D(tptome);
+
+
+{X:-3653 Y:-13481 Z:-14057}
+GPS:Radar - Tiny Ship:-3500:-15169:-13615: - {X:1.5 Y:1.5 Z:4.5}
+GPS:Radar - Tiny Ship:-3497:-15164:-13624: - {X:0.5 Y:1 Z:4}
+GPS:Radar - Tiny Ship:-3494:-15178:-13614: - {X:0.5 Y:1 Z:3.5}
+GPS:Radar - Tiny Ship:-3127:-14797:-13691: - {X:6.5 Y:1.5 Z:3}
+GPS:Radar - Tiny Ship:-3452:-14930:-13943: - {X:5.5 Y:3.5 Z:8}
+GPS:Radar - Huge unknown object:12354:2175:6853: - {X:122.5 Y:60 Z:280}
+GPS:Radar - Large Ship:-3395:-15149:-13751: - {X:47.5 Y:57.5 Z:130}
+
+
+1, 3视图
+  1.1 起飞
+2, 导弹打固定
+  2.1 导弹打小飞机
+  2.2 导弹打炮塔
+3, 扫射地堡
+4, 防御导弹
+5, 近防
+6, 导弹打喷口
+  6.1 导弹打天线
+  6.2, 导弹打侧喷
+7, 扫射舰
+8, 伴飞字幕
+  8.1 空驾驶仓特写
+  8.1 伴飞变形(中后)
+
+5 分钟 30秒
+
+
+4:44 6:26
+
+86-44
+
+1:42  102
+
+0:12 6:26
+6:14 374
+
+(/ (- 374.0 102.0) 374.0)
+
+rac 1 2 2 1Error
+0 3 2 2
+
+idx = 0
+allc = 3
+
+targetcount = 2
+canUseCount = 

@@ -50,6 +50,7 @@ List<IMyTerminalBlock> rotorFcsList=new List<IMyTerminalBlock>();
 PIDController[] rotorFcsPIDList = new PIDController[2];
 int lockStopT = 0;
 int lockWaitT = 5* 60;
+int pulseT = 0;
 IMyTextPanel radarOutputLCD = null;
 bool radarWaitNewPos = true;
 Vector3D radarHighThreatPosition = Vector3D.Zero;
@@ -113,12 +114,14 @@ static bool NeedManeuverRoll;
 
 static int t; //时间
 static Ship MyShip; //飞船
-static Target MyTarget = new Target();
+static List<Target> MyTargetList = new List<Target>();
+static int maxTargetCount = 1;
+static int selectedTarget = 0;
 Vector3D NavigationPosition;
 
 // add by kaien
-string debugInfo="";
-string MISSILE_TAG="#A#";
+static string debugInfo="";
+static string MISSILE_TAG="#A#";
 
 void execCommand(string arguments) {
 String[] kv = arguments.Split(':');
@@ -138,18 +141,28 @@ WeaponsNameTag = new string[]{"", "ALL"};
 double.TryParse(args[2], out SearchDistance);
 homingTurretName = args[3];
 useTurretAsAimer=args[4].Equals("True");
+if (args.Count() > 5) {
+int val;
+if (int.TryParse(args[5], out val))
+{
+maxTargetCount = val;
+}
+}
 GetBlocks();
 break;
 case ("ALLON"):
 NeedScan = true;
 NeedAimMode = 1;
 NeedAutoFire=true;
+MyTargetList = new List<Target>();
+selectedTarget = 0;
 break;
 case ("ALLOFF"):
 NeedScan = false;
 NeedAimMode = 0;
 NeedAutoFire=false;
-MyTarget = new Target();
+MyTargetList = new List<Target>();
+selectedTarget = 0;
 break;
 case ("WEAPON1"):
 NeedWeaponMode=0;
@@ -192,7 +205,7 @@ void Main(string arguments)
 	
 	//接受指令
 	switch(arguments){
-		case("OnOff"):NeedScan = !NeedScan; MyTarget = new Target(); break;
+		case("OnOff"):NeedScan = !NeedScan; MyTargetList = new List<Target>(); selectedTarget = 0; break;
 		case("Aim"):NeedAimMode += 1; if(NeedAimMode > 2){NeedAimMode = 0;}; break;
 		case("Lock"):ShipLock(); break;
 		case("Weapon"):NeedWeaponMode += 1; if(NeedWeaponMode > 1){NeedWeaponMode = 0;}; break;
@@ -209,6 +222,9 @@ void Main(string arguments)
 				NeedAutoFire=true;
 				NeedAimMode=1;
 			}
+		break;
+		case("CircleTarget"):
+		selectedTarget  = (selectedTarget + 1) % MyTargetList.Count;
 		break;
 	}
 	if(arguments.StartsWith("Go:") || arguments.StartsWith("GPS:")){
@@ -303,7 +319,7 @@ return Vector3D.TransformNormal(direction, turret.WorldMatrix);
 
 // 扫描目标并自动锁定
 void ShipScan(){
-	if(MyTarget.EntityId == 0){
+	if(MyTargetList.Count < maxTargetCount){
 		//Vector3D Point = MyShip.Cockpit.GetPosition() + MyShip.Cockpit.WorldMatrix.Forward*SearchDistance;
 		// foreach(IMyCameraBlock c in MyShip.Cameras){
 		// 	if(c.IsActive){
@@ -325,8 +341,14 @@ void ShipScan(){
 				tHas = true;
 			}
 		}
-		if(useTurretAsAimer)  {
-		direction = CalculateTurretViewVector(MyShip.homingTurret)+ (offset/10 + 0.001) * MyShip.Cockpit.WorldMatrix.Up ;
+		if(useTurretAsAimer&&MyShip.homingTurret.IsUnderControl)  {
+		direction = CalculateTurretViewVector(MyShip.homingTurret);
+		targetPosition = MyShip.homingTurret.GetPosition() + direction * SearchDistance;
+		tHas = true;
+		if (MyShip.homingTurret.IsUnderControl && MyShip.homingTurret.IsShooting && t > lockStopT + lockWaitT && t > pulseT + 60) {
+		pulseT = t;
+		tPulse = true;
+		}
 		} else if (MyShip.Cockpit.IsUnderControl) {
 		direction = Vector3D.Normalize(MyShip.Cockpit.WorldMatrix.Forward);
 		}
@@ -381,7 +403,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 				// radar coord is not accurate
 				var maxL = volume.X > volume.Y ? volume.X > volume.Z? volume.X : volume.Z : volume.Y > volume.Z ? volume.Y : volume.Z ;
 				maxL/=5.0;
-				targetPosition = position;
+				targetPosition = position + MyShip.Cockpit.WorldMatrix.Forward * 5;
 				selectRadius = maxL;
 				
 				haveTarget=true;
@@ -415,13 +437,15 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 		FoundTarget = MyShip.ScanPoint(Point);
 		}
 		
-		if(!FoundTarget.IsEmpty()){
-			MyTarget = new Target(FoundTarget);
+		if(!FoundTarget.IsEmpty() && MyTargetList.Where(t => FoundTarget.EntityId == t.EntityId).ToList().Count == 0){
+			Target MyTarget = new Target(FoundTarget);
+			MyTargetList.Add(MyTarget);
 		}
 	}
-	else{
-		
-		MyDetectedEntityInfo TrackTarget = MyShip.TrackTarget(MyTarget);
+	if (MyTargetList.Count > 0){
+		int i = 0;
+		foreach(Target MyTarget in MyTargetList.ToList()){
+		MyDetectedEntityInfo TrackTarget = MyShip.TrackTarget(MyTarget, i++);
 		if(!TrackTarget.IsEmpty() && TrackTarget.EntityId == MyTarget.EntityId
 		// add by kaien
 		&& (TrackTarget.Position - MyShip.Cockpit.GetPosition()).Length() < SearchDistance
@@ -450,9 +474,11 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 			
 		}
 		else if(t - MyTarget.TimeStamp >= 60){
-			MyTarget = new Target();
+			if (selectedTarget == MyTargetList.Count - 1 && MyTargetList.Count > 1) selectedTarget --; 
+			MyTargetList.Remove(MyTarget);
 			// mod by kaien
 			// NeedScan = false;
+		}
 		}
 	}
 }
@@ -470,8 +496,8 @@ ShipPulseScan(CenterPoint);
 void ShipPulseScan(Vector3D CenterPoint){
 	List<Vector3D> Points = new List<Vector3D>();
 	Points.Add(CenterPoint);
-	for(double x = 0; x < PulseRadius; x += PulseInterval){
-		for(double y = 0; y < PulseRadius; y += PulseInterval){
+	for(double x = PulseInterval; x < PulseRadius; x += PulseInterval){
+		for(double y = PulseInterval; y < PulseRadius; y += PulseInterval){
 			Points.Add(CenterPoint + MyShip.Cockpit.WorldMatrix.Right*x + MyShip.Cockpit.WorldMatrix.Up*y);
 			Points.Add(CenterPoint + MyShip.Cockpit.WorldMatrix.Left*x + MyShip.Cockpit.WorldMatrix.Up*y);
 			Points.Add(CenterPoint + MyShip.Cockpit.WorldMatrix.Right*x + MyShip.Cockpit.WorldMatrix.Down*y);
@@ -479,9 +505,9 @@ void ShipPulseScan(Vector3D CenterPoint){
 		}
 	}
 	MyDetectedEntityInfo Target = MyShip.PulseScanSingle(Points);
-	if(!Target.IsEmpty() && JudgeTargetRelationship(Target)){
-	debugInfo = " found " + Target.IsEmpty() + " " +  JudgeTargetRelationship(Target) + " " + Target.Relationship;
-		MyTarget = new Target(Target);
+	if(!Target.IsEmpty() && JudgeTargetRelationship(Target) && MyTargetList.Where(t=>Target.EntityId == t.EntityId).ToList().Count == 0){
+		Target MyTarget = new Target(Target);
+		MyTargetList.Add(MyTarget);
 		NeedScan = true;
 	}
 }
@@ -493,21 +519,21 @@ lockStopT = t;
 return;
 }
 lockStopT = t;
-	if(MyTarget.EntityId != 0){
+	if(MyTargetList.Count>0){
 		foreach(IMyCameraBlock c in MyShip.Cameras){
 			if(c.IsActive){
-				double distance = Vector3D.Distance(c.GetPosition(), MyTarget.Position) + MyTarget.Diameter + 100;
+				double distance = Vector3D.Distance(c.GetPosition(), MyTargetList[selectedTarget].Position) + MyTargetList[selectedTarget].Diameter + 100;
 				MyDetectedEntityInfo target = c.Raycast(distance,0,0);
 				if(!target.IsEmpty()){
 					Vector3D HitPoint = new Vector3D();
 					Vector3D.TryParse(target.HitPosition.ToString(), out HitPoint);
 					MatrixD TargetMainMatrix = target.Orientation;   
 					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
-					MyTarget.AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - target.Position, TargetLookAtMatrix);
+					MyTargetList[selectedTarget].AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - target.Position, TargetLookAtMatrix);
 					//NeedAimMode = 1;
 				}
 				else{
-					MyTarget.AccurateLockPositionToTarget = new Vector3D();
+					MyTargetList[selectedTarget].AccurateLockPositionToTarget = new Vector3D();
 				}
 			}
 		}
@@ -517,7 +543,8 @@ lockStopT = t;
 // 执行各种瞄准模式
 Vector3D AimOffSetVector; //瞄准偏移量
 void ShipAim(){
-	if(MyTarget.EntityId != 0){
+	if(MyTargetList.Count>0){
+		Target MyTarget = MyTargetList[selectedTarget];
 		MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), MyTarget.Orientation.Forward, MyTarget.Orientation.Up);
 		
 		Vector3D TargetPosition = MyTarget.Position;
@@ -570,7 +597,8 @@ void ShipAim(){
 
 // 执行速度匹配
 void ShipSpeedMatch(){
-	if(MyTarget.EntityId != 0){
+	if(MyTargetList.Count>0){
+		Target MyTarget = MyTargetList[selectedTarget];
 		MyShip.NavigationTo(MyShip.Cockpit.GetPosition(), MyTarget.Velocity);
 	}
 }
@@ -601,7 +629,8 @@ void ShipNavigation(string arguments){
 
 // 执行自动开火
 void ShipAutoFire(){
-	if(NeedAutoFire && NeedAimMode == 1 && MyTarget.EntityId != 0){
+	if(NeedAutoFire && NeedAimMode == 1 && MyTargetList.Count>0){
+		Target MyTarget = MyTargetList[selectedTarget];
 		if(Vector3D.Distance(MyShip.Position, MyTarget.Position) <= AutoFireDistance){
 			MyShip.WeaponsShoot();
 		}
@@ -624,6 +653,7 @@ double MRoll_X_Value = -100;
 double MRoll_Y_Value = 0;
 int MRoll_ZF = -1;
 void ShipManeuverRoll(){
+	Target MyTarget = MyTargetList[selectedTarget];
 	MRoll_X_Value += 0.167*MRoll_ZF;
 	if(MRoll_X_Value > 100 || MRoll_X_Value < -100){MRoll_ZF = -MRoll_ZF;}
 	MRoll_Y_Value = Math.Pow(10000 - MRoll_X_Value*MRoll_X_Value, 0.5);
@@ -662,8 +692,18 @@ void ShowInfoLCD(){
 	string info = ""; string br = "\n";
 	MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), MyShip.Cockpit.WorldMatrix.Forward, MyShip.Cockpit.WorldMatrix.Up);
 	
-	info += "----------------- MEA FCS --------------------" + br;   
-	info += " OnOff: " + (NeedScan ? (MyTarget.EntityId == 0 ? "Searching" : (MyTarget.AccurateLockPositionToTarget.Length() == 0 ? MyTarget.Name : "[Lock]" + MyTarget.Name)) : " - ") + br;   
+	info += "----------------- MEA FCS --------------------" + br;
+	Target MyTarget = new Target();
+	String multiTargetInfo = "";
+	if (MyTargetList.Count>0) {
+	MyTarget = MyTargetList[selectedTarget];
+	String spliter = "/";
+	if (MyTargetList.Count < maxTargetCount && t / 60 % 2 == 0) {
+	spliter = " ";
+	}
+	multiTargetInfo = (selectedTarget+1) + spliter + MyTargetList.Count;
+	}
+	info += " OnOff: " + (NeedScan ? (MyTarget.EntityId == 0 ? "Searching" : (MyTarget.AccurateLockPositionToTarget.Length() == 0 ? multiTargetInfo + " " + MyTarget.Name : multiTargetInfo + " " + "[Lock]" + MyTarget.Name)) : " - ") + br;   
 	info += " Auto-Aim: " + (NeedAimMode==0 ? " - " : (NeedAimMode == 1 ? "Pri-Aim" : "Direct")) + "     Weapon: " + (NeedWeaponMode == 0 ? "1" : "2") + br;
 	info += " Speed-Match: " + (NeedSpeedMatch ? "On" : " - ") + "     Auto-Fire: " + (NeedAutoFire ? "On" : " - ") + br;
 	double CamerasEnergy = 0;
@@ -701,7 +741,6 @@ void ShowInfoLCD(){
 		info += ( TargetVectorToMe.X > 0 ? (" Right: " + Math.Round(TargetVectorToMe.X,2)) : (TargetVectorToMe.X < 0 ? (" Left: " + -Math.Round(TargetVectorToMe.X,2)): " L-R: 0")) + br;   
 		info += ( TargetVectorToMe.Y > 0 ? (" Up: " + Math.Round(TargetVectorToMe.Y,2)) : (TargetVectorToMe.Y < 0 ? (" Down: " + -Math.Round(TargetVectorToMe.Y,2)): " U-D: 0")) + br + br;   
 	}
-	info += MyShip.debugInfo;
 	info += debugInfo;
 	foreach(IMyTextPanel lcd in InfoLCD){
 		if(!NeedScan){
@@ -735,12 +774,15 @@ void EchoShip(){
 	ec += "Gyroscopes:" + MyShip.Gyroscopes.Count() + "\n";
 	ec += "Thrusts:" + MyShip.Thrusts.Count() + "\n";
 	ec += "Weapons:" + (MyShip.Guns.Count() + MyShip.Rockets.Count()) + "\n";
+	ec += "MaxTargetCount:" + maxTargetCount + "\n";
 	ec += "System Runing " + (t%60 <= 45 ? (t%60 <= 30 ? (t%60 <= 15 ? "\\" : "|") : "/"): "---") + "\n";
 	Echo(ec);
 }
 
 // ==== 输出目标信息到CustomData中 ====
 void EchoTarget(){
+	Target MyTarget = new Target();
+	if (MyTargetList.Count>0) MyTarget = MyTargetList[selectedTarget];
 	string info = ""; string br = "\n";
 	info += "[FCS_TargetInfo]" + br;
 	info += "Name=" + MyTarget.Name + br;
@@ -757,13 +799,26 @@ void EchoTarget(){
 	info += "TimeStamp=" + (t - MyTarget.TimeStamp) + br;//发现到现在过去的帧数
 	info += "[\\FCS_TargetInfo]" + br; //这里的第一个\是转义符号，实际输出的只有一个\符号
 	info += "radarHighThreatPosition=" + radarHighThreatPosition + br;
+	info += "TargetCount="+MyTargetList.Count + br;
+	for(int i = 0; i < MyTargetList.Count; i++) {
+	Target ct = MyTargetList[i];
+	info += "EntityId"+i+"="+ct.EntityId+br;
+	Vector3D posmovect = Vector3D.TransformNormal(ct.AccurateLockPositionToTarget, ct.Orientation);
+	Vector3D TargetPositionct = ct.Position + posmovect;
+	info += "Position"+i+"=" + TargetPositionct + br;
+	info += "Velocity"+i+"=" + ct.Velocity + br;
+	info += "Acceleration"+i+"=" + ct.Acceleration + br;
+	info += "Orientation"+i+"=" + ct.Orientation + br; //指向矩阵
+	info += "Diameter"+i+"=" + ct.Diameter + br;//直径
+	}
 	Me.CustomData = info;
 }
 
 void TurnFCSRotors() {
 if (rotorFcsList.Count == 0) return;
 float a=0,e=0;
-if (MyTarget.EntityId != 0 && t > lockStopT + lockWaitT) {
+if (MyTargetList.Count>0 && t > lockStopT + lockWaitT) {
+Target MyTarget = MyTargetList[selectedTarget];
 // set a and e
 MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), MyShip.Cockpit.WorldMatrix.Forward, MyShip.Cockpit.WorldMatrix.Up);
 Vector3D tpToMe =  Vector3D.TransformNormal(MyTarget.Position - rotorFcsList[1].GetPosition(), refLookAtMatrix);
@@ -902,7 +957,7 @@ void GetBlocks(){
 	// add by kaien
 	MyShip.myPositionOffset = myPositionOffset;
 	BK_Temp = new List<IMyTerminalBlock>();
-	GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CubeGrid == Me.CubeGrid && b is IMyLargeTurretBase  && b.CustomName.Contains(homingTurretName));
+	GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b is IMyLargeTurretBase  && b.CustomName.Contains(homingTurretName));
 	if (BK_Temp.Count > 0)	MyShip.homingTurret = BK_Temp[0] as IMyLargeTurretBase;
 
 	BK_Temp = new List<IMyTerminalBlock>();
@@ -949,8 +1004,6 @@ public class Ship
 	public Vector3D Acceleration;
 	public double Diameter;
 
-	public string debugInfo;
-	
 	// ----- 方块类变量 -----
 	public IMyShipController Cockpit;
 	public IMyShipConnector Connector;
@@ -1087,6 +1140,13 @@ public class Ship
 		MyDetectedEntityInfo FoundTarget = new MyDetectedEntityInfo();
 		
 		List<IMyCameraBlock> RightAngleCameras = GetCanScanCameras(this.Cameras, Point);
+
+		// a b k multi-mode
+		int canUseCount = RightAngleCameras.Count / (1 + MyTargetList.Count);
+		if (canUseCount == 0) return new MyDetectedEntityInfo();
+
+		RightAngleCameras = RightAngleCameras.GetRange(0,canUseCount); // use first canUseCount cameras;
+
 		if(SP_Now_i >= RightAngleCameras.Count){SP_Now_i=0;}
 		double ScanSpeed = (RightAngleCameras.Count*2000)/(Vector3D.Distance(Point, this.Position)*60);//每个循环可用于扫描的摄像头个数   
 		   
@@ -1120,23 +1180,48 @@ public class Ship
 	public MyDetectedEntityInfo PulseScanSingle(List<Vector3D> Points, long EntityId = 0){
 		int sc = 0;
 		int x = 0;//这样做是为了减少不必要的运算量
+		// CODING
+		List<IMyCameraBlock> cameraListSorted = this.Cameras.OrderBy(c=>c.AvailableScanRange).ToList();
+		cameraListSorted.Reverse();
 		foreach(Vector3D p in Points){
-			for(int i = x; i < this.Cameras.Count; i ++){
-				if(this.Cameras[i].CanScan(p)){
-					MyDetectedEntityInfo FoundTarget = this.Cameras[i].Raycast(p);
-					sc ++;
-					if(!FoundTarget.IsEmpty() && this.JudgeTargetRelationship(FoundTarget)){
-						if(EntityId == 0){
-							return FoundTarget;
-						}
-						else if(FoundTarget.EntityId == EntityId){
-							return FoundTarget;
-						}
-					}
-					x = i;
-					break;
+			bool scaned = false;
+			for (int i = 0; i < cameraListSorted.Count; i++) {
+			x = (x + i ) % cameraListSorted.Count;
+			if (cameraListSorted[x].CanScan(p)) {
+			scaned = true;
+			break;
+			}
+			}
+
+			if (!scaned) break;
+
+			MyDetectedEntityInfo FoundTarget = cameraListSorted[x].Raycast(p);
+			sc ++;
+			if(!FoundTarget.IsEmpty() && this.JudgeTargetRelationship(FoundTarget)){
+				if(EntityId == 0){
+					return FoundTarget;
+				}
+				else if(FoundTarget.EntityId == EntityId){
+					return FoundTarget;
 				}
 			}
+
+			// for(int i = x; i < this.Cameras.Count; i ++){
+			// 	if(this.Cameras[i].CanScan(p)){
+			// 		MyDetectedEntityInfo FoundTarget = this.Cameras[i].Raycast(p);
+			// 		sc ++;
+			// 		if(!FoundTarget.IsEmpty() && this.JudgeTargetRelationship(FoundTarget)){
+			// 			if(EntityId == 0){
+			// 				return FoundTarget;
+			// 			}
+			// 			else if(FoundTarget.EntityId == EntityId){
+			// 				return FoundTarget;
+			// 			}
+			// 		}
+			// 		x = i;
+			// 		break;
+			// 	}
+			// }
 		}
 		return new MyDetectedEntityInfo();
 	}
@@ -1165,7 +1250,7 @@ public class Ship
 	//追踪目标
 	private int TT_Now_i;
 	public Vector3D TrackDeviationToTarget; //基于目标坐标系的偏移量，用来修正中心锁定的问题
-	public MyDetectedEntityInfo TrackTarget(Target Tgt){
+	public MyDetectedEntityInfo TrackTarget(Target Tgt, int idx){
 		
 		MyDetectedEntityInfo FoundTarget = new MyDetectedEntityInfo();
 		
@@ -1174,6 +1259,29 @@ public class Ship
 		Vector3D lidarHitPoint = Tgt.Position + posmove + (t - Tgt.TimeStamp)*Tgt.Velocity/60; //这个碰撞点算法是最正确的
 		
 		List<IMyCameraBlock> RightAngleCameras = GetCanScanCameras(this.Cameras, lidarHitPoint);//获取方向正确的摄像头数量
+		// a b k multi-mode
+		int canUseDenominator = MyTargetList.Count;
+		if (MyTargetList.Count < maxTargetCount) canUseDenominator ++;
+		int canUseCount = RightAngleCameras.Count / canUseDenominator;
+		if (canUseCount == 0) return FoundTarget;
+		int startCount = idx;
+		if (MyTargetList.Count < maxTargetCount && startCount < maxTargetCount - 1) startCount +=1;
+		startCount *= canUseCount;
+		if(startCount == maxTargetCount - 1) {
+		// last one , use all camera left
+		canUseCount += RightAngleCameras.Count % canUseDenominator;
+		}
+		if (!debugInfo.Contains("Error"))
+		debugInfo = " rac " + idx + " "
+		+ MyTargetList.Count + " "
+		+ canUseDenominator + " "
+		+ RightAngleCameras.Count + " " + startCount + " " + canUseCount;
+		if (startCount + canUseCount >  RightAngleCameras.Count) {
+		debugInfo += "Error";
+		return FoundTarget;
+		}
+		RightAngleCameras = RightAngleCameras.GetRange(startCount, canUseCount);
+
 		if(TT_Now_i >= RightAngleCameras.Count){TT_Now_i=0;}
 	   
 	    //执行常规追踪
@@ -1262,8 +1370,6 @@ public class Ship
 	public void UpdateMotionInfo(){
 		this.Diameter = (this.Cockpit.CubeGrid.Max - this.Cockpit.CubeGrid.Min).Length() * this.Cockpit.CubeGrid.GridSize;
 		this.Acceleration = ((this.Cockpit.GetPosition() - this.Position) * 60 - this.Velocity) * 60;
-
-		//this.debugInfo = Math.Round(this.Acceleration.Length()) + "";
 
 		this.Velocity = (this.Cockpit.GetPosition() - this.Position) * 60;
 		this.Position = this.Cockpit.GetPosition();
@@ -1552,6 +1658,10 @@ public static List<IMyCameraBlock> GetRightAngleCameras(List<IMyCameraBlock> Cam
 			res.Add(cm);
 		}
 	}
+	res = res.OrderBy(c => {
+		var v = c.GetPosition() - MyShip.Cockpit.GetPosition();
+		return v.X * 10000000 + v.Y * 1000 + v.Z;
+	}).ToList();
 	return res;
 }
 // -- 计算可扫描的摄像头 --

@@ -642,13 +642,13 @@ void GetBlocks()
 	Cockpit = GridTerminalSystem.GetBlockWithName(CockpitNameTag) as IMyShipController;     
 	if(Cockpit == null)     
 	{     
-		Debug = "未检测到主控座椅： " + CockpitNameTag;     
+		Debug = "No Main Control： " + CockpitNameTag;     
 		return;     
 	}     
 	LCD = GridTerminalSystem.GetBlockWithName(LCDNameTag) as IMyTextPanel;     
 	if(LCD == null)     
 	{     
-		Debug = "未检测到LCD面板： " + LCDNameTag;     
+		Debug = "No LCD： " + LCDNameTag;     
 		return;     
 	}     
 	AllGravity = new List<IMyTerminalBlock>(); 
@@ -662,7 +662,7 @@ void GetBlocks()
 	}     
 	if(AllGravity.Count < 1)     
 	{     
-		Debug = "未找到任何重力发生器";     
+		Debug = "No Gravity Generator";     
 		return;     
 	}     
      
@@ -744,7 +744,7 @@ void GetBlocks()
 	}     
 	if(Gyroscopes.Count < 1)     
 	{     
-		Debug = "没有任何陀螺仪";     
+		Debug = "No Gyroscopes";     
 		return;     
 	}     
 

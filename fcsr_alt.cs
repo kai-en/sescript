@@ -51,10 +51,12 @@
 
 // =============== »ù´¡ÉèÖÃ =============
 //ÔÙ´ÎÇ¿µ÷£¬Ã¿¸ö×ª×ÓÅÚÌ¨µÄËùÓĞÁã¼ş±ØĞëÔÚÍ¬Ò»¸ö±à×éÖĞ£¬²¢ÇÒÕâ¸ö±à×éÖĞ±ØĞëÓĞÒ»¸öÃû×Ö°üº¬ AimBlockKey¹Ø¼ü×ÖµÄ·½¿éÓÃÓÚÃé×¼¡£¶à¸ö×ª×ÓÅÚÌ¨µÄ·½¿éÓ¦¸Ã¸÷×Ô·ÅÔÚ×Ô¼ºµÄ±à×é£¬²»ÔÊĞí³åÍ»¡£
-const string FCSComputerNameTag = "FCS_Computer"; //FCS±à³Ì¿éÃû×Ö£¬ÓÃÓÚ¶ÁÈ¡ÆäÖĞÄ¿±ê£¬·Ç±ØĞë¡£
+const string FCSComputerNameTag = "Programmable block fcs"; //FCS±à³Ì¿éÃû×Ö£¬ÓÃÓÚ¶ÁÈ¡ÆäÖĞÄ¿±ê£¬·Ç±ØĞë¡£
 const string AimBlockKey = "FCS#R"; //Ãé×¼¿éÃû×Ö¹Ø¼ü×Ö£¬¿ÉÒÔĞ´ÔÚÃû×ÖÖĞ£¬Ö»Òª°üº¬Õâ¸ö¹Ø¼ü×Ö¼´¿É¡£
 const string LCDNameTag = "FCSR_LCD"; //LCDÃû×Ö£¬ÓÃÀ´ÏÔÊ¾¸÷¸öÄ¿±êºÍÅÚÌ¨ĞÅÏ¢£¬·Ç±ØĞë£¬Ò²¿ÉÒÔÊÇ¶à¸ö¡£
 const string RotorNagtiveTag = "[-]"; //×ª×Ó¸º×ª±êÇ©¡£µ±×ª×ÓÃû×ÖÀïÍêÈ«°üº¬Õâ¸ö±êÇ©µÄÊ±ºò£¬Ëü»á±»Ç¿ÖÆÈÏÎªÊÇ·´Ïò¿ØÖÆµÄ×ª×Ó¡£ÓÃÀ´½â¾öÄ³Ğ©ÌØÊâ½á¹¹µÄ×ª×ÓÎÊÌâ
+
+string CockpitNameTag = "R_FORWARD";
 
 // ============== Õ½¶·ÉèÖÃ ==============
 const double AttackDistance = 950; //Ä¬ÈÏÎäÆ÷µÄ×Ô¶¯¿ª»ğ¾àÀë
@@ -70,7 +72,7 @@ const string FireTimerNameTag = "[Fire_Timer]";  //×Ô¶¯¿ª»ğ¶¨Ê±¿éÃû×Ö±êÇ©£¬¶¨Ê±¿
 const double BulletInitialSpeed = 170; //×Óµ¯³õËÙ¶È
 const double BulletAcceleration = 10; //×Óµ¯¼ÓËÙ¶È
 const double BulletMaxSpeed = 190; //×Óµ¯×î´óËÙ¶È
-const double ShootDistance = 950; //¿ª»ğ¾àÀë
+const double ShootDistance = 910; //¿ª»ğ¾àÀë
 
 // ============== ÆäËûÉèÖÃ ==============
 static int AttentionRandomTime = 180; //Ëæ»ú¾¯½äÄ£Ê½µÄÇĞ»»¼ä¸ô£¬60ÊÇ1Ãë£¬120ÊÇ2Ãë£¬Õâ¸öÊı±ØĞëÊÇÕûÊı
@@ -101,6 +103,11 @@ static int AttentionMode = 2; //´ıÃüÄ£Ê½£¬1 ×ÔÓÉ 2Ö¸ÏòX×ª×ÓÇ°·½ 3Ëæ»úÄ£Ê½
 List<RotorBase> FCSR = new List<RotorBase>(); //ÅÚÌ¨¼¯ºÏ
 List<Target> TargetList = new List<Target>(); //Ä¿±ê¼¯ºÏ
 static Vector3D PBPosition;
+
+IMyShipController Cockpit;
+bool isAeroDynamic = true;
+static int aeroACS = -180;
+static int aeroAMP = 0;
 
 Program()
 {
@@ -143,23 +150,45 @@ void Main(string arguments)
 	}
 
 	//Ö¸ÁîÃ¿¸öÅÚÌ¨Ñ¡Ôñ×î½üµÄÄ¿±ê
-	if(isOnOff){
+	int mode = 0; // no aero
+	if (isAeroDynamic && Cockpit != null) {
+	var MeVelocity = Cockpit.GetShipVelocities().LinearVelocity;
+	MatrixD refWorldMatrix = Cockpit.WorldMatrix;
+	MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), refWorldMatrix.Forward, refWorldMatrix.Up);
+	Vector3D mySpeedToMe = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
+	if (Math.Abs(mySpeedToMe.Z)>18) {
+	if(aeroAMP != 1) {
+	aeroACS = t;
+	aeroAMP = 1;
+	}
+	mode = 1; // aero high speed
+	} else {
+	if(aeroAMP != 2) {
+	aeroACS = t;
+	aeroAMP = 2;
+	}
+	mode = 2; // aero low speed
+	}
+	}
+
+	if(isOnOff && mode != 1){
 		foreach(RotorBase R in FCSR){
 			R.UpdateMotionInfo();//¸üĞÂÔË¶¯ĞÅÏ¢
 			if(TargetList.Count > 0){
 				R.AttackCloestTarget(TargetList);
-				Echo("debugInfo" + R.debugInfo);
 			}
 			else{
-				R.Attention(AttentionMode);//¹éÎ»
+				R.Attention(AttentionMode, mode);//¹éÎ»
 			}
 			R.CheckPlayerControl();//¼ì²âÍæ¼Ò¿ØÖÆ
 			R.ShowLCD();//LCDÏÔÊ¾×´Ì¬ĞÅÏ¢
+			Echo("debugInfo" + R.debugInfo);
 			
 		}
 	}else{
 		foreach(RotorBase R in FCSR){
-			R.Attention(1);
+			R.Attention(1, mode);
+			Echo("debugInfo" + R.debugInfo);
 		}
 	}
 	
@@ -210,6 +239,10 @@ public void ShowMainLCD()
 List<IMyLargeTurretBase> AutoWeapons = new List<IMyLargeTurretBase>();
 public void GetBlocks()
 {
+	List<IMyTerminalBlock> tmpBlocks = new List<IMyTerminalBlock>();
+	GridTerminalSystem.GetBlocksOfType(tmpBlocks, b => b.CustomName.Contains(CockpitNameTag) );
+	if (tmpBlocks.Count>0) Cockpit = (IMyShipController)tmpBlocks[0];
+	else Cockpit = null;
 
 	GridTerminalSystem.GetBlocksOfType(AutoWeapons, b => true);
 	
@@ -233,7 +266,9 @@ public void GetBlocks()
 			Echo(info);
 		}
 	}
-	else{init = true;}
+	else{
+	init = true;
+	}
 }
 
 // =========== Ä¿±ê»ùÀà ============
@@ -260,19 +295,33 @@ public class Target
 	//Fire Control System$OnOff@Aim@Weapon@ExactLock@Fire@Speed$79432486378773108@´óĞÍÍø¸ñ 3108@62.6996810199223@{X:910.617573761076 Y:-767.260930602875 Z:-641.466380670639}@{X:0 Y:0 Z:0}@{X:0 Y:0 Z:0}@{X:0 Y:0 Z:-1}@{X:0 Y:1 Z:0}@0$
 	public void GetTarget(IMyProgrammableBlock computer)
 	{
-		if(computer != null && computer.CustomData.Split('$').Length >= 1){
-			try{
-				long.TryParse(computer.CustomData.Split('$')[2].Split('@')[0], out EntityId);
-				if(EntityId != 0){
-					this.Name = computer.CustomData.Split('$')[2].Split('@')[1];
-					double.TryParse(computer.CustomData.Split('$')[2].Split('@')[2], out this.Diameter);
-					Vector3D.TryParse(computer.CustomData.Split('$')[2].Split('@')[3], out this.Position);
-					Vector3D.TryParse(computer.CustomData.Split('$')[2].Split('@')[4], out this.Velocity);
-					Vector3D.TryParse(computer.CustomData.Split('$')[2].Split('@')[5], out this.Acceleration);
-					this.TimeStamp = t;
-				}
-			}
-			catch{}
+		if(computer != null && computer.CustomData.Split('\n').Length >= 1){
+CustomConfiguration cfgTarget = new CustomConfiguration(computer);
+cfgTarget.Load();
+
+string tmpS = "";
+double tmpD = 0D;
+long tmpL = 0L;
+
+cfgTarget.Get("EntityId", ref tmpL);
+this.EntityId = tmpL;
+
+if(this.EntityId != 0){
+cfgTarget.Get("Diameter", ref tmpD);
+this.Diameter = tmpD;
+
+cfgTarget.Get("Position", ref tmpS);
+Vector3D.TryParse(tmpS, out this.Position);
+
+cfgTarget.Get("Velocity", ref tmpS);
+Vector3D.TryParse(tmpS, out this.Velocity);
+
+cfgTarget.Get("Acceleration", ref tmpS);
+Vector3D.TryParse(tmpS, out this.Acceleration);
+
+this.TimeStamp = t;
+}
+
 		}
 	}
 	
@@ -330,6 +379,9 @@ public class RotorBase
 	public double horiD;
 	public double vert;
 	public double vertD;
+	static float pp=20F,pi=1F,pd=0F, pim=0.1F;
+	public PIDController pidX = new PIDController(pp, pi, pd,pim,-pim,12);
+	public PIDController pidY = new PIDController(pp, pi, pd,pim,-pim,12);
 	
 	// -------- ³õÊ¼»¯·½·¨ ---------
 	public RotorBase(IMyBlockGroup thisgroup)
@@ -422,38 +474,123 @@ public class RotorBase
 	}
 	
 	// ------- ´ıÃü¹éÎ» --------
-	public void Attention(int ATMode)
+	public void Attention(int ATMode, int aeroMode)
 	{
-		Vector3D aimPoint = new Vector3D();
-		MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.RotorXs[0].WorldMatrix.Forward, this.RotorXs[0].WorldMatrix.Up);
-		switch(ATMode){
-			case 1: //×ÔÓÉÄ£Ê½£¬¹Ø±ÕËùÓĞ×ª×ÓÔË¶¯
+		this.debugInfo = "aeromode " + aeroMode;
+		// Vector3D aimPoint = new Vector3D();
+		// MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.RotorXs[0].WorldMatrix.Forward, this.RotorXs[0].WorldMatrix.Up);
+		float xt = 0F, yt=0F;
+		switch(aeroMode) {
+		case 0:
 			for(int i = 0; i < this.RotorXs.Count; i ++){
-				this.RotorXs[i].TargetVelocityRPM = 0;
-			}
-			for(int i = 0; i < this.RotorYs.Count; i ++){
-				this.RotorYs[i].TargetVelocityRPM = 0;
-			}
-			break;
-			case 2: //rotorÇåÁã
-			for(int i = 0; i < this.RotorXs.Count; i ++){
-			             var a = this.RotorXs[i].Angle;
+			            var a = this.RotorXs[i].Angle;
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
-				this.RotorXs[i].TargetVelocityRPM = -a;
+				if (a < -Math.PI) a = a + MathHelper.TwoPi;
+				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
 			             var a = this.RotorYs[i].Angle;
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
-				this.RotorYs[i].TargetVelocityRPM = -a;
+				if (a < -Math.PI) a = a + MathHelper.TwoPi;
+				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
 			}
-			break;
-			case 3: //Ëæ»úÖ¸Ïò£¬½öÖ¸ÏòÅÚËşµÄÉÏ°ëÇò
-			if(t%AttentionRandomTime == 0){
-				aimPoint = this.RotorXs[0].GetPosition() + this.RotorXs[0].WorldMatrix.Forward*(R_D.Next(-500,500)) + this.RotorXs[0].WorldMatrix.Right*(R_D.Next(-500,500)) + this.RotorXs[0].WorldMatrix.Up*(R_D.Next(100,500));
-				this.AimAtTarget(aimPoint);
+		break;
+		case 1:
+			if (this.RotorXs[0].Position.X < 0) {
+			// left rotor
+			yt = (float)(0.2 * Math.PI);
+			} else {
+			yt = (float)(-0.2 * Math.PI);
 			}
-			break;
+			if (t > aeroACS + 180) yt = 0;
+
+			if (t < aeroACS + 60) {
+			if (this.RotorXs[0].Position.X < 0) {
+			// left rotor
+			xt = (float)(1.05 * Math.PI);
+			} else {
+			xt = (float)(0.95 * Math.PI);
+			}
+			} else {
+			xt = 0;
+			}
+
+			for(int i = 0; i < this.RotorXs.Count; i ++){
+			            var a = this.RotorXs[i].Angle - xt;
+				if (a > Math.PI) a = a - MathHelper.TwoPi;
+				if (a < -Math.PI) a = a + MathHelper.TwoPi;
+				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
+			}
+			for(int i = 0; i < this.RotorYs.Count; i ++){
+			            var a = this.RotorYs[i].Angle - yt;
+				if (a > Math.PI) a = a - MathHelper.TwoPi;
+				if (a < -Math.PI) a = a + MathHelper.TwoPi;
+				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
+			}
+		break;
+		case 2:
+			if (t > aeroACS + 180) yt = 0;
+			else {
+			if (this.RotorXs[0].Position.X < 0) {
+			// left rotor
+			yt = (float)(0.2 * Math.PI);
+			} else {
+			yt = (float)(-0.2 * Math.PI);
+			}			
+			}
+
+			if (t < aeroACS + 60) xt = 0;
+			else {
+			if (this.RotorXs[0].Position.X < 0) {
+			// left rotor
+			xt = (float)(1.05 * Math.PI);
+			} else {
+			xt = (float)(0.95 * Math.PI);
+			}
+			}
+			for(int i = 0; i < this.RotorXs.Count; i ++){
+			            var a = this.RotorXs[i].Angle - xt;
+				if (a > Math.PI) a = a - MathHelper.TwoPi;
+				if (a < -Math.PI) a = a + MathHelper.TwoPi;
+				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
+			}
+			for(int i = 0; i < this.RotorYs.Count; i ++){
+			            var a = this.RotorYs[i].Angle - yt;
+				if (a > Math.PI) a = a - MathHelper.TwoPi;
+				if (a < -Math.PI) a = a + MathHelper.TwoPi;
+				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
+			}
+
+		break;
 		}
+		// switch(ATMode){
+		// 	case 1: //×ÔÓÉÄ£Ê½£¬¹Ø±ÕËùÓĞ×ª×ÓÔË¶¯
+		// 	for(int i = 0; i < this.RotorXs.Count; i ++){
+		// 		this.RotorXs[i].TargetVelocityRPM = 0;
+		// 	}
+		// 	for(int i = 0; i < this.RotorYs.Count; i ++){
+		// 		this.RotorYs[i].TargetVelocityRPM = 0;
+		// 	}
+		// 	break;
+		// 	case 2: //rotorÇåÁã
+		// 	for(int i = 0; i < this.RotorXs.Count; i ++){
+		// 	             var a = this.RotorXs[i].Angle;
+		// 		if (a > Math.PI) a = a - MathHelper.TwoPi;
+		// 		this.RotorXs[i].TargetVelocityRPM = -a;
+		// 	}
+		// 	for(int i = 0; i < this.RotorYs.Count; i ++){
+		// 	             var a = this.RotorYs[i].Angle;
+		// 		if (a > Math.PI) a = a - MathHelper.TwoPi;
+		// 		this.RotorYs[i].TargetVelocityRPM = -a;
+		// 	}
+		// 	break;
+		// 	case 3: //Ëæ»úÖ¸Ïò£¬½öÖ¸ÏòÅÚËşµÄÉÏ°ëÇò
+		// 	if(t%AttentionRandomTime == 0){
+		// 		aimPoint = this.RotorXs[0].GetPosition() + this.RotorXs[0].WorldMatrix.Forward*(R_D.Next(-500,500)) + this.RotorXs[0].WorldMatrix.Right*(R_D.Next(-500,500)) + this.RotorXs[0].WorldMatrix.Up*(R_D.Next(100,500));
+		// 		this.AimAtTarget(aimPoint);
+		// 	}
+		// 	break;
+		// }
 		
 	}
 	
@@ -763,6 +900,15 @@ res = val;
 }
 }
 
+public void Get(string key, ref long res)
+{
+long val;
+if (long.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
 public void Get(string key, ref float res)
 {
 float val;
@@ -838,5 +984,55 @@ foreach (KeyValuePair<string, string> va in cfg)
 sb.Append(va.Key).Append('=').Append(va.Value).Append('\n');
 }
 block.CustomData = sb.ToString();
+}
+}
+
+public class PIDController
+{
+public static double DEF_SMALL_GRID_P = 31.42;
+public static double DEF_SMALL_GRID_I = 0;
+public static double DEF_SMALL_GRID_D = 10.48;
+
+public static double DEF_BIG_GRID_P = 15.71;
+public static double DEF_BIG_GRID_I = 0;
+public static double DEF_BIG_GRID_D = 7.05;
+
+double integral;
+double lastInput;
+
+double gain_p;
+double gain_i;
+double gain_d;
+double upperLimit_i;
+double lowerLimit_i;
+double second;
+
+public PIDController(double pGain, double iGain, double dGain, double iUpperLimit = 0, double iLowerLimit = 0, float stepsPerSecond = 60f)
+{
+gain_p = pGain;
+gain_i = iGain;
+gain_d = dGain;
+upperLimit_i = iUpperLimit;
+lowerLimit_i = iLowerLimit;
+second = stepsPerSecond;
+}
+
+public double Filter(double input, int round_d_digits)
+{
+double roundedInput = Math.Round(input, round_d_digits);
+
+integral = integral + (input / second);
+integral = (upperLimit_i > 0 && integral > upperLimit_i ? upperLimit_i : integral);
+integral = (lowerLimit_i < 0 && integral < lowerLimit_i ? lowerLimit_i : integral);
+
+double derivative = (roundedInput - lastInput) * second;
+lastInput = roundedInput;
+
+return (gain_p * input) + (gain_i * integral) + (gain_d * derivative);
+}
+
+public void Reset()
+{
+integral = lastInput = 0;
 }
 }
