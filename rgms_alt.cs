@@ -1,5 +1,5 @@
 static int rgms_no = 0;
-static float missileGravityRate = 0.1F;
+static float missileGravityRate = 2F;
 
 //Introduction
             #region Introduction
@@ -69,7 +69,7 @@ static float missileGravityRate = 0.1F;
                 public double MissileMass = 0;
                 public double MissileThrust = 0;
                 public bool IsLargeGrid = false;
-                public double FuseDistance = 7;
+                public double FuseDistance = 2;
 
                 //Runtime Assignables
                 public bool HAS_DETACHED = false;
@@ -292,7 +292,7 @@ static float missileGravityRate = 0.1F;
 	    if (panelInfo.StartsWith("[T:") && tokens.Length >= 7) {
 	       targetPanelPosition = new Vector3D(Convert.ToDouble(tokens[1]),Convert.ToDouble(tokens[2]),Convert.ToDouble(tokens[3]));
 	       targetPanelVelocity = new Vector3D(Convert.ToDouble(tokens[4]),Convert.ToDouble(tokens[5]),Convert.ToDouble(tokens[6]));
-	       targetPanelVelocity += - missileGravityRate * RC.GetNaturalGravity();
+	       //targetPanelVelocity += - missileGravityRate * RC.GetNaturalGravity();
 	       targetPanelHasTarget = true;
 	    }
 
@@ -354,7 +354,7 @@ static float missileGravityRate = 0.1F;
                 double Vclosing = (TargetVelocity - MissileVelocity).Length();
 
                 //If Under Gravity Use Gravitational Accel
-                Vector3D GravityComp = -RC.GetNaturalGravity();
+                Vector3D GravityComp = -RC.GetNaturalGravity() * missileGravityRate;
 
                 //Calculate the final lateral acceleration
                 Vector3D LateralDirection = Vector3D.Normalize(Vector3D.Cross(Vector3D.Cross(Rel_Vel, LOS_New), Rel_Vel));
@@ -373,7 +373,7 @@ static float missileGravityRate = 0.1F;
 
 	    // var thrusterLowerLimit = 0.4;
 	    float thrusterLowerLimit = 0.9F;
-	    if ((TargetPosition - MissilePosition).Length() < 500) thrusterLowerLimit = 0.1F; // a b k 
+	    if ((TargetPosition - MissilePosition).Length() < 500) thrusterLowerLimit = 0.4F; // a b k 
                 ThrustPower = MathHelper.Clamp(ThrustPower, thrusterLowerLimit, 1); //for improved thrust performance on the get-go
                 foreach (IMyThrust thruster in This_Missile.THRUSTERS)
                 {
@@ -402,7 +402,9 @@ static float missileGravityRate = 0.1F;
                 //Detonates warheads in close proximity
                 if ((TargetPosition - MissilePosition).LengthSquared() < 20 * 20 && This_Missile.WARHEADS.Count > 0) //Arms
                 { foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).IsArmed = true; } }
-                if ((TargetPosition - MissilePosition).LengthSquared() < This_Missile.FuseDistance * This_Missile.FuseDistance && This_Missile.WARHEADS.Count > 0) //A mighty earth shattering kaboom
+	    bool targetNeer = (TargetPosition - MissilePosition).LengthSquared() < This_Missile.FuseDistance * This_Missile.FuseDistance;
+	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 50*50 && (TargetPosition - MissilePosition).LengthSquared() > 20*20;
+                if ((targetGetFar)&& This_Missile.WARHEADS.Count > 0) //A mighty earth shattering kaboom
                 { (This_Missile.WARHEADS[0] as IMyWarhead).Detonate(); }
 
             }
@@ -434,13 +436,19 @@ static float missileGravityRate = 0.1F;
                 Lstrundata = "No More Missile (Gyros) Detected";
 
                 //Iterates Through List To Find Complete Missile Based On Gyro
+	    // a b K
+	    GYROS = GYROS.OrderBy(g=>{
+	    var rcmt = RC.WorldMatrix;
+	    var tranmt = MatrixD.CreateLookAt(new Vector3D(), rcmt.Forward, rcmt.Up);
+	    return Vector3D.TransformNormal(g.GetPosition()-RC.GetPosition(), tranmt).Z;
+	    }).ToList();
                 foreach (var Key_Gyro in GYROS)
                 {
                     MISSILE NEW_MISSILE = new MISSILE();
                     NEW_MISSILE.GYRO = Key_Gyro;
 
                     Vector3D GyroPos = Key_Gyro.GetPosition();
-                    double Distance = 40;
+                    double Distance = 20;
 
                     //Sorts And Selects Turrets
                     List<IMyTerminalBlock> TempTurrets = TURRETS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < 100000);
@@ -512,12 +520,21 @@ static float missileGravityRate = 0.1F;
 
 	// a b K
 	int compareXY(IMyTerminalBlock a, IMyTerminalBlock b, IMyTerminalBlock s) {
-	    var da = Math.Pow(a.Position.X - s.Position.X, 2) + Math.Pow(a.Position.Y - s.Position.Y, 2);
-	    var db = Math.Pow(b.Position.X - s.Position.X, 2) + Math.Pow(b.Position.Y - s.Position.Y, 2);
-	    return (int)(da - db);
+	    if (a.CubeGrid != s.CubeGrid) {
+	    return 100000000;
+	    }
+	    if (b.CubeGrid != s.CubeGrid) {
+	    return -100000000;
+	    }
+	    var gyroLookAtMat = MatrixD.CreateLookAt(new Vector3D(), s.WorldMatrix.Forward, s.WorldMatrix.Up);
+	    var da = Vector3D.TransformNormal(a.GetPosition() - s.GetPosition(), gyroLookAtMat);
+	    var db = Vector3D.TransformNormal(b.GetPosition() - s.GetPosition(), gyroLookAtMat);
+	    return (int)((Math.Pow(da.X,2) + Math.Pow(da.Z,2)) - (Math.Pow(db.X,2) + Math.Pow(db.Z,2)));
 	}
 	bool filterClose(IMyTerminalBlock t, IMyTerminalBlock s) {
-	var d = Math.Sqrt(Math.Pow(t.Position.X - s.Position.X, 2) + Math.Pow(t.Position.Y - s.Position.Y, 2));
+	var gyroLookAtMat = MatrixD.CreateLookAt(new Vector3D(), s.WorldMatrix.Forward, s.WorldMatrix.Up);
+	var dt = Vector3D.TransformNormal(t.GetPosition() - s.GetPosition(), gyroLookAtMat);
+	var d = Math.Sqrt(Math.Pow(dt.X, 2) + Math.Pow(dt.Z, 2));
 	return d < 2;
 	}
 

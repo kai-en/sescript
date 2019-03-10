@@ -581,7 +581,8 @@ SetGyroOverride(true);
 // auto balance in gravity
 var ng = naturalGravity;
 bool isAssist = isDown || isLaunch || (floatModeOn&&isVF) || isSM;
-bool suc = Cockpit.IsUnderControl || (homingTurret!=null&&homingTurret.IsUnderControl);
+bool suc = Cockpit.IsUnderControl;
+bool tuc = homingTurret != null && homingTurret.IsUnderControl;
 if ((!(flyByOn||dockingOn) && ng.Length() > 0.001f && !rulerOn && dampenersOn) || isAssist) {
 if (!suc || isAssist) {
 if(isHold == false && !isAssist) {
@@ -601,7 +602,7 @@ if(isDown) {
 diff += angleWhenDown;
 }
 Vector3D av = Cockpit.GetShipVelocities().AngularVelocity;
-if (LockTargetPosition.Equals(Vector3D.Zero) && !isSM) {
+if (LockTargetPosition.Equals(Vector3D.Zero) && !isSM && !tuc) {
 SetGyroPitch(diff * AimRatio * 60);
 SetGyroYaw((-Cockpit.RotationIndicator.Y) * 30);
 } else {

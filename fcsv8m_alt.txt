@@ -468,7 +468,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 				MatrixD TargetMainMatrix = TrackTarget.Orientation;   
 				MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
 				MyTarget.AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - TrackTarget.Position, TargetLookAtMatrix);
-			} else if (!MyShip.Cockpit.IsUnderControl){
+			} else if (!MyShip.Cockpit.IsUnderControl && !(MyShip.homingTurret!=null && MyShip.homingTurret.IsUnderControl)){
 				MyTarget.AccurateLockPositionToTarget = Vector3D.Zero;
 			}
 			
