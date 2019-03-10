@@ -403,7 +403,7 @@ static float missileGravityRate = 2F;
                 if ((TargetPosition - MissilePosition).LengthSquared() < 20 * 20 && This_Missile.WARHEADS.Count > 0) //Arms
                 { foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).IsArmed = true; } }
 	    bool targetNeer = (TargetPosition - MissilePosition).LengthSquared() < This_Missile.FuseDistance * This_Missile.FuseDistance;
-	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 50*50 && (TargetPosition - MissilePosition).LengthSquared() > 20*20;
+	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 20*20 ;
                 if ((targetGetFar)&& This_Missile.WARHEADS.Count > 0) //A mighty earth shattering kaboom
                 { (This_Missile.WARHEADS[0] as IMyWarhead).Detonate(); }
 

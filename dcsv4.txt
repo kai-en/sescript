@@ -164,7 +164,6 @@ int t = 1;
 Vector3D MePosition = Vector3D.Zero;
 double AimRatio = 0.5; //瞄准力度，正常范围0到1，可以大于1
 double maxAV = 1;
-double QERatio = 1; //自动瞄准时QE按键的滚转力度，范围0到1
 Vector3D MeLastPosition;
 Vector3D MeVelocity;
 Vector3D MeLastVelocity;
@@ -207,8 +206,6 @@ Program()
 {
 //Runtime.UpdateFrequency = UpdateFrequency.Update1;
 }
-
-bool firstDebug = true;
 
 void Main(string arguments, UpdateType updateType)
 {
@@ -350,7 +347,6 @@ case "DOWN":
 isDown = !isDown;
 if (isDown) {
 isLaunch=false;
-resetThrusters();
 downStartPos = MePosition;
 } else {
 SetGyroOverride(false);
@@ -604,7 +600,7 @@ diff += angleWhenDown;
 Vector3D av = Cockpit.GetShipVelocities().AngularVelocity;
 if (LockTargetPosition.Equals(Vector3D.Zero) && !isSM && !tuc) {
 SetGyroPitch(diff * AimRatio * 60);
-SetGyroYaw((-Cockpit.RotationIndicator.Y) * 30);
+SetGyroYaw((Cockpit.RotationIndicator.Y) * 30);
 } else {
 // rix = -Y riy = X
 SetGyroPitch((-Cockpit.RotationIndicator.X) * 30);
@@ -771,6 +767,32 @@ if(inputVec.Z > 0.1){
 SetThrusterListOverride(backwardThrusters, -1f);
 }
 }
+bool cd = false;
+if ( inputVec.Y < -0.5) {
+// TEST DOWN
+var forward = Cockpit.WorldMatrix.Forward;
+var left = Cockpit.WorldMatrix.Left;
+var diffX = diffGravity(left, naturalGravity, forward);
+var diffZ = diffGravity(forward, naturalGravity, -left);
+if (Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2 && MeVelocity.Length() < 3) {
+isDown = true;
+cd = true;
+}
+
+} else if (inputVec.Y > 0.5) {
+isDown = false;
+cd = true;
+}
+if(cd){
+if (isDown) {
+isLaunch=false;
+downStartPos = MePosition;
+} else {
+SetGyroOverride(false);
+}
+resetThrusters();
+}
+
 
 // parse locktarget from fcs
 if (fighterFcs != null) {
@@ -2255,7 +2277,7 @@ if (sideRoll < -0.5f) sideRoll = -0.5f;
 if (Math.Abs(sideRoll) < 0.05f) sideRoll = 0;
 diff += sideRoll; //
  if (Math.Abs(diff) > 0.0001f) { // death zone
-sr = -QERatio*diff*60;
+sr = -1*diff*60;
  } else {
 sr = -AimRatio*30*shipRollToMe.X;
 }
@@ -3335,28 +3357,14 @@ const int pidc= 6;
 PIDController[] vtolPIDList = new PIDController[pidc];
 void Main_VT()
 {
-float currentThrustForward = 0f;
-float maxThrustForward = 0f;
-float currentThrustBackward = 0f;
-float maxThrustBackward = 0f;
-
 IMyShipController remote = null;
 
 List<List<IMyTerminalBlock>> rotorLeft = null, rotorRight = null;
 //, rotorRear = null;
 
-bool debug =false;
 
 const string rotorLeftName = "Advanced Rotor Left";
 const string rotorRightName = "Advanced Rotor Right";
-const string rotorRearName = "Rotor Rear";
-
-// How far the rotor will lean in forward direction
-const float forwardAngle = (float)Math.PI / 2f; // angle in rad
-// How far the rotor will lean in backward direction
-const float backwardAngle = forwardAngle;
-// How far the rear rotor will lean to the sides
-const float rearAngle = forwardAngle;
 
 float targetAngleLeft, targetAngleRight, targetAngleRear;
 float leftIndicator, rightIndicator;
@@ -3459,7 +3467,6 @@ if ((naturalGravityLength < 0.01f && tl == 0 && needA.Y < 0.5)
 if(isDown){
 tl = - angleWhenDown;
 }
-debugInfo = "tl "+tl;
 forwardMoveIndicator = tl; // use tl as fmi directly
 targetAngleLeft = tl;
 targetAngleRight = -tl;
