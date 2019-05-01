@@ -1,0 +1,67 @@
+
+string CockpitNameTag = "R_FORWARD";
+
+IMyShipController Cockpit;
+
+bool init = false;
+
+Program()
+{
+//Runtime.UpdateFrequency = UpdateFrequency.Update1;
+}
+
+IMyTerminalBlock getBlockByName(string name, bool sameGrid = true, bool sameName = false) {
+List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+GridTerminalSystem.SearchBlocksOfName(name, blocks);
+if (sameGrid) FilterSameGrid(Me.CubeGrid, ref blocks);
+if (sameName) FilterSameName(name, ref blocks);
+if (blocks.Count > 0) return blocks[0];
+return null;
+}
+
+void Main(string arguments, UpdateType updateType)
+{
+if (!init) {
+Cockpit = getBlockByName(CockpitNameTag) as IMyShipController;
+init = true;
+}
+
+Echo(Cockpit.CustomName);
+
+var type = Cockpit.GetType();
+Echo(type.Name);
+
+var lcds = Cockpit.GetLCDPanels();
+if (lcds == null) {
+Echo("Can not get lcd");
+}
+
+}
+
+void FilterSameGrid<T>(IMyCubeGrid grid, ref List<T> blocks) where T: class, IMyTerminalBlock
+{
+List<T> filtered = new List<T>();
+for (int i = 0; i < blocks.Count; i++)
+{
+if (blocks[i].CubeGrid == grid)
+{
+filtered.Add(blocks[i]);
+}
+}
+if(filtered.Count == 0) return;
+blocks = filtered;
+}
+
+void FilterSameName(String name, ref List<IMyTerminalBlock> blocks)
+{
+List<IMyTerminalBlock> filtered = new List<IMyTerminalBlock>();
+for (int i = 0; i < blocks.Count; i++)
+{
+if (blocks[i].CustomName.Equals(name))
+{
+filtered.Add(blocks[i]);
+}
+}
+if(filtered.Count == 0) return;
+blocks = filtered;
+}

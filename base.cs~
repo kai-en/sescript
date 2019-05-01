@@ -1,0 +1,6 @@
+long t = 0;
+
+public Program() 
+{ 
+  Runtime.UpdateFrequency = UpdateFrequency.Update1; 
+} 

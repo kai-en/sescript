@@ -59,12 +59,16 @@ bool meLastOn = false;
 float meRpm;
 int meFullMode = 0;
 float meRpmToggle = 0;
+float meSeqValue = 0.5F;
+static float pp=0.1F,pi=0.1F,pd=0F, pim=5F;
+PIDController mePID = new PIDController(pp, pi, pd,pim,-pim,60);
+int t = 0;
 
 //================== 自定义参数结束 ==============     
      
 IMyShipController Cockpit;     
 IMyTextPanel LCD;     
-String debugInfo;
+String debugInfo = "";
 
 List<IMyTerminalBlock> AllGravity;     
 List<IMyTerminalBlock> Left;     
@@ -117,7 +121,7 @@ string spotlightGroupName = "Spotlight-GES-G"; // 灯光分组名
 string lcdGroupName = "LCD-GES-G"; // 灯光LCD分组名
 string lightGroupName = "Light-GES-G"; // 散热灯分组名
 Color flameColorMin = new Color(1, 1, 1); // 最低出力时的颜色, 三个数字的顺序是 红 绿 蓝, 范围 0 - 255  
-Color flameColorMax = new Color(1, 100, 255); // 最高出力时的颜色, 取值范围同上  
+Color flameColorMax = new Color(255, 100, 200); // 最高出力时的颜色, 取值范围同上  
  
 string projectorRingGroupName = "Projector-Ring-G"; // projector group name  
 List<IMyTerminalBlock> projectorRing = new List<IMyTerminalBlock>();    
@@ -138,7 +142,9 @@ bool AttitudeCorrection = true;
 bool NeedMoveRoll = false;   
 bool fireMode = false;
 int fireType=0;
-List<IMyTerminalBlock> shieldGen = new List<IMyTerminalBlock>();   
+List<IMyTerminalBlock> shieldGen = new List<IMyTerminalBlock>();
+
+List<List<IMyTerminalBlock>> RCSThrusters = new List<List<IMyTerminalBlock>>(); // 0L 1R 2D 3U
   
 void findByGroup(string groupName, List<IMyTerminalBlock> blocks) {  
   var group = GridTerminalSystem.GetBlockGroupWithName(groupName);  
@@ -311,6 +317,8 @@ void Main(string arguments)
 	ShowLCD();
 
 	readStatusAfter();
+
+	t++;
 }
 
 Vector3D lastSpeedToMe = Vector3D.Zero;
@@ -379,7 +387,6 @@ void SystemControl()
 		}
 		float thrustLeftValue = (ThLeftVaule - ThRightVaule)*9.8f;     
 		float thrustUpValue = (ThUpVaule - ThDownVaule)*9.8f;
-		debugInfo = "" + thrustUpValue;
 		float thrustForwardValue = (ThForwardVaule - ThBackwardVaule)*9.8f; 
 
 		if(InertiaEliminate)     
@@ -507,18 +514,62 @@ void SystemControl()
 			LeftValue = Cockpit.RotationIndicator.Y * (float)MouseMoveRatio;
 			UpValue = Cockpit.RotationIndicator.X * (float)MouseMoveRatio;
 		}
+
+		if (RCSThrusters.Count>0) {
+		    var lv = -Cockpit.RotationIndicator.Y * (float)MouseMoveRatio;
+		    var uv = Cockpit.RotationIndicator.X * (float)MouseMoveRatio;
+
+		    debugInfo = "rcs count " + RCSThrusters[0].Count + "";
+		    if (lv >= 0) {
+		       setThrust(RCSThrusters[1], lv);
+		       setThrust(RCSThrusters[0], 0);
+		    }
+		    if (lv <=0) {
+		       setThrust(RCSThrusters[0], -lv);
+		       setThrust(RCSThrusters[1], 0);
+		    }
+		    if (uv >= 0) {
+		       setThrust(RCSThrusters[3], uv);
+		       setThrust(RCSThrusters[2], 0);
+		    }
+		    if (uv <=0) {
+		       setThrust(RCSThrusters[2], -uv);
+		       setThrust(RCSThrusters[3], 0);
+		    }
+		}
+
 		if (MergeMeList.Count > 0) {
 			IMyGyro g = GyrosUn[0] as IMyGyro;
 			if (Math.Abs(LeftValue)<0.01)LeftValue=0;
 			if (Math.Abs(UpValue)<0.01)UpValue=0;
-			if ((meFullMode < 2 && thrustUpValue < -5)
-			 || (meFullMode == 2 && thrustUpValue > 5)) {
+			bool needPlus = false;
+			if ((meFullMode < 2 && thrustUpValue < -9.5)
+			 || (meFullMode == 2 && thrustUpValue > 9.5)) {
+				needPlus = true;
+			} else if ((meFullMode < 2 && thrustUpValue > -0.5)
+			 || (meFullMode == 2 && thrustUpValue  < 0.5)) {
+			}
+
+			// pid version
+			var input = - thrustUpValue / 9.8F;
+			var output = (float)mePID.Filter(input, 2);
+			var naturalGravity = Cockpit.GetNaturalGravity();
+			if (naturalGravity.Length() > 0.01){
+			meSeqValue = (float)naturalGravity.Length() / 20F + MathHelper.Clamp( output, -0.5F, 0.5F);
+
+			bool needMeOn = calcNeedOn(t, meSeqValue);
+			// if (needPlus) { // old way
+			if (needMeOn) { // new way
 				PlayActionList(MergeMeList,"OnOff_On");
 				meLastOn = true;
-			} else {
+			}else {
 				PlayActionList(MergeMeList,"OnOff_Off");
 				meLastOn = false;
 			}
+			} else {
+			PlayActionList(MergeMeList,"OnOff_Off");
+			}
+			// CODING
 		}
 		if(OnOff){
 		SetBlocksValueFloat(Left,"Gravity",LeftValue);     
@@ -628,6 +679,7 @@ void ShowLCD()
 
 	info += " ME rpm : " + (meRpm) + br;
 	info += " ME GRatio : " + (meMaxG*60/meRpm) + br;
+	info += " ME SeqValue : " + meSeqValue + br;
 
 	info += debugInfo;
   
@@ -985,6 +1037,28 @@ void GetBlocks()
         floorDir = null;
     }
     //floor.ShowOnHUD= true;
+
+    List<IMyTerminalBlock> tmpList = new List<IMyTerminalBlock>();
+    GridTerminalSystem.GetBlocksOfType<IMyThrust> (tmpList, x => x.CubeGrid != Me.CubeGrid && x.CustomName.Contains("RCS"));
+    if (tmpList.Count > 0) {
+    List<List<IMyTerminalBlock>> tmpSort = sortByRelativePosition(tmpList, "Z", true, 0.01D);
+
+    List<List<IMyTerminalBlock>> b_f_ad = distinctDirection(tmpSort[0], Cockpit);
+    List<List<IMyTerminalBlock>> b_b_ad = distinctDirection(tmpSort[1], Cockpit);
+
+    for(int i =0; i < 4; i++) {
+    RCSThrusters.Add(new List<IMyTerminalBlock>());
+    }
+    RCSThrusters[0].Add(b_f_ad[0][0]);
+    RCSThrusters[0].Add(b_b_ad[1][0]);
+    RCSThrusters[1].Add(b_f_ad[1][0]);
+    RCSThrusters[1].Add(b_b_ad[0][0]);
+    RCSThrusters[2].Add(b_f_ad[2][0]);
+    RCSThrusters[2].Add(b_b_ad[3][0]);
+    RCSThrusters[3].Add(b_f_ad[3][0]);
+    RCSThrusters[3].Add(b_b_ad[2][0]);
+    }
+
 	init = true;
 }     
      
@@ -1061,23 +1135,23 @@ void SetGyroRoll(double rollRate)
      
 // util
 
-List<List<IMyTerminalBlock>> sortByRelativePosition(List<IMyTerminalBlock> blocks, string dir, bool isAsc) { 
+List<List<IMyTerminalBlock>> sortByRelativePosition(List<IMyTerminalBlock> blocks, string dir, bool isAsc, double interval = 10D) { 
   MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up); 
  
   IEnumerable<IGrouping<int, IMyTerminalBlock>> grouped; 
  
   switch (dir) { 
   case "X": 
-    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).X * 10 ))); 
+    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).X * interval ))); 
   break; 
   case "Y": 
-    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Y * 10 ))); 
+    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Y * interval ))); 
   break; 
   case "Z": 
-    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Z * 10 ))); 
+    grouped = blocks.GroupBy(b=>(int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Z * interval ))); 
   break;
   case "ZX":
-    grouped = blocks.GroupBy(b=>((int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Z * 10 ))) * 1000 + (int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).X * 10 ))); 
+    grouped = blocks.GroupBy(b=>((int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).Z * interval ))) * 1000 + (int)Math.Round((Vector3D.TransformNormal(b.GetPosition() - Cockpit.GetPosition(), refLookAtMatrix).X * interval ))); 
   break;
   default: 
   return null; 
@@ -1088,3 +1162,128 @@ List<List<IMyTerminalBlock>> sortByRelativePosition(List<IMyTerminalBlock> block
   else 
     return grouped.OrderByDescending(g=>g.Key).Select(g=>g.ToList()).ToList(); 
 } 
+
+bool calcNeedOn(int t, float meSeqValue) {
+if (meSeqValue < 0.0001) return false;
+int n = 0, d = 5;
+for (int i = 0; i < 7; i ++) {
+if (i / 5f > meSeqValue) {
+n = i - 1;
+break;
+}
+}
+
+for (int i = 1; i < 11 - n; i++) {
+if ( (n + i) * 1F / (5 + i) > meSeqValue ) {
+n = n + i -1;
+d = 5 + i - 1;
+break;
+}
+}
+
+int mod = t % d;
+return mod <= n; 
+}
+
+
+public class PIDController
+{
+public static double DEF_SMALL_GRID_P = 31.42;
+public static double DEF_SMALL_GRID_I = 0;
+public static double DEF_SMALL_GRID_D = 10.48;
+
+public static double DEF_BIG_GRID_P = 15.71;
+public static double DEF_BIG_GRID_I = 0;
+public static double DEF_BIG_GRID_D = 7.05;
+
+double integral;
+double lastInput;
+
+double gain_p;
+double gain_i;
+double gain_d;
+double upperLimit_i;
+double lowerLimit_i;
+double second;
+
+public PIDController(double pGain, double iGain, double dGain, double iUpperLimit = 0, double iLowerLimit = 0, float stepsPerSecond = 60f)
+{
+gain_p = pGain;
+gain_i = iGain;
+gain_d = dGain;
+upperLimit_i = iUpperLimit;
+lowerLimit_i = iLowerLimit;
+second = stepsPerSecond;
+}
+
+public double Filter(double input, int round_d_digits)
+{
+double roundedInput = Math.Round(input, round_d_digits);
+
+integral = integral + (input / second);
+integral = (upperLimit_i > 0 && integral > upperLimit_i ? upperLimit_i : integral);
+integral = (lowerLimit_i < 0 && integral < lowerLimit_i ? lowerLimit_i : integral);
+
+double derivative = (roundedInput - lastInput) * second;
+lastInput = roundedInput;
+
+return (gain_p * input) + (gain_i * integral) + (gain_d * derivative);
+}
+
+public void Reset()
+{
+integral = lastInput = 0;
+}
+}
+
+// 0L 1R 2D 3U 4F 5B
+List<List<IMyTerminalBlock>> distinctDirection(List<IMyTerminalBlock> blocks, IMyTerminalBlock refobj) {
+List<List<IMyTerminalBlock>> result = new List<List<IMyTerminalBlock>>();
+
+for(int i = 0; i < 6; i++) {
+result.Add(new List<IMyTerminalBlock>());
+}
+
+		foreach(IMyTerminalBlock b in blocks)     
+		{     
+			Base6Directions.Direction CockpitForward = b.WorldMatrix.GetClosestDirection(refobj.WorldMatrix.Forward);     
+			Base6Directions.Direction CockpitUp = b.WorldMatrix.GetClosestDirection(refobj.WorldMatrix.Up);     
+			Base6Directions.Direction CockpitLeft = b.WorldMatrix.GetClosestDirection(refobj.WorldMatrix.Left);     
+			switch (CockpitForward)     
+			{     
+			case Base6Directions.Direction.Forward:     
+				result[4].Add(b);
+				break;     
+			case Base6Directions.Direction.Backward:     
+				result[5].Add(b);
+				break;     
+			}     
+			switch (CockpitUp)     
+			{     
+			case Base6Directions.Direction.Forward:     
+				result[3].Add(b);
+				break;     
+			case Base6Directions.Direction.Backward:     
+				result[2].Add(b);
+				break;     
+			}     
+			switch (CockpitLeft)     
+			{     
+			case Base6Directions.Direction.Forward:     
+				result[0].Add(b);
+				break;     
+			case Base6Directions.Direction.Backward:     
+				result[1].Add(b);
+				break;     
+			}     
+		}     
+
+return result;
+}
+
+void setThrust(List<IMyTerminalBlock> tl, float percent) {
+foreach (IMyTerminalBlock b in tl) {
+((IMyThrust)b).ThrustOverridePercentage = percent;
+}
+
+}

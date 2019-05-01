@@ -140,8 +140,6 @@ if(nf<0)nf=0;
 aeroSpeedLevel = (int)nf / 20;
 }
 
-bool useMergeEngine = false;
-List<IMyTerminalBlock> meMergeBlockList = new List<IMyTerminalBlock>();
 List<IMySensorBlock> sensors = new List<IMySensorBlock>();
 long lastMotherSignalTime=0;
 
@@ -168,9 +166,11 @@ Vector3D MeVelocity;
 Vector3D MeLastVelocity;
 Vector3D MeAcceleration;
 Vector3D inputVec;
+bool isUnderControl = false;
 MyShipMass myShipMass;
 float shipMass;
 MatrixD refLookAtMatrix;
+MatrixD refMatrix;
 
 Vector3D LockTargetPosition = Vector3D.Zero;
 Vector3D LockTargetVelocity = Vector3D.Zero;
@@ -187,8 +187,12 @@ Vector3D maintainSpeedToMeAA = Vector3D.Zero;
 bool floatModeOn = false;
 bool isVF=true;
 IMyShipController Head;
-int legMode = 1;
+List<IMyTerminalBlock> rotorShoulder = new List<IMyTerminalBlock>();
+string RotorShoulderNameTag = "Rotor Shoulder";
+int legMode = 0;
 float legMargin = 0.05f * (float)Math.PI;
+int legFoldStart = 0;
+int legFoldTime = 120;
 List<IMyCameraBlock> cameraList = new List<IMyCameraBlock>();
 double fme = 100;
 List<IMyTerminalBlock> lcdBackList = new List<IMyTerminalBlock>();
@@ -578,7 +582,7 @@ SetGyroOverride(true);
 // auto balance in gravity
 var ng = naturalGravity;
 bool isAssist = isDown || isLaunch || (floatModeOn&&isVF) || isSM;
-bool suc = Cockpit.IsUnderControl;
+bool suc = isUnderControl;
 bool tuc = homingTurret != null && homingTurret.IsUnderControl;
 if ((!(flyByOn||dockingOn) && ng.Length() > 0.001f && !rulerOn && dampenersOn) || isAssist) {
 if (!suc || isAssist) {
@@ -679,7 +683,7 @@ var nud = Cockpit.WorldMatrix.Up.Dot(naturalGravity);
 DimSpeed(maintainSpeedToMe.Y, upThrusters, downThrusters, ref thrusterPercentY, nowSpeedToMe.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
 lastSpeedY = nowSpeedToMe.Y;
 
-if (Cockpit.IsUnderControl) {
+if (isUnderControl) {
 if (inputVec.Z > 0.1) {
 SetThrusterListOverride(backwardThrusters, 100f);
 SetBlocksValueColor(lcdBackList, "BackgroundColor", new Color(128,0,0));
@@ -696,10 +700,6 @@ SetBlocksValueColor(lcdBackList, "BackgroundColor", new Color(1,1,1));
 Main_RT(arguments, updateType);
 
 Main_VT();
-
-if (useMergeEngine){
-Main_ME();
-}
 
 // start dummy
 if (isDummy) {
@@ -733,24 +733,61 @@ bool isDummy = false;
 Vector3D dummyT;
 Random rnd = new Random();
 
+void VFTransform(int mode) {
+if(rotorShoulder.Count ==0) return;
+if (mode == 1) {
+rotorShoulder[0].SetValueFloat("Velocity", -10f);
+rotorShoulder[1].SetValueFloat("Velocity", 10f);
+} else {
+rotorShoulder[0].SetValueFloat("Velocity", 10f);
+rotorShoulder[1].SetValueFloat("Velocity", -10f);
+}
+}
 
 void NavigationInfoUpdata(bool before)
 {
-refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);
+IMyShipController msc;
+if (Head != null && Head.IsUnderControl) {
+msc = Head;
+} else {
+msc = Cockpit;
+}
+refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), msc.WorldMatrix.Forward, msc.WorldMatrix.Up);
+refMatrix = msc.WorldMatrix;
 if(before)
 {
-MePosition = Cockpit.CenterOfMass;
-MeVelocity = Cockpit.GetShipVelocities().LinearVelocity;
+MePosition = msc.CenterOfMass;
+MeVelocity = msc.GetShipVelocities().LinearVelocity;
 MeAcceleration = (MeVelocity-MeLastVelocity)*60;
 
-myShipMass = Cockpit.CalculateShipMass();
+myShipMass = msc.CalculateShipMass();
 shipMass = myShipMass.PhysicalMass;
 naturalGravity = Cockpit.GetNaturalGravity();
 naturalGravityLength = naturalGravity.Length();
 dampenersOn = Cockpit.DampenersOverride;
 
+if(Head != null ) {
+if (Head.IsUnderControl) {
+if (legMode == 1) {
+VFTransform(2);
+legMode = 2;
+}
+} else {
+if (legMode == 2) {
+VFTransform(1);
+legMode = 1;
+}
+}
+}
+isUnderControl = false;
+if (Head != null && Head.IsUnderControl) {
+inputVec = Head.MoveIndicator;
+isUnderControl = true;
+} else if (Cockpit.IsUnderControl){
 inputVec = Cockpit.MoveIndicator;
-if(Cockpit.IsUnderControl) {
+isUnderControl = true;
+}
+if(isUnderControl) {
 
 if(inputVec.Z>0.1) {
 aeroSLp(false);
@@ -1123,6 +1160,19 @@ dockingOn=true;
 Cockpit = getBlockByName(CockpitNameTag) as IMyShipController;
 if(Cockpit == null)
 {Echo(CockpitNameTag  + "未找到");}
+refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);
+
+Head = getBlockByName(HeadNameTag) as IMyShipController;
+if (Head != null) {
+legMode = 1;
+List<IMyTerminalBlock> tmprs = new List<IMyTerminalBlock>();
+GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(tmprs, b => ((IMyTerminalBlock)b).CustomName.Contains(RotorShoulderNameTag));
+List<List<IMyTerminalBlock>> tmprss = sortByRelativePosition(tmprs, "X", true);
+if (tmprss.Count >0) {
+rotorShoulder.Add(tmprss[0][0]);
+rotorShoulder.Add(tmprss[1][0]);
+}
+}
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
 LCD.Add(((IMyTextSurfaceProvider)Cockpit).GetSurface(2));
@@ -1148,88 +1198,16 @@ Debug = "没有任何陀螺仪";
 setupGyroField(Gyroscopes, ref gyroYawField, ref gyroYawFactor, ref gyroPitchField, ref gyroPitchFactor, ref gyroRollField, ref gyroRollFactor);
 SetGyroOverride(false);
 
-// init merge block engine
-if (useMergeEngine) {
-GridTerminalSystem.GetBlocksOfType<IMyShipMergeBlock>(meMergeBlockList, b => b.CubeGrid == Me.CubeGrid);
-
-List<IMyTerminalBlock> offGridGyros = new List<IMyTerminalBlock>();
-GridTerminalSystem.GetBlocksOfType<IMyGyro>(offGridGyros, b => b.CubeGrid != Me.CubeGrid);
-foreach(IMyTerminalBlock t in offGridGyros) {
-t.ShowOnHUD = false;
-}
-
-mggZL = new MeGyroGroup();
-mggZR = new MeGyroGroup();
-mggYL = new MeGyroGroup();
-mggYR = new MeGyroGroup();
-mggXU = new MeGyroGroup();
-mggXD = new MeGyroGroup();
-
-List<List<IMyTerminalBlock>> zSort = sortByRelativePosition(offGridGyros, "Z", true);
-List<IMyTerminalBlock> fg = zSort[0];
-List<IMyTerminalBlock> bg = zSort[zSort.Count - 1];
-
-List<List<IMyTerminalBlock>> tmpLL = sortByRelativePosition(fg, "X", true);
-mggZL.gyros.AddList(tmpLL[0]);
-mggZR.gyros.AddList(tmpLL[1]);
-mggYL.gyros.AddList(tmpLL[0]);
-mggYR.gyros.AddList(tmpLL[1]);
-
-tmpLL = sortByRelativePosition(bg, "X", true);
-mggZL.gyros.AddList(tmpLL[0]);
-mggZR.gyros.AddList(tmpLL[1]);
-mggYL.gyros.AddList(tmpLL[0]);
-mggYR.gyros.AddList(tmpLL[1]);
-
-List<List<IMyTerminalBlock>> ySort = sortByRelativePosition(offGridGyros, "Y", true);
-List<IMyTerminalBlock> ug = ySort[0];
-List<IMyTerminalBlock> dg = ySort[ySort.Count - 1];
-
-tmpLL = sortByRelativePosition(ug, "X", true);
-mggZL.gyros.AddList(tmpLL[0]);
-mggZR.gyros.AddList(tmpLL[1]);
-mggYL.gyros.AddList(tmpLL[0]);
-mggYR.gyros.AddList(tmpLL[1]);
-
-tmpLL = sortByRelativePosition(dg, "X", true);
-mggZL.gyros.AddList(tmpLL[0]);
-mggZR.gyros.AddList(tmpLL[1]);
-mggYL.gyros.AddList(tmpLL[0]);
-mggYR.gyros.AddList(tmpLL[1]);
-
-List<List<IMyTerminalBlock>> xSort = sortByRelativePosition(offGridGyros, "X", true);
-List<IMyTerminalBlock> lg = xSort[0];
-List<IMyTerminalBlock> rg = xSort[xSort.Count - 1];
-
-tmpLL = sortByRelativePosition(lg, "Y", true);
-mggXD.gyros.AddList(tmpLL[0]);
-mggXU.gyros.AddList(tmpLL[1]);
-
-tmpLL = sortByRelativePosition(rg, "Y", true);
-mggXD.gyros.AddList(tmpLL[0]);
-mggXU.gyros.AddList(tmpLL[1]);
-
-setupGyroField(mggZL.gyros, ref mggZL.gyroYawField, ref mggZL.gyroYawFactor,ref mggZL.gyroPitchField, ref mggZL.gyroPitchFactor,ref mggZL.gyroRollField, ref mggZL.gyroRollFactor);
-setupGyroField(mggZR.gyros, ref mggZR.gyroYawField, ref mggZR.gyroYawFactor,ref mggZR.gyroPitchField, ref mggZR.gyroPitchFactor,ref mggZR.gyroRollField, ref mggZR.gyroRollFactor);
-setupGyroField(mggYL.gyros, ref mggYL.gyroYawField, ref mggYL.gyroYawFactor,ref mggYL.gyroPitchField, ref mggYL.gyroPitchFactor,ref mggYL.gyroRollField, ref mggYL.gyroRollFactor);
-setupGyroField(mggYR.gyros, ref mggYR.gyroYawField, ref mggYR.gyroYawFactor,ref mggYR.gyroPitchField, ref mggYR.gyroPitchFactor,ref mggYR.gyroRollField, ref mggYR.gyroRollFactor);
-setupGyroField(mggXU.gyros, ref mggXU.gyroYawField, ref mggXU.gyroYawFactor,ref mggXU.gyroPitchField, ref mggXU.gyroPitchFactor,ref mggXU.gyroRollField, ref mggXU.gyroRollFactor);
-setupGyroField(mggXD.gyros, ref mggXD.gyroYawField, ref mggXD.gyroYawFactor,ref mggXD.gyroPitchField, ref mggXD.gyroPitchFactor,ref mggXD.gyroRollField, ref mggXD.gyroRollFactor);
-
-}
-
 findByGroup(liFcsSearchGroupName, liFcsSearchList);
 findByGroup(liFcsLockGroupName, liFcsLockList);
 
-fighterFcs = getBlockByName(fighterFcsName,false,false);
-debugInfo = "Start init fighterFcs";
+fighterFcs = getBlockByName(fighterFcsName,false,true);
 if (fighterFcs != null)
 {
     String cmd = "REINIT:"+CockpitNameTag+","+LCDNameTag+","+ScanRange+","+homingTurretName+","+useTurretAsAimer+","+maxTargetCount;
     TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode());
     List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();
     argumentList.Add(tap);
-    debugInfo = "fighterFcs inited";
     PlayAction(fighterFcs, "Run", argumentList);
 
 }
@@ -1245,137 +1223,7 @@ findByGroup("LCD-Back-G",lcdBackList);
 init = true;
 }
 
-public class MeGyroGroup{
-public List<IMyTerminalBlock> gyros = new List<IMyTerminalBlock>();
-public string[] gyroYawField;
-public float[] gyroYawFactor;
-public string[] gyroPitchField;
-public float[] gyroPitchFactor;
-public string[] gyroRollField;
-public float[] gyroRollFactor;
-public string debugInfoThis;
-
-public void SetGyroYaw(double yawRate)
-{
-for (int i = 0; i < this.gyros.Count; i++)
-{
-this.gyros[i].SetValue(this.gyroYawField[i], (float)yawRate * this.gyroYawFactor[i]);
-float f = this.gyros[i].GetValue<float>(this.gyroYawField[i]);
-}
-}
-
-public void SetGyroPitch(double pitchRate)
-{
-for (int i = 0; i < this.gyros.Count; i++)
-{
-this.gyros[i].SetValue(this.gyroPitchField[i], (float)pitchRate * this.gyroPitchFactor[i]);
-}
-}
-
-public void SetGyroRoll(double rollRate)
-{
-for (int i = 0; i < this.gyros.Count; i++)
-{
-this.gyros[i].SetValue(this.gyroRollField[i], (float)rollRate * this.gyroRollFactor[i]);
-}
-}
-
-}
-
 float MAX_GYRO_FACTOR = 60;
-
-void setMeZPercent(float percent) {
-if (Math.Abs(percent - lastMEPercent.Z) < 0.01) {
-return;
-}
-lastMEPercent.Z = percent;
-float f = percent * MAX_GYRO_FACTOR;
-mggZL.SetGyroYaw(f);
-mggZR.SetGyroYaw(-f);
-mggXU.SetGyroPitch(-f);
-mggXD.SetGyroPitch(f);
-}
-
-void setMeYPercent(float percent) {
-if (Math.Abs(percent - lastMEPercent.Y) < 0.01) {
-return;
-}
-lastMEPercent.Y = percent;
-float f = percent * MAX_GYRO_FACTOR;
-mggYL.SetGyroRoll(f);
-mggYR.SetGyroRoll(-f);
-}
-
-void setMeXPercent(float percent) {
-if (Math.Abs(percent - lastMEPercent.X) < 0.01) {
-return;
-}
-lastMEPercent.X = percent;
-float f = percent * MAX_GYRO_FACTOR;
-mggXU.SetGyroRoll(f);
-mggXD.SetGyroRoll(-f);
-}
-
-Vector3D lastMEPercent = Vector3D.Zero;
-
-float meGetPercent(List<IMyTerminalBlock> incThrusters, List<IMyTerminalBlock> decThrusters) {
-float maxAllFi = 0;
-float maxAllFd = 0;
-float curAllFi = 0;
-float curAllFd = 0;
-for (int i = 0; i < incThrusters.Count; i++) {
-maxAllFi += ((IMyThrust)incThrusters[i]).MaxEffectiveThrust;
-curAllFi += ((IMyThrust)incThrusters[i]).CurrentThrust;
-}
-for (int i = 0; i < decThrusters.Count; i++) {
-maxAllFd += ((IMyThrust)decThrusters[i]).MaxEffectiveThrust;
-curAllFd += ((IMyThrust)decThrusters[i]).CurrentThrust;
-}
-
-float percent;
-if (curAllFi > 0) {
-percent = curAllFi / maxAllFi;
-} else {
-percent = -curAllFd / maxAllFd;
-}
-return percent;
-}
-
-void Main_ME() {
-if (isDummy) {
-return;
-}
-
-if (!Cockpit.IsUnderControl) {
-setMeZPercent(0);
-setMeYPercent(0);
-setMeXPercent(0);
-PlayActionList(meMergeBlockList,"OnOff_Off");
-return;
-}
-
-
-var incThrusters = backwardThrusters;
-var decThrusters = forwardThrusters;
-
-var percent = meGetPercent(incThrusters, decThrusters);
-setMeZPercent(percent);
-
-percent = meGetPercent(upThrusters, downThrusters);
-setMeYPercent(percent);
-
-percent = meGetPercent(rightThrusters, leftThrusters);
-setMeXPercent(percent);
-
-}
-
-
-MeGyroGroup mggZL;
-MeGyroGroup mggZR;
-MeGyroGroup mggYL;
-MeGyroGroup mggYR;
-MeGyroGroup mggXU;
-MeGyroGroup mggXD;
 
 void setupGyroField(List<IMyTerminalBlock> Gyroscopes,
 ref string[] gyroYawField,
@@ -1881,7 +1729,6 @@ cfg.Get("maxAV", ref maxAV);
 cfg.Get("commandWaitTic", ref commandWaitTic);
 cfg.Get("commandAllTic", ref commandAllTic);
 cfg.Get("isBig", ref isBig);
-cfg.Get("useMergeEngine", ref useMergeEngine);
 cfg.Get("isDummy", ref isDummy);
 cfg.Get("isBase", ref isBase);
 cfg.Get("droneAttackRange", ref droneAttackRange);
@@ -2082,10 +1929,6 @@ for (int i = 0; i < incThrusters.Count; i++) {
 for (int i = 0; i < decThrusters.Count; i++) {
 ((IMyThrust)decThrusters[i]).ThrustOverridePercentage =  -percent;
 }
-}
-
-if (isDummy && useMergeEngine) {
-setMeZPercent(-1);
 }
 
 return dr;
@@ -3030,6 +2873,12 @@ if (timeCurrentCycle >= timeMaxCycle)
 {
 try
 {
+// Echo status:
+Echo("DCS v4-vf");
+Echo(debugInfo);
+if(Head != null) {
+Echo("Head: " + Head.CustomName + "\n");
+}
 Echo("WMI Rotor Thruster\nManager... " + RunningSymbol() + "\n");
 
 //Gets reference block that is under control
@@ -3054,7 +2903,7 @@ inputVec.Z = -1;
 }
 }
 }
-var desiredDirection = Vector3D.TransformNormal(inputVec, Cockpit.WorldMatrix); //world relative input vector
+var desiredDirection = Vector3D.TransformNormal(inputVec, refMatrix); //world relative input vector
 if (desiredDirection.LengthSquared() > 0)
 {
 desiredDirection = Vector3D.Normalize(desiredDirection);
@@ -3451,7 +3300,7 @@ var needGra = naturalGravity;
 if(isAeroDynamic&&needGra.Length()>0.01){
 var levelV = Vector3D.Reject(MeVelocity, Vector3D.Normalize(naturalGravity)).Length();
 if (levelV > 20) levelV = 20;
-needGra *= (20 - levelV) / 20;
+needGra *= (24 - levelV) / 24;
 }
 var ngtome = Vector3D.TransformNormal(needGra, refLookAtMatrix);
 needA -= ngtome;
@@ -3469,17 +3318,18 @@ needA.Z=0;
 }
 var tl = 0f;
 if (Math.Abs(needA.Z)<2 || MeVelocity.Length() < 2) {
+tl = 0; legFoldStart = t;
+} else if (t < legFoldStart + legFoldTime && inputVec.Length()<0.1){
 tl = 0;
-}else if(isApproach) {
+} else if(isApproach) {
 tl = (float)Math.PI * dtp;
 }else {
 tl = (float)Math.Atan2(needA.Z, needA.Y);
 }
 tl = MathHelper.Clamp(tl, -0.5f*(float)Math.PI, 0.5f*(float)Math.PI);
 needA.Y = needAPID[1].Filter(needA.Y, 2);
-if ((naturalGravityLength < 0.01f && tl == 0 && needA.Y < 0.5)
-|| (naturalGravityLength > 0.01f && isAeroDynamic && aeroSpeedLevel>0)
-) tl = -(float)Math.PI * 0.5f;
+if ((naturalGravityLength < 0.01f && tl == 0 && needA.Y < 0.5)) tl = -(float)Math.PI * 0.5f;
+else if (naturalGravityLength > 0.01f && isAeroDynamic && aeroSpeedLevel>0) tl = -(float)Math.PI * 0.45f;
 if(isDown){
 tl = - angleWhenDown;
 }
@@ -3507,6 +3357,18 @@ ta = MathHelper.Clamp(ta + 0.5f * (float)Math.PI - legMargin, -legMargin, 0.65f*
 ta = MathHelper.Clamp(ta - 0.15f*(float)Math.PI + legMargin, legMargin, 0.85f*(float)Math.PI +legMargin);
 }
 } else if (legMode == 2) {
+if (i==1) {
+ta = MathHelper.Clamp(ta, -0.25f*(float)Math.PI, 0.1f*(float)Math.PI);
+} else {
+if (ta > 0.1f*(float)Math.PI) {
+ta = MathHelper.Clamp(ta + 0.9f * (float)Math.PI, 0f, 1.4f*(float)Math.PI);
+} else if (ta < -0.25f*(float)Math.PI) {
+ta = MathHelper.Clamp(ta + 1.25f * (float)Math.PI, 0.75f*(float)Math.PI, 1f*(float)Math.PI);
+} else {
+ta = (float)Math.PI;
+}
+//ta = MathHelper.Clamp(ta + 1.5f * (float)Math.PI, 0.5f*(float)Math.PI, 1.5f*(float)Math.PI);
+}
 } else {
 ta = 0.5f * ta + 0.25f*(float)Math.PI;
 }
@@ -3516,7 +3378,12 @@ float unmanlimit=1f;
 //if(!Cockpit.IsUnderControl) unmanlimit=0.25f;
 for (int j = 0; j < rl.Count; j++) {
 var ca = ((IMyMotorStator)rl[j]).Angle;
-var fa = (float)vtolPIDList[i*j*2].Filter(ta-modangle(((IMyMotorStator)rl[j]).Angle), 2)*unmanlimit;
+float fa;
+if (i == 2) {
+fa =  (float)vtolPIDList[i*j*2].Filter(ta-((IMyMotorStator)rl[j]).Angle, 2)*unmanlimit;
+} else {
+fa = (float)vtolPIDList[i*j*2].Filter(ta-modangle(((IMyMotorStator)rl[j]).Angle), 2)*unmanlimit;
+}
 rl[j].SetValueFloat("Velocity", fa);
 rr[j].SetValueFloat("Velocity", (float)vtolPIDList[i*j*2+1].Filter(-ta-modangle(((IMyMotorStator)rr[j]).Angle), 2)*unmanlimit);
 }

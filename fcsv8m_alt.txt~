@@ -32,7 +32,6 @@
 // ---- 方块获取设置 ----
 // 在设置名字时，编组名和方块名共同作用，结果是两者的并集。不填写则不采用这种方式，例如填写了编组名，不填写方块名，就只采用编组里的方块。
 static string CockpitNameTag = "NOT_EXIST_COCKPIT"; //控制座椅名字，设为AUTO时自动使用主控座椅。必须
-static string HeadNameTag = "VF_HEAD"; //可变形战机头部名字
 static string LCDNameTag = "NOT_EXIST_LCD"; //信息面板方块名（设为ALL采用所有的）
 static string[] CamerasNameTag = {"", "NOT_EXIST_CAMERA"}; //摄像头编组名、方块名（设为ALL采用所有的）
 static string[] GyroscopesNameTag = {"", "NOT_EXIST_GYRO"}; //陀螺仪编组名、方块名（设为ALL采用所有的）
@@ -49,11 +48,8 @@ IMyTerminalBlock FireTimer2;
 string rotorFcsGroupName="Rotor-FCS-G";
 List<IMyTerminalBlock> rotorFcsList=new List<IMyTerminalBlock>();
 PIDController[] rotorFcsPIDList = new PIDController[2];
-List<IMyTerminalBlock> rotorRocList=new List<IMyTerminalBlock>();
-PIDController[] rotorRocPIDList = new PIDController[2];
 int lockStopT = 0;
 int lockWaitT = 5* 60;
-int pulseT = 0;
 IMyTextPanel radarOutputLCD = null;
 bool radarWaitNewPos = true;
 Vector3D radarHighThreatPosition = Vector3D.Zero;
@@ -134,7 +130,6 @@ args = kv[1].Split(',');
 }
 Echo(kv[0]);
 switch(kv[0]) {
-//REINIT:R_FORWARD,NOT_EXIST,2000,NOT_EXIST,True
 case ("REINIT"):
 CockpitNameTag = args[0];
 LCDNameTag = args[1]; 
@@ -321,16 +316,6 @@ Vector3D.CreateFromAzimuthAndElevation(turret.Azimuth, turret.Elevation, out dir
 return Vector3D.TransformNormal(direction, turret.WorldMatrix);
 }
 
-Vector3D CalculateTurretViewVector(IMyTerminalBlock rotorA, IMyTerminalBlock rotorE, IMyTerminalBlock refObj)
-{
-Vector3D direction;
-var a = -((IMyMotorStator)rotorA).Angle;
-var e = -((IMyMotorStator)rotorE).Angle;
-Vector3D.CreateFromAzimuthAndElevation(a, e, out direction);
-
-return Vector3D.TransformNormal(direction, refObj.WorldMatrix);
-}
-
 // 扫描目标并自动锁定
 void ShipScan(){
 	if(MyTargetList.Count < maxTargetCount){
@@ -355,22 +340,13 @@ void ShipScan(){
 				tHas = true;
 			}
 		}
-		if(useTurretAsAimer&&MyShip.homingTurret!=null&&MyShip.homingTurret.IsUnderControl)  {
+		if(useTurretAsAimer&&MyShip.homingTurret.IsUnderControl)  {
 		direction = CalculateTurretViewVector(MyShip.homingTurret);
 		targetPosition = MyShip.homingTurret.GetPosition() + direction * SearchDistance;
 		tHas = true;
-		if (MyShip.homingTurret.IsUnderControl && MyShip.homingTurret.IsShooting && t > lockStopT + lockWaitT && t > pulseT + 60) {
-		pulseT = t;
-		tPulse = true;
-		}
-		} else if (rotorRocList.Count > 0) {
-		direction = CalculateTurretViewVector(rotorRocList[0], rotorRocList[1], MyShip.Cockpit);
-		targetPosition = rotorRocList[0].GetPosition() + direction * SearchDistance;
-		tHas = true;
+		if (MyShip.homingTurret.IsShooting && t > lockStopT + lockWaitT) tPulse = true;
 		} else if (MyShip.Cockpit.IsUnderControl) {
 		direction = Vector3D.Normalize(MyShip.Cockpit.WorldMatrix.Forward);
-		} else if (MyShip.Head.IsUnderControl) {
-		direction = Vector3D.Normalize(MyShip.Head.WorldMatrix.Forward);
 		}
 		else if (!flyByAimPosition.Equals(Vector3D.Zero)) {
 		direction = Vector3D.Normalize(flyByAimPosition - MyShip.Cockpit.GetPosition());
@@ -415,14 +391,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 				newRHTP = position;
 				}
 
-				IMyShipController msc;
-				if (MyShip.Head.IsUnderControl) {
-				// use head
-				msc = MyShip.Head;
-				}else {
-				msc = MyShip.Cockpit;
-				}
-				MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), msc.WorldMatrix.Forward, msc.WorldMatrix.Up);
+				MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), MyShip.Cockpit.WorldMatrix.Forward, MyShip.Cockpit.WorldMatrix.Up);
 				var positionToMe = Vector3D.TransformNormal(position-MyShip.Position, refLookAtMatrix);
 				var angle = Math.Abs(Math.Atan2(Math.Sqrt(Math.Pow(positionToMe.X,2)+Math.Pow(positionToMe.Y,2)), Math.Abs(positionToMe.Z)));
 				if (angle > 0.1*Math.PI) continue;
@@ -495,7 +464,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 				MatrixD TargetMainMatrix = TrackTarget.Orientation;   
 				MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
 				MyTarget.AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - TrackTarget.Position, TargetLookAtMatrix);
-			} else if (!MyShip.Cockpit.IsUnderControl && !(MyShip.homingTurret!=null && MyShip.homingTurret.IsUnderControl)){
+			} else if (!MyShip.Cockpit.IsUnderControl){
 				MyTarget.AccurateLockPositionToTarget = Vector3D.Zero;
 			}
 			
@@ -769,25 +738,25 @@ void ShowInfoLCD(){
 		info += ( TargetVectorToMe.Y > 0 ? (" Up: " + Math.Round(TargetVectorToMe.Y,2)) : (TargetVectorToMe.Y < 0 ? (" Down: " + -Math.Round(TargetVectorToMe.Y,2)): " U-D: 0")) + br + br;   
 	}
 	info += debugInfo;
-	foreach(IMyTextSurface lcd in InfoLCD){
+	foreach(IMyTextPanel lcd in InfoLCD){
 		if(!NeedScan){
 		// mod by kaien
-			lcd.FontColor=new Color(BackgroundColorWhenIdle.X, BackgroundColorWhenIdle.Y, BackgroundColorWhenIdle.Z);
+			lcd.SetValue("FontColor",new Color(BackgroundColorWhenIdle.X, BackgroundColorWhenIdle.Y, BackgroundColorWhenIdle.Z));
 		}
 		else if(MyTarget.EntityId == 0){
 		// mod by kaien
-			lcd.FontColor=new Color(BackgroundColorWhenSearch.X, BackgroundColorWhenSearch.Y, BackgroundColorWhenSearch.Z);
+			lcd.SetValue("FontColor",new Color(BackgroundColorWhenSearch.X, BackgroundColorWhenSearch.Y, BackgroundColorWhenSearch.Z));
 		}
 		else if(MyTarget.AccurateLockPositionToTarget.Length() == 0){
 		// mod by kaien
-			lcd.FontColor=new Color(BackgroundColorWhenTarget.X, BackgroundColorWhenTarget.Y, BackgroundColorWhenTarget.Z);
+			lcd.SetValue("FontColor",new Color(BackgroundColorWhenTarget.X, BackgroundColorWhenTarget.Y, BackgroundColorWhenTarget.Z));
 		}
 		else{
 		// mod by kaien
-			lcd.FontColor=new Color(BackgroundColorWhenTLock.X, BackgroundColorWhenTLock.Y, BackgroundColorWhenTLock.Z);
+			lcd.SetValue("FontColor",new Color(BackgroundColorWhenTLock.X, BackgroundColorWhenTLock.Y, BackgroundColorWhenTLock.Z));
 		}
-		//lcd.ShowPublicTextOnScreen();
-		lcd.WriteText(info);
+		lcd.ShowPublicTextOnScreen();
+		lcd.WritePublicText(info);
 	}
 }
 
@@ -795,11 +764,8 @@ void ShowInfoLCD(){
 void EchoShip(){
 	if(MyShip == null){return;}
 	string ec = "";
-	ec += debugInfo + "\n";
-	ec += "ShipStatus:" + MyShip.Debug + "\n";
+	ec += "ShipStatu:" + MyShip.Debug + "\n";
 	ec += "Cockpit:" + MyShip.Cockpit.CustomName + "\n";
-	if(MyShip.Head != null)
-	ec += "Head:" + MyShip.Head.CustomName + "\n";
 	ec += "Cameras:" + MyShip.Cameras.Count() + "\n";
 	ec += "Gyroscopes:" + MyShip.Gyroscopes.Count() + "\n";
 	ec += "Thrusts:" + MyShip.Thrusts.Count() + "\n";
@@ -920,24 +886,21 @@ integral = lastInput = 0;
 
 
 // ==== 获取飞船方块 ====
-List<IMyTextSurface> InfoLCD = new List<IMyTextSurface>();
+List<IMyTextPanel> InfoLCD = new List<IMyTextPanel>();
 void GetBlocks(){
 	//获取LCD
-	GridTerminalSystem.GetBlocksOfType(InfoLCD, b => (LCDNameTag == "" ? (LCDNameTag == "ALL" ? true : false) : ((IMyTerminalBlock)b).CustomName.Contains(LCDNameTag)));
+	GridTerminalSystem.GetBlocksOfType(InfoLCD, b => (LCDNameTag == "" ? (LCDNameTag == "ALL" ? true : false) : b.CustomName.Contains(LCDNameTag)));
 	
 	//获取其他方块
 	List<IMyTerminalBlock> BK = new List<IMyTerminalBlock>();
 	List<IMyTerminalBlock> BK_Temp = new List<IMyTerminalBlock>();
 	
 	//把主控座椅搞进来
-	Echo(debugInfo);
 	if(CockpitNameTag == "AUTO"){
 		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b is IMyShipController && (b as IMyShipController).IsMainCockpit);
 	}
 	else{
 		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b is IMyShipController && b.CustomName.Contains(CockpitNameTag));
-		Echo(CockpitNameTag);
-		Echo(BK_Temp.Count+"");
 	}
 	if(BK_Temp.Count() > 0){
 		BK.Add(BK_Temp[0]);
@@ -986,8 +949,6 @@ void GetBlocks(){
 
 	//初始化飞船类
 	MyShip = new Ship(BK);
-	if(MyShip.Cockpit!=null)
-	InfoLCD.Add(((IMyTextSurfaceProvider)MyShip.Cockpit).GetSurface(1));
 
 	// add by kaien
 	MyShip.myPositionOffset = myPositionOffset;
@@ -1009,27 +970,11 @@ void GetBlocks(){
 	for (int i = 0;i < 2; i ++) {
 	    rotorFcsPIDList[i] = new PIDController(pp, pi, pd,pim,-pim,12);
 	}
-	BK_Temp = new List<IMyTerminalBlock>();
-	GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(BK_Temp, b => b.CustomName.Contains("ROC_A"));
-	if (BK_Temp.Count > 0)
-	rotorRocList.Add(BK_Temp[0]);
-	BK_Temp = new List<IMyTerminalBlock>();
-	GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(BK_Temp, b => b.CustomName.Contains("ROC_E"));
-	if (BK_Temp.Count > 0)
-	rotorRocList.Add(BK_Temp[0]);
-	for (int i = 0;i < 2; i ++) {
-	    rotorRocPIDList[i] = new PIDController(pp, pi, pd,pim,-pim,12);
-	}
 
 	// a b K
 	List<IMyTextPanel> tmpLCDs = new List<IMyTextPanel>();
 	GridTerminalSystem.GetBlocksOfType(tmpLCDs, b => b.CustomName.Contains(RadarOutputNameTag));
 	if(tmpLCDs.Count>0) radarOutputLCD = tmpLCDs[0];
-
-	// a b K
-	List<IMyShipController> tmscl = new List<IMyShipController>();
-	GridTerminalSystem.GetBlocksOfType (tmscl, b=>b.CustomName.Contains(HeadNameTag));
-	if(tmscl.Count > 0) MyShip.Head = tmscl[0];
 	
 }
 
@@ -1057,7 +1002,6 @@ public class Ship
 
 	// ----- 方块类变量 -----
 	public IMyShipController Cockpit;
-	public IMyShipController Head;
 	public IMyShipConnector Connector;
 	public IMyShipConnector MotherConnector;
 	public List<IMyLargeTurretBase> AutoWeapons = new List<IMyLargeTurretBase>();
@@ -1298,12 +1242,6 @@ public class Ship
 		
 		return FoundTargets;
 	}
-
-	public bool isNear(MyDetectedEntityInfo ft, Target t) {
-	       var ftD = Vector3D.Distance(ft.BoundingBox.Max, ft.BoundingBox.Min)/2;
-	       var maxD = ftD > t.Diameter ? ftD : t.Diameter;
-	       return (ft.Position - t.Position).Length() < maxD * 5;
-	}
 	
 	//追踪目标
 	private int TT_Now_i;
@@ -1329,7 +1267,10 @@ public class Ship
 		// last one , use all camera left
 		canUseCount += RightAngleCameras.Count % canUseDenominator;
 		}
+		if (!debugInfo.Contains("Error"))
+		debugInfo = " rac " + idx + " " + RightAngleCameras.Count + " " + startCount + " " + canUseCount;
 		if (startCount + canUseCount >  RightAngleCameras.Count) {
+		debugInfo += "Error";
 		return FoundTarget;
 		}
 		RightAngleCameras = RightAngleCameras.GetRange(startCount, canUseCount);
@@ -1375,7 +1316,7 @@ public class Ship
 			}
 		}
 			//遍历搜索也未找到，进行脉冲阵面扫描
-		if(FoundTarget.IsEmpty() || !isNear(FoundTarget, Tgt)){
+		if(FoundTarget.IsEmpty() || FoundTarget.EntityId != Tgt.EntityId){
 			if(ScanSpeed >= 1 || t%Math.Ceiling(1/ScanSpeed)==0){
 				int LostTick = t - Tgt.TimeStamp;
 				double S_Radius = Tgt.Diameter*1.5; //搜索半径为目标直径1.5倍
@@ -1396,8 +1337,8 @@ public class Ship
 					}
 				}
 				
-				FoundTarget = this.PulseScanSingle(Points);
-				if(!FoundTarget.IsEmpty() && isNear(FoundTarget, Tgt)){
+				FoundTarget = this.PulseScanSingle(Points, Tgt.EntityId);
+				if(!FoundTarget.IsEmpty() && FoundTarget.EntityId == Tgt.EntityId){
 					MatrixD TargetMainMatrix = FoundTarget.Orientation;   
 					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
 					Vector3D hitpoint = new Vector3D();
