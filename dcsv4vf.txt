@@ -190,6 +190,7 @@ bool isVF=true;
 IMyShipController Head;
 List<IMyTerminalBlock> rotorShoulder = new List<IMyTerminalBlock>();
 string RotorShoulderNameTag = "Rotor Shoulder";
+PIDController[] shoulderPIDList = new PIDController[2];
 int legMode = 0;
 float legMargin = 0.05f * (float)Math.PI;
 int legFoldStart = 0;
@@ -736,12 +737,19 @@ Random rnd = new Random();
 
 void VFTransform(int mode) {
 if(rotorShoulder.Count ==0) return;
+float tsl;
 if (mode == 1) {
-rotorShoulder[0].SetValueFloat("Velocity", -10f);
-rotorShoulder[1].SetValueFloat("Velocity", 10f);
+tsl = 0;
 } else {
-rotorShoulder[0].SetValueFloat("Velocity", 10f);
-rotorShoulder[1].SetValueFloat("Velocity", -10f);
+tsl = 0.5f * (float)Math.PI;
+}
+for (int i = 0; i < rotorShoulder.Count; i++) {
+IMyMotorStator r = (IMyMotorStator) rotorShoulder[i];
+if ( i == 0) {
+r.SetValueFloat("Velocity", (float)shoulderPIDList[0].Filter(tsl - modangle(r.Angle),2));
+} else {
+r.SetValueFloat("Velocity", (float)shoulderPIDList[0].Filter(-tsl - modangle(r.Angle),2));
+}
 }
 }
 
@@ -770,15 +778,14 @@ dampenersOn = Cockpit.DampenersOverride;
 if(Head != null ) {
 if (Head.IsUnderControl) {
 if (legMode == 1) {
-VFTransform(2);
 legMode = 2;
 }
 } else {
 if (legMode == 2) {
-VFTransform(1);
 legMode = 1;
 }
 }
+VFTransform(legMode);
 }
 isUnderControl = false;
 if (Head != null && Head.IsUnderControl) {
@@ -1174,10 +1181,14 @@ List<List<IMyTerminalBlock>> tmprss = sortByRelativePosition(tmprs, "X", true);
 if (tmprss.Count >0) {
 rotorShoulder.Add(tmprss[0][0]);
 rotorShoulder.Add(tmprss[1][0]);
+for(int i = 0; i < rotorShoulder.Count; i++) {
+shoulderPIDList[i] = new PIDController(20f, 0.1f, 0f, 1f, -1f, 60);
+}
 }
 }
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
+if (Cockpit is IMyTextSurfaceProvider)
 LCD.Add(((IMyTextSurfaceProvider)Cockpit).GetSurface(2));
 
 if(LCD.Count < 1)
@@ -3307,12 +3318,13 @@ needGra *= (24 - levelV) / 24;
 }
 var ngtome = Vector3D.TransformNormal(needGra, refLookAtMatrix);
 needA -= ngtome;
-if (inputVec.Length()<0.01f && dampenersOn) {
 Vector3D mstm = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
+if (inputVec.Length()<0.01f && dampenersOn) {
+Vector3D mstmn = mstm;
 if (mstm.Length()>0) {
-if (mstm.Length() > 1) mstm *= 1f/mstm.Length();
+if (mstm.Length() > 1) mstmn = mstm * (1f/mstm.Length());
 }
-needA -= mstm * 10.0;
+needA -= mstmn * 10.0;
 }
 if(backwardThrusters.Where( t => {
 return ((IMyThrust)t).Enabled;
@@ -3320,7 +3332,7 @@ return ((IMyThrust)t).Enabled;
 needA.Z=0;
 }
 var tl = 0f;
-if (Math.Abs(needA.Z)<2 || MeVelocity.Length() < 2) {
+if (naturalGravityLength < 0.01f && (Math.Abs(needA.Z)<2 || MeVelocity.Length() < 2 )) {
 tl = 0; legFoldStart = t;
 } else if (t < legFoldStart + legFoldTime && inputVec.Length()<0.1){
 tl = 0;
@@ -3331,8 +3343,11 @@ tl = (float)Math.Atan2(needA.Z, needA.Y);
 }
 tl = MathHelper.Clamp(tl, -0.5f*(float)Math.PI, 0.5f*(float)Math.PI);
 needA.Y = needAPID[1].Filter(needA.Y, 2);
+
 if ((naturalGravityLength < 0.01f && tl == 0 && needA.Y < 0.5)) tl = -(float)Math.PI * 0.5f;
-else if (naturalGravityLength > 0.01f && isAeroDynamic && aeroSpeedLevel>0) tl = -(float)Math.PI * 0.45f;
+else if (naturalGravityLength > 0.01f && isAeroDynamic &&
+(aeroSpeedLevel>0 || (flyByOn&& mstm.Z<-20))
+) tl = -(float)Math.PI * 0.45f;
 if(isDown){
 tl = - angleWhenDown;
 }

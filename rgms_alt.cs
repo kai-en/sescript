@@ -89,7 +89,7 @@ static float missileGravityRate = 2F;
 
             //Consts
             double Global_Timestep = 0.016;
-            double PNGain = 10;
+            double PNGain = 3;
 	double Offset = 0;
             double ThisShipSize = 10;
             string Lstrundata = "Please ensure you have read the \n setup and hints & tips, found within \n the custom data of this block\n";
