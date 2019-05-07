@@ -161,7 +161,8 @@ void Main(string arguments)
 	MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), refWorldMatrix.Forward, refWorldMatrix.Up);
 	Vector3D mySpeedToMe = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
 	bool controlByHead = Head!=null && Head.IsUnderControl;
-	if (Math.Abs(mySpeedToMe.Z)>18 && !controlByHead) {
+	var naturalGravity = Cockpit.GetNaturalGravity();
+	if (Math.Abs(mySpeedToMe.Z)>18 && !controlByHead && naturalGravity.Length() > 0.01) {
 	if(aeroAMP != 1) {
 	aeroACS = t;
 	aeroAMP = 1;
@@ -541,7 +542,7 @@ public class RotorBase
 			}
 		break;
 		case 2:
-			if (t > aeroACS + 180) yt = 0;
+			if (t > aeroACS + 180 || t < 180) yt = 0;
 			else {
 			if (this.RotorXs[0].Position.X < 0) {
 			// left rotor
@@ -551,7 +552,7 @@ public class RotorBase
 			}			
 			}
 
-			if (t < aeroACS + 60) xt = 0;
+			if (t < aeroACS + 60 && t > 60) xt = 0;
 			else {
 			if (this.RotorXs[0].Position.X < 0) {
 			// left rotor

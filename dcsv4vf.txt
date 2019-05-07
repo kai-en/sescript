@@ -3,9 +3,9 @@ Kaien's drone control system V4
 ?id=1406061291
 
 last update:
-v4.2.0 20190213
+v5.0.0 20190507
 -----------------
-use pid to adjust vtol angle, support 2level-rotors vtol(leg)
+vf walk mode
 
 ...
 
@@ -147,15 +147,22 @@ string Debug;
 bool init = false;
 bool configFinish = false;
 IMyShipController Cockpit;
+IMyShipController msc;
 IMyTerminalBlock fighterFcs = null;
 List<IMyTextSurface> LCD = new List<IMyTextSurface>();
 List<IMyTerminalBlock> Gyroscopes;
 string[] gyroYawField = null;
 string[] gyroPitchField = null;
 string[] gyroRollField = null;
+string[] gyroYawFieldHead = null;
+string[] gyroPitchFieldHead = null;
+string[] gyroRollFieldHead = null;
 float[] gyroYawFactor = null;
 float[] gyroPitchFactor = null;
 float[] gyroRollFactor = null;
+float[] gyroYawFactorHead = null;
+float[] gyroPitchFactorHead = null;
+float[] gyroRollFactorHead = null;
 const float GYRO_FACTOR = 1f;
 int t = 1;
 Vector3D MePosition = Vector3D.Zero;
@@ -473,6 +480,32 @@ break;
 case "FLOAT":
 floatModeOn = !floatModeOn;
 break;
+case "WALKMODE":
+if (legMode<2) break;
+if (legMode == 2) {
+legMode = 3;
+PlayActionList(thrusters, "OnOff_Off");
+PlayActionList(spotlights, "OnOff_Off");
+turnOn = false;
+} else {
+legMode = 2;
+PlayActionList(thrusters, "OnOff_On");
+PlayActionList(spotlights, "OnOff_On");
+turnOn = true;
+}
+break;
+case "WALKTEST":
+if (legMode != 3) break;
+walkLastT = t;
+if (walkSeq==0) walkSeq = 6;
+else walkSeq = 0;
+break;
+case "WALKTEST2":
+if (legMode != 3) break;
+walkLastT = t;
+if (walkSeq == 3) walkSeq =4;
+else walkSeq = 1;
+break;
 default:
 if (sonCode == null) break;
 if(arguments!=null && arguments != "") {
@@ -594,24 +627,23 @@ isHold = true;
 resetThrusters();
 }
 
-var forward = Cockpit.WorldMatrix.Forward;
-var left = Cockpit.WorldMatrix.Left;
+var forward = msc.WorldMatrix.Forward;
+var left = msc.WorldMatrix.Left;
 var diff = diffGravity(left, ng, forward);
 if (diff != 0) {
 SetGyroRoll(diff * AimRatio * 60 * -1);
 }
 diff = diffGravity(forward, ng, -left);
-if(isDown) {
+if(isDown && legMode<2) {
 diff += angleWhenDown;
 }
-Vector3D av = Cockpit.GetShipVelocities().AngularVelocity;
 if (LockTargetPosition.Equals(Vector3D.Zero) && !isSM && !tuc) {
 SetGyroPitch(diff * AimRatio * 60);
-SetGyroYaw((Cockpit.RotationIndicator.Y) * 30);
+SetGyroYaw((msc.RotationIndicator.Y) * 30);
 } else {
 // rix = -Y riy = X
-SetGyroPitch((-Cockpit.RotationIndicator.X) * 30);
-SetGyroYaw((Cockpit.RotationIndicator.Y) * 30);
+SetGyroPitch((-msc.RotationIndicator.X) * 30);
+SetGyroYaw((msc.RotationIndicator.Y) * 30);
 }
 
 SetGyroOverride(true);
@@ -740,9 +772,12 @@ if(rotorShoulder.Count ==0) return;
 float tsl;
 if (mode == 1) {
 tsl = 0;
-} else {
+} else if (mode ==2) {
 tsl = 0.5f * (float)Math.PI;
+} else {
+tsl = 0.8f * mpi;
 }
+
 for (int i = 0; i < rotorShoulder.Count; i++) {
 IMyMotorStator r = (IMyMotorStator) rotorShoulder[i];
 if ( i == 0) {
@@ -755,7 +790,6 @@ r.SetValueFloat("Velocity", (float)shoulderPIDList[0].Filter(-tsl - modangle(r.A
 
 void NavigationInfoUpdata(bool before)
 {
-IMyShipController msc;
 if (Head != null && Head.IsUnderControl) {
 msc = Head;
 } else {
@@ -816,8 +850,8 @@ SetThrusterListOverride(backwardThrusters, -1f);
 }
 bool cd = false;
 if ( inputVec.Y < -0.5 && lastDownT == 0) {
-var forward = Cockpit.WorldMatrix.Forward;
-var left = Cockpit.WorldMatrix.Left;
+var forward = msc.WorldMatrix.Forward;
+var left = msc.WorldMatrix.Left;
 var diffX = diffGravity(left, naturalGravity, forward);
 var diffZ = diffGravity(forward, naturalGravity, -left);
 if (Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2 && MeVelocity.Length() < 30) {
@@ -1209,7 +1243,9 @@ if(Gyroscopes.Count < 1)
 Debug = "没有任何陀螺仪";
 }
 
-setupGyroField(Gyroscopes, ref gyroYawField, ref gyroYawFactor, ref gyroPitchField, ref gyroPitchFactor, ref gyroRollField, ref gyroRollFactor);
+setupGyroField(Gyroscopes, ref gyroYawField, ref gyroYawFactor, ref gyroPitchField, ref gyroPitchFactor, ref gyroRollField, ref gyroRollFactor, Cockpit);
+if (Head!=null)
+  setupGyroField(Gyroscopes, ref gyroYawFieldHead, ref gyroYawFactorHead, ref gyroPitchFieldHead, ref gyroPitchFactorHead, ref gyroRollFieldHead, ref gyroRollFactorHead, Head);
 SetGyroOverride(false);
 
 findByGroup(liFcsSearchGroupName, liFcsSearchList);
@@ -1245,7 +1281,8 @@ ref float[] gyroYawFactor,
 ref string[] gyroPitchField,
 ref float[] gyroPitchFactor,
 ref string[] gyroRollField,
-ref float[] gyroRollFactor
+ref float[] gyroRollFactor,
+IMyShipController fc
 ) {
 if(Gyroscopes.Count > 0)
 {
@@ -1257,9 +1294,9 @@ gyroRollField = new string[Gyroscopes.Count];
 gyroRollFactor = new float[Gyroscopes.Count];
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
-Base6Directions.Direction gyroUp = Gyroscopes[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);
-Base6Directions.Direction gyroLeft = Gyroscopes[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Left);
-Base6Directions.Direction gyroForward = Gyroscopes[i].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Forward);
+Base6Directions.Direction gyroUp = Gyroscopes[i].WorldMatrix.GetClosestDirection(fc.WorldMatrix.Up);
+Base6Directions.Direction gyroLeft = Gyroscopes[i].WorldMatrix.GetClosestDirection(fc.WorldMatrix.Left);
+Base6Directions.Direction gyroForward = Gyroscopes[i].WorldMatrix.GetClosestDirection(fc.WorldMatrix.Forward);
 
 switch (gyroUp)
 {
@@ -1402,25 +1439,46 @@ Gyroscopes[i].ApplyAction("Override");
 
 void SetGyroYaw(double yawRate)
 {
+if (legMode < 2) {
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
 Gyroscopes[i].SetValue(gyroYawField[i], (float)yawRate * gyroYawFactor[i]);
+}
+} else {
+for (int i = 0; i < Gyroscopes.Count; i++)
+{
+Gyroscopes[i].SetValue(gyroYawFieldHead[i], (float)yawRate * gyroYawFactorHead[i]);
+}
 }
 }
 
 void SetGyroPitch(double pitchRate)
 {
+if (legMode < 2) {
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
 Gyroscopes[i].SetValue(gyroPitchField[i], (float)pitchRate * gyroPitchFactor[i]);
+}
+} else {
+for (int i = 0; i < Gyroscopes.Count; i++)
+{
+Gyroscopes[i].SetValue(gyroPitchFieldHead[i], (float)pitchRate * gyroPitchFactorHead[i]);
+}
 }
 }
 
 void SetGyroRoll(double rollRate)
 {
+if (legMode < 2) {
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
 Gyroscopes[i].SetValue(gyroRollField[i], (float)rollRate * gyroRollFactor[i]);
+}
+} else {
+for (int i = 0; i < Gyroscopes.Count; i++)
+{
+Gyroscopes[i].SetValue(gyroRollFieldHead[i], (float)rollRate * gyroRollFactorHead[i]);
+}
 }
 }
 
@@ -2221,17 +2279,34 @@ ant.TransmitMessage(message);
 }
 
 string DimSpeedAll(Vector3D maintainSpeedToMe, MatrixD refLookAtMatrix) {
+// 
 string dr = "";
 Vector3D nowSpeedToMe = Vector3D.TransformNormal(Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
-var nrl = Cockpit.WorldMatrix.Right.Dot(naturalGravity);
-var nud = Cockpit.WorldMatrix.Up.Dot(naturalGravity);
-var nbf = Cockpit.WorldMatrix.Backward.Dot(naturalGravity);
+var nrl = msc.WorldMatrix.Right.Dot(naturalGravity);
+var nud = msc.WorldMatrix.Up.Dot(naturalGravity);
+var nbf = msc.WorldMatrix.Backward.Dot(naturalGravity);
+
+List<IMyTerminalBlock> upThrustersIfHead = upThrusters;
+List<IMyTerminalBlock> downThrustersIfHead = downThrusters;
+List<IMyTerminalBlock> forwardThrustersIfHead = forwardThrusters;
+List<IMyTerminalBlock> backwardThrustersIfHead = backwardThrusters;
+
+if (legMode > 1) {
+upThrustersIfHead = backwardThrusters;
+downThrustersIfHead = forwardThrusters;
+forwardThrustersIfHead = upThrusters;
+backwardThrustersIfHead = downThrusters;
+}
+
+if (legMode == 3) {
+return "";
+}
 
 DimSpeed(maintainSpeedToMe.X, rightThrusters, leftThrusters, ref thrusterPercentX, nowSpeedToMe.X, lastSpeedX, "LEFT".Equals(dockingApproach)||"RIGHT".Equals(dockingApproach), nrl,0);
 lastSpeedX = nowSpeedToMe.X;
-dr += DimSpeed(maintainSpeedToMe.Y, upThrusters, downThrusters, ref thrusterPercentY, nowSpeedToMe.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
+dr += DimSpeed(maintainSpeedToMe.Y, upThrustersIfHead, downThrustersIfHead, ref thrusterPercentY, nowSpeedToMe.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
 lastSpeedY = nowSpeedToMe.Y;
-DimSpeed(maintainSpeedToMe.Z, backwardThrusters, forwardThrusters, ref thrusterPercentZ, nowSpeedToMe.Z, lastSpeedZ, "FORWARD".Equals(dockingApproach)||"BACKWARD".Equals(dockingApproach), nbf,2);
+DimSpeed(maintainSpeedToMe.Z, backwardThrustersIfHead, forwardThrustersIfHead, ref thrusterPercentZ, nowSpeedToMe.Z, lastSpeedZ, "FORWARD".Equals(dockingApproach)||"BACKWARD".Equals(dockingApproach), nbf,2);
 lastSpeedZ = nowSpeedToMe.Z;
 return dr;
 }
@@ -2872,7 +2947,6 @@ return;
 timeCurrentCycle += 1.0/60.0;
 refreshTime += 1.0/60.0;
 
-// if (!isSetup || refreshTime >= refreshInterval)
 if (!isSetup )
 {
 GrabBlocks();
@@ -2895,7 +2969,6 @@ Echo("Head: " + Head.CustomName + "\n");
 }
 Echo("WMI Rotor Thruster\nManager... " + RunningSymbol() + "\n");
 
-//Gets reference block that is under control
 thisReferenceBlock = GetControlledShipController(referenceList);
 
 Echo($"Off-Grid Thrusters: {offGridThrust.Count}");
@@ -2950,15 +3023,11 @@ string codeStatus = turnOn ? "Enabled" : "Disabled";
 string dampenerStatus = dampenersOn ? "Enabled" : "Disabled";
 
 Echo($"Code status: {codeStatus}\nDampeners: {dampenerStatus}");
-// CODING
-//if(Math.Abs(forwardMoveIndicator) < tcrtLimit && (flyByOn||dockingOn||isDown||isLaunch)) {
 
-//}else{
 if(turnOn){
 CancelGravity(offGridThrust, onGridThrust, thisReferenceBlock);
 }
 ApplyThrust(offGridThrust, travelVec, shipSpeed, desiredDirection, dampenersOn, turnOn);
-//}
 timeCurrentCycle = 0;
 }
 catch
@@ -2998,7 +3067,6 @@ break;
 
 bool GrabBlocks()
 {
-//Grab our refererence blocks
 if (referenceIsOnSameGridAsProgram)
 GridTerminalSystem.GetBlocksOfType(referenceList, block => block.CustomName.ToLower().Contains(controlSeatNameTag.ToLower()));
 else
@@ -3010,12 +3078,11 @@ Echo($"[ERROR]: No remote or control seat with name tag '{controlSeatNameTag}' w
 return false;
 }
 
-//Checks if thruster is attached via connector
 if (!ignoreThrustersOnConnectors)
 {
 GridTerminalSystem.GetBlocksOfType(offGridThrust, block => block.CubeGrid != referenceList[0].CubeGrid && !block.CustomName.ToLower().Contains(ignoredThrustNameTag.ToLower()));
 }
-else //ignores any thrusters attached via connectors (this is helpful for docking and stuff)
+else 
 {
 var connectors = new List<IMyShipConnector>();
 var connectorGrids = new List<IMyCubeGrid>();
@@ -3035,7 +3102,6 @@ Echo("[ERROR]: No off grid thrusters found");
 return false;
 }
 
-//Get number of on-grid thrusters to determine if dampeners should be turned on
 GridTerminalSystem.GetBlocksOfType(onGridThrust, block => block.CubeGrid == referenceList[0].CubeGrid);
 if (onGridThrust.Count == 0)
 {
@@ -3110,7 +3176,6 @@ if (!turnOn || (sonCode != null && !notDocked()))
 {
 foreach (IMyThrust thisThrust in thrusters)
 {
-// thisThrust.Enabled = turnOnRotorThrustersWhenDisabled;
 SetThrusterOverride(thisThrust, 0.0001f);
 }
 return;
@@ -3124,7 +3189,6 @@ if (scale > maxThrustDotProduct)
 {
 scale /= (float)fullBurnDotProduct;
 
-//Dampener approximations
 var velocityInThrustDirection = thrustDirection.Dot(travelVec) * speed;
 double targetOverride = 0;
 
@@ -3136,11 +3200,6 @@ targetOverride = velocityInThrustDirection * Math.Abs(velocityInThrustDirection)
 SetThrusterOverride(thisThrust, (float)Math.Max(scale * 100f, targetOverride + GetThrusterOverride(thisThrust)));
 }
 
-//Dampener approximations
-//Checks if :
-// - dampeners are allowed
-// - thruster is opposing the motion of the vessel
-// - Checks if thruster is within the dampening angle tolerance
 else if (dampenersOn && thrustDirection.Dot(travelVec) > 0 && thrustDirection.Dot(desiredDirectionVec) <= minDampeningDotProduct)
 {
 if(Cockpit.GetNaturalGravity().Length() <= 0.01f) {
@@ -3349,7 +3408,8 @@ else if (naturalGravityLength > 0.01f && isAeroDynamic &&
 (aeroSpeedLevel>0 || (flyByOn&& mstm.Z<-20))
 ) tl = -(float)Math.PI * 0.45f;
 if(isDown){
-tl = - angleWhenDown;
+if (legMode<2) tl = - angleWhenDown;
+else tl = 0f;
 }
 forwardMoveIndicator = tl; // use tl as fmi directly
 targetAngleLeft = tl;
@@ -3385,9 +3445,10 @@ ta = MathHelper.Clamp(ta + 1.25f * (float)Math.PI, 0.75f*(float)Math.PI, 1f*(flo
 } else {
 ta = (float)Math.PI;
 }
-//ta = MathHelper.Clamp(ta + 1.5f * (float)Math.PI, 0.5f*(float)Math.PI, 1.5f*(float)Math.PI);
 }
-} else {
+}
+// skip legMode == 3, will process below
+else {
 ta = 0.5f * ta + 0.25f*(float)Math.PI;
 }
 }
@@ -3395,6 +3456,9 @@ ta = 0.5f * ta + 0.25f*(float)Math.PI;
 
 float tal, tar;
 tal = tar = ta;
+if (legMode ==3) {
+processWalkAngle(out tal, out tar, i);
+}
 // roll
 if (! limitInnerRotor && naturalGravityLength > 0.01f && isAeroDynamic && aeroSpeedLevel>0) {
 if(i==0 || i == 1) {
@@ -3425,6 +3489,93 @@ rr[j].SetValueFloat("Velocity", (float)vtolPIDList[i*j*2+1].Filter(-tar-modangle
 float modangle(float a) {
 if (a > Math.PI) return a - (float)(2*Math.PI);
 return a;
+}
+
+int walkSeq = 0;
+static float mpi = (float)Math.PI;
+float walkAngle = 0.0f * (float)Math.PI;
+float walkAngleBack = 0.03f * (float)Math.PI;
+float walkBendAngle = 0.07f * (float)Math.PI;
+float walkBendAngleBack = 0.07f * (float)Math.PI;
+float walkUpAngle = 0.18f * (float)Math.PI;
+float walkMidFront = 0.0f * mpi;
+PIDController walkBalancePID = new PIDController(3F,0.1F,0F,1F,-1F,60);
+int walkLastT = 0;
+int walkInterval = 25;
+
+void processWalkAngle(out float tal, out float tar, int i) {
+if (walkSeq == 1 || walkSeq == 2 || walkSeq == 4|| walkSeq == 5) {
+if(t > walkLastT + walkInterval) {
+walkSeq ++;
+walkLastT = t;
+}
+} else {
+if (inputVec.Z < -0.1 && t > walkLastT + walkInterval*4) {
+if (walkSeq == 3) walkSeq = 4;
+else walkSeq = 1;
+walkLastT = t;
+}
+}
+
+float wa = walkAngle, wab = walkAngleBack, wba = walkBendAngle, wbab = walkBendAngleBack, wua = walkUpAngle, wmf = walkMidFront;
+if (i == 0) {
+tal = tar = 0f;
+return;
+}
+var ng = naturalGravity;
+var forward = msc.WorldMatrix.Forward;
+var left = msc.WorldMatrix.Left;
+var diff = diffGravity(left, ng, forward);
+// diff > 0 => right low
+float ba = (float)walkBalancePID.Filter(diff, 2);
+if (walkSeq <4) ba += 0.03f;
+else ba -= 0.03f;
+ba = MathHelper.Clamp(ba, -wbab, wbab);
+if (walkSeq > 3) ba = -ba;
+
+//test
+//ba = 0;
+
+if (i == 1) {
+tal = tar = 0f;
+} else {
+tal = tar = (float)Math.PI;
+}
+
+if (walkSeq == 0) {
+// default
+} else if (walkSeq==1||walkSeq==4){
+if (i==1) {
+tar = -wba;
+tal = 0F;
+}else{
+tar = wba+ (float)Math.PI + wmf;
+tal = -wab+ (float)Math.PI;
+}
+} else if (walkSeq == 2 || walkSeq==5) {
+if (i==1){
+tar = -0;
+tal = -wua;
+}else{
+tar = 0 + (float)Math.PI + wmf;
+tal = wa + wua + (float)Math.PI + wmf;
+}
+} else if (walkSeq == 3 || walkSeq == 6) {
+if (i == 1) {
+tal = - wba;
+tar = - wbab + ba;
+} else {
+tal = wa + wba + (float)Math.PI;
+tar = -wab + wbab - ba + (float)Math.PI;
+}
+}
+
+if (walkSeq > 3) {
+var tmp = tal;
+tal = tar;
+tar = tmp;
+}
+
 }
 
 public class PIDController
