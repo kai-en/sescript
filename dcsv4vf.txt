@@ -218,6 +218,11 @@ string MISSILE_TAG="#A#";
 // sm mode
 bool isSM = false;
 
+// auto height hold
+bool ahhOn = false;
+bool useAhh = true;
+double ahh = 0;
+
 Program()
 {
 //Runtime.UpdateFrequency = UpdateFrequency.Update1;
@@ -494,18 +499,6 @@ PlayActionList(spotlights, "OnOff_On");
 turnOn = true;
 }
 break;
-case "WALKTEST":
-if (legMode != 3) break;
-walkLastT = t;
-if (walkSeq==0) walkSeq = 6;
-else walkSeq = 0;
-break;
-case "WALKTEST2":
-if (legMode != 3) break;
-walkLastT = t;
-if (walkSeq == 3) walkSeq =4;
-else walkSeq = 1;
-break;
 default:
 if (sonCode == null) break;
 if(arguments!=null && arguments != "") {
@@ -546,7 +539,7 @@ ParseSensor();
 }
 
 if (motherCode != null) {
-sendSignal();
+//sendSignal();
 }
 if (sonCode != null) {
 if(notDocked()) MaintainSpeed();
@@ -731,6 +724,21 @@ SetBlocksValueColor(lcdBackList, "BackgroundColor", new Color(1,1,1));
 }
 }
 
+if (isUnderControl && ahhOn && !isDown && !isLaunch) {
+double h = 0;
+bool getted = msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h);
+if (getted) {
+var needD = ahh - h;
+var needV = needD / 100f;
+var m2m = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
+var needA = needV - m2m.Y;
+debugInfo = "needA: " + needA;
+var nud = Cockpit.WorldMatrix.Up.Dot(naturalGravity);
+DimSpeed(needA, upThrusters, downThrusters, ref thrusterPercentY, m2m.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
+lastSpeedY = m2m.Y;
+}
+}
+
 Main_RT(arguments, updateType);
 
 Main_VT();
@@ -846,6 +854,22 @@ SetThrusterListOverride(backwardThrusters, 0f);
 }
 if(inputVec.Z > 0.1){
 SetThrusterListOverride(backwardThrusters, -1f);
+}
+// ahh
+Vector3D inputVecWorld = Vector3D.TransformNormal(inputVec, msc.WorldMatrix);
+bool wantUD = false;
+if (naturalGravity.Length() > 0.1 && inputVec.Length() >0.1) {
+  wantUD = Math.Abs(inputVecWorld.Dot(Vector3D.Normalize(naturalGravity))) > 0.1;
+}
+if (useAhh && !ahhOn && !wantUD) {
+double h = 0;
+if (msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h)) {
+ahh = h;
+ahhOn = true;
+}
+}
+if (wantUD) {
+ahhOn = false;
 }
 }
 bool cd = false;
@@ -1017,7 +1041,7 @@ lcd.FontColor = new Color(0,76,255);
 
 void recordNp(out double l, out double u , out double f, out string h, out string t) {
 Vector3D shipPosition = new Vector3D(shipMatrix.M41, shipMatrix.M42, shipMatrix.M43);
-Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
+Vector3D myPosition = MePosition;
 Vector3D myToShipPosition = myPosition - shipPosition;
 MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
 myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
@@ -2018,48 +2042,8 @@ return src;
 }
 }
 
-void sendSignal() {
-MatrixD refWorldMatrix = Cockpit.WorldMatrix;
-if(motherSignalRotation) {
-Vector3D tmp = new Vector3D(0,1,0);
-var rm = MatrixD.CreateRotationZ(t%5000/5000f*MathHelper.TwoPi);
-tmp = Vector3D.Rotate(tmp, rm);
-
-var newUp = Vector3D.TransformNormal(tmp, refLookAtMatrix);
-
-var rd = MatrixD.CreateFromDir(Cockpit.WorldMatrix.Forward, newUp);
-refWorldMatrix = rd;
-}
-Vector3D currentPos = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
-Vector3D speed = Cockpit.GetShipVelocities().LinearVelocity;
-
-IMyRadioAntenna ant = GridTerminalSystem.GetBlockWithName(stAName) as IMyRadioAntenna;
-if (i == 0) {
-string message = motherCode + ":" + refWorldMatrix.M11+","+refWorldMatrix.M12+","+refWorldMatrix.M13+","+refWorldMatrix.M14+","+
-refWorldMatrix.M21+","+refWorldMatrix.M22+","+refWorldMatrix.M23+","+refWorldMatrix.M24+","+
-refWorldMatrix.M31+","+refWorldMatrix.M32+","+refWorldMatrix.M33+","+refWorldMatrix.M34+","+
-currentPos.X+","+currentPos.Y+","+currentPos.Z+","+refWorldMatrix.M44+","+
-speed.X+","+speed.Y+","+speed.Z;
-if (!LockTargetPosition.Equals( Vector3D.Zero)) {
-Vector3D dir = LockTargetPosition - currentPos;
-dir = Vector3D.Normalize(dir);
-Vector3D pos = LockTargetPosition;
-message += "," + pos.X + "," + pos.Y + "," + pos.Z + "," + LockTargetVelocity.X+ "," + LockTargetVelocity.Y+ "," + LockTargetVelocity.Z + "," + (((t % flyByAttackRoundTime)/(flyByAttackRoundTime*1.0D)) * MathHelper.TwoPi);
-} else if (motherPointerMode) {
-Vector3D direction;
-direction = CalculateTurretViewVector(homingTurret);
-Vector3D pointTarget = currentPos + direction * pointDis;
-message += "," + pointTarget.X + "," + pointTarget.Y + "," + pointTarget.Z + "," + speed.X + "," + speed.Y + "," + speed.Z;
-}
-ant.TransmitMessage(message);
-lastSendingTime=t;
-}
-
-i = (i+1) % 40;
-}
-
 Vector3D calcSpeedToMeAndAvoid(Vector3D maintainSpeed) {
-Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
+Vector3D myPosition = MePosition;
 Vector3D needSpeedToMe = Vector3D.TransformNormal(maintainSpeed - Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
 Vector3D tmp = needSpeedToMe;
 Vector3D apDiff;
@@ -2269,13 +2253,7 @@ if (flyByOn || (dockingOn && notDocked())) {
 var dr= DimSpeedAll(maintainSpeedToMeAA,refLookAtMatrix);
  }
 
-// ·¢Éä±Ü×²ÐÅºÅ
-if (t %40 ==20) {
-Vector3D currentPos = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
-IMyRadioAntenna ant = GridTerminalSystem.GetBlockWithName(stAName) as IMyRadioAntenna;
-string message = sonCode+"-AVOID:"+Cockpit.EntityId+","+currentPos.X+","+currentPos.Y+","+currentPos.Z;
-ant.TransmitMessage(message);
-}
+
 }
 
 string DimSpeedAll(Vector3D maintainSpeedToMe, MatrixD refLookAtMatrix) {
@@ -2382,7 +2360,7 @@ if (mdei.EntityId == 0) return;
 MatrixD refWorldMatrix = mdei.Orientation;
 Vector3D currentPos = mdei.Position;
 Vector3D speed = mdei.Velocity;
-Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
+Vector3D myPosition = MePosition;
 
 string message = sonCode + ":" + refWorldMatrix.M11+","+refWorldMatrix.M12+","+refWorldMatrix.M13+","+refWorldMatrix.M14+","+
 refWorldMatrix.M21+","+refWorldMatrix.M22+","+refWorldMatrix.M23+","+refWorldMatrix.M24+","+
@@ -2606,8 +2584,8 @@ Vector3D shipPosition = new Vector3D(shipMatrix.M41, shipMatrix.M42, shipMatrix.
 MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
 
 
-Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
-Vector3D myToShipPosition = myPosition - shipPosition;
+Vector3D myPosition = MePosition;
+Vector3D myToShipPosition = MePosition - shipPosition;
 myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
 distanceInfo=Math.Round(-myToShipPosition.X,2) + " " + Math.Round(myToShipPosition.Y,2) + " " + Math.Round(-myToShipPosition.Z,2);
 Vector3D targetPosition = new Vector3D(0,0,0);
@@ -3286,7 +3264,7 @@ long lastVacTurn = 0;
 float vacForwardAngle = 0;
 const int pidc= 100;
 PIDController[] vtolPIDList = new PIDController[pidc];
-PIDController[] needAPID = new PIDController[3];//xyz
+bool noyt=false;
 void Main_VT()
 {
 IMyShipController remote = null;
@@ -3350,9 +3328,6 @@ float pp=20F,pi=0.1F,pd=0F, pim=1F;
 for (int i = 0;i < pidc; i ++) {
 vtolPIDList[i] = new PIDController(pp, pi, pd,pim,-pim,60);
 }
-for (int i = 0; i < 3; i++) {
-needAPID[i] = new PIDController(0.5, 1, pd,10,-10, 60);
-}
 }
 
 if(error != "")
@@ -3401,12 +3376,15 @@ tl = (float)Math.PI * dtp;
 tl = (float)Math.Atan2(needA.Z, needA.Y);
 }
 tl = MathHelper.Clamp(tl, -0.5f*(float)Math.PI, 0.5f*(float)Math.PI);
-needA.Y = needAPID[1].Filter(needA.Y, 2);
+
+if(needA.Y<0 && inputVec.Z == 0) noyt = true;
+else if (needA.Y>2) noyt = false;
 
 if ((naturalGravityLength < 0.01f && tl == 0 && needA.Y < 0.5)) tl = -(float)Math.PI * 0.5f;
 else if (naturalGravityLength > 0.01f && isAeroDynamic &&
 (aeroSpeedLevel>0 || (flyByOn&& mstm.Z<-20))
 ) tl = -(float)Math.PI * 0.45f;
+else if (noyt) tl=0f;
 if(isDown){
 if (legMode<2) tl = - angleWhenDown;
 else tl = 0f;
@@ -3493,48 +3471,61 @@ return a;
 
 int walkSeq = 0;
 static float mpi = (float)Math.PI;
-float walkAngle = 0.0f * (float)Math.PI;
-float walkAngleBack = 0.03f * (float)Math.PI;
-float walkBendAngle = 0.07f * (float)Math.PI;
-float walkBendAngleBack = 0.07f * (float)Math.PI;
-float walkUpAngle = 0.18f * (float)Math.PI;
-float walkMidFront = 0.0f * mpi;
-PIDController walkBalancePID = new PIDController(3F,0.1F,0F,1F,-1F,60);
+float wa = 0.0f * (float)Math.PI;
+float wab = 0.03f * (float)Math.PI;
+float wba = 0.1f * (float)Math.PI;
+float wbab = 0.07f * (float)Math.PI;
+float wua = 0.18f * (float)Math.PI;
+float wmf = 0.0f * mpi;
+float bal = 0f;
+bool wf = false;
+PIDController wbp2 = new PIDController(2F,0.1F,0F,1F,-1F,60);
 int walkLastT = 0;
-int walkInterval = 25;
+int walkInterval = 15;
 
 void processWalkAngle(out float tal, out float tar, int i) {
+if (inputVec.Z < -0.1) wf = true;
+else if (inputVec.Z > 0.1) wf = false;
+
+var ng = naturalGravity;
+var forward = msc.WorldMatrix.Forward;
+var left = msc.WorldMatrix.Left;
+var diff = diffGravity(left, ng, forward);
+if (walkSeq > 3) {
+diff += 0.03;
+} else {
+diff -= 0.03;
+}
+
+var diffZ = diffGravity(forward, ng, -left);
 if (walkSeq == 1 || walkSeq == 2 || walkSeq == 4|| walkSeq == 5) {
 if(t > walkLastT + walkInterval) {
 walkSeq ++;
 walkLastT = t;
 }
 } else {
-if (inputVec.Z < -0.1 && t > walkLastT + walkInterval*4) {
+if (wf && t > walkLastT + walkInterval*2 && Math.Abs(diffZ)<0.05) {
 if (walkSeq == 3) walkSeq = 4;
-else walkSeq = 1;
+else if(walkSeq ==6) walkSeq = 1;
+else walkSeq = 6;
+walkLastT = t;
+}
+if (!wf && t>walkLastT + walkInterval*2) {
+walkSeq = 0;
 walkLastT = t;
 }
 }
 
-float wa = walkAngle, wab = walkAngleBack, wba = walkBendAngle, wbab = walkBendAngleBack, wua = walkUpAngle, wmf = walkMidFront;
 if (i == 0) {
 tal = tar = 0f;
 return;
 }
-var ng = naturalGravity;
-var forward = msc.WorldMatrix.Forward;
-var left = msc.WorldMatrix.Left;
-var diff = diffGravity(left, ng, forward);
-// diff > 0 => right low
-float ba = (float)walkBalancePID.Filter(diff, 2);
-if (walkSeq <4) ba += 0.03f;
-else ba -= 0.03f;
-ba = MathHelper.Clamp(ba, -wbab, wbab);
-if (walkSeq > 3) ba = -ba;
 
-//test
-//ba = 0;
+if (t > walkLastT + walkInterval * 1) {
+if (walkSeq == 3) bal = MathHelper.Clamp((float)wbp2.Filter(-diff, 2), -wbab, wbab);
+}
+
+float bau = bal;
 
 if (i == 1) {
 tal = tar = 0f;
@@ -3543,11 +3534,11 @@ tal = tar = (float)Math.PI;
 }
 
 if (walkSeq == 0) {
-// default
+
 } else if (walkSeq==1||walkSeq==4){
 if (i==1) {
 tar = -wba;
-tal = 0F;
+tal = 0;
 }else{
 tar = wba+ (float)Math.PI + wmf;
 tal = -wab+ (float)Math.PI;
@@ -3563,10 +3554,10 @@ tal = wa + wua + (float)Math.PI + wmf;
 } else if (walkSeq == 3 || walkSeq == 6) {
 if (i == 1) {
 tal = - wba;
-tar = - wbab + ba;
+tar = - wbab + bau;
 } else {
 tal = wa + wba + (float)Math.PI;
-tar = -wab + wbab - ba + (float)Math.PI;
+tar = -wab + wbab - bau + (float)Math.PI;
 }
 }
 

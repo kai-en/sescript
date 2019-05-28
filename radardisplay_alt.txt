@@ -80,7 +80,23 @@ const string INI_SECTION_TEXT_SURF_PROVIDER = "Radar - Text Surface Config";
 const string INI_TEXT_SURFACE_TEMPLATE = "Show on screen {0}"; 
  
 const int MAX_REBROADCAST_INGEST_COUNT = 6; 
- 
+
+string MOTHER_CODE = "2ndUsagi";
+static string debugInfo = "";
+string COCKPIT_NAME = "Reference";
+int t = 0;
+MatrixD refLookAtMatrix = new MatrixD();
+bool motherSignalRotation = false;
+Vector3D MePosition = new Vector3D();
+IMyShipController msc;
+bool inited = false;
+string SON_CODE = "2ndUsagi";
+string DCS_NAME = "dcs";
+IMyProgrammableBlock dcsComputer = null;
+IMyProgrammableBlock fcsComputer = null;
+string FCS_NAME = "fcs";
+
+
 IMyBroadcastListener broadcastListener; 
  
 float rangeOverride = 1000; 
@@ -167,10 +183,24 @@ Program()
     // IGC Register 
     broadcastListener = IGC.RegisterBroadcastListener(IGC_TAG); 
     broadcastListener.SetMessageCallback(IGC_TAG); 
-} 
+}
+
+void updateMotion(){
+msc = reference;
+
+refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), msc.WorldMatrix.Forward, msc.WorldMatrix.Up);
+MePosition = msc.GetPosition();
+t++;
+}
  
 void Main(string arg, UpdateType updateSource) 
-{ 
+{
+	if (!inited) {
+	init();
+	return;
+	}
+	updateMotion();
+
     runtimeTracker.AddRuntime(); 
  
     scheduler.Update(); 
@@ -180,33 +210,107 @@ void Main(string arg, UpdateType updateSource)
         ProcessNetworkMessage(); 
     } 
  
-    runtimeTracker.AddInstructions(); 
-} 
+    runtimeTracker.AddInstructions();
+
+    callDcsSendPosition();
+    callDcsSendAvoid();
+    parseFcsTarget();
+}
+
+void callDcsSendAvoid() {
+    if (t % 40 != 20) return;
+    List<KeyValuePair<long, TargetData>> s = targetDataDict.Where( item => {
+        var k = item.Key;
+	var v = item.Value;
+	if (v.Relation != TargetRelation.Friendly) return false;
+	if ((MePosition - v.Position).Length() > 50) return false;
+	return true;
+    }).ToList();
+    s.Sort((l,r)=>
+        (int)((MePosition - r.Value.Position).Length() -
+	(MePosition - l.Value.Position).Length())
+    );
+    if (s.Count>0) sendAvoid(s[0]);
+}
+
+void sendAvoid(KeyValuePair<long, TargetData> item) {
+var p = item.Value.Position;
+string message = SON_CODE+"-AVOID:"+item.Key+","+p.X+","+p.Y+","+p.Z;
+PlayAction(dcsComputer, "Run", message);
+}
+
+void callDcsSendPosition(){
+    if (t % 40 != 0) return;
+    foreach (var item in targetDataDict) {
+    	var k = item.Key;
+	var v = item.Value;
+	if (v.Relation == TargetRelation.Friendly && v.Code == SON_CODE) {
+	    sendPosition(k, v);
+	    return;
+	}
+    }
+    PlayAction(dcsComputer, "Run", null);
+    
+}
+
+void sendPosition(long entityId, TargetData td) {
+MatrixD refWorldMatrix = td.Mat;
+var f = td.Mat.Forward;
+if (f == Vector3D.Zero) return;
+Vector3D currentPos = td.Position;
+if(currentPos == null || currentPos.X == 0){
+debugInfo = "error";
+}
+Vector3D speed = td.Velocity;
+string motherCode = td.Code;
+string message = motherCode + ":" + refWorldMatrix.M11+","+refWorldMatrix.M12+","+refWorldMatrix.M13+","+refWorldMatrix.M14+","+
+refWorldMatrix.M21+","+refWorldMatrix.M22+","+refWorldMatrix.M23+","+refWorldMatrix.M24+","+
+refWorldMatrix.M31+","+refWorldMatrix.M32+","+refWorldMatrix.M33+","+refWorldMatrix.M34+","+
+currentPos.X+","+currentPos.Y+","+currentPos.Z+","+refWorldMatrix.M44+","+
+speed.X+","+speed.Y+","+speed.Z;
+List<KeyValuePair<long, TargetData>> enemyList = targetDataDict.Where(i => i.Value.Relation == TargetRelation.Enemy && i.Value.Code == SON_CODE).ToList();
+// CODING
+if (enemyList.Count > 0) {
+var k = enemyList[0].Key;
+var v = enemyList[0].Value;
+Vector3D pos = v.Position;
+Vector3D vel = v.Velocity;
+message += "," + pos.X + "," + pos.Y + "," + pos.Z + "," + vel.X+ "," + vel.Y+ "," + vel.Z + "," + td.Round;
+}
+
+PlayAction(dcsComputer, "Run", message);
+
+}
  
 void ProcessNetworkMessage() 
 { 
     while (broadcastListener.HasPendingMessage) 
     { 
         object messageData = broadcastListener.AcceptMessage().Data; 
-        if (messageData is MyTuple<byte, long, Vector3D, byte>) 
+        if (messageData is MyTuple<byte, long, Vector3D, byte, string>) 
         { 
-            var myTuple = (MyTuple<byte, long, Vector3D, byte>)messageData; 
+            var myTuple = (MyTuple<byte, long, Vector3D, byte, string>)messageData; 
             byte relationship = myTuple.Item1; 
             long entityId = myTuple.Item2; 
             Vector3D position = myTuple.Item3; 
-            byte ingestCount = ++myTuple.Item4; 
+            byte ingestCount = ++myTuple.Item4;
+	    string motherCode = "";
+	    MatrixD targetMatrix = new MatrixD();
+	    Vector3D velocity = new Vector3D();
+	    double roundRotationCount = 0;
+	    decodeMessage(myTuple.Item5, out motherCode, out targetMatrix, out velocity, out roundRotationCount);
  
             if ((byte)TargetRelation.Friendly == relationship) 
             { 
-                targetDataDict[entityId] = new TargetData(position, TargetRelation.Friendly, ingestCount); 
+                targetDataDict[entityId] = new TargetData(position, TargetRelation.Friendly, ingestCount, velocity, motherCode, targetMatrix, roundRotationCount); 
             } 
             else if ((byte)TargetRelation.Neutral == relationship) 
             { 
-                targetDataDict[entityId] = new TargetData(position, TargetRelation.Neutral, ingestCount); 
+                targetDataDict[entityId] = new TargetData(position, TargetRelation.Neutral, ingestCount, velocity, "", targetMatrix, 0); 
             } 
             else 
             { 
-                targetDataDict[entityId] = new TargetData(position, TargetRelation.Enemy, ingestCount); 
+                targetDataDict[entityId] = new TargetData(position, TargetRelation.Enemy, ingestCount, velocity, motherCode, targetMatrix, 0);
             } 
         } 
     } 
@@ -215,8 +319,19 @@ void ProcessNetworkMessage()
 void NetworkTargets() 
 { 
     if (broadcastIFF) 
-    { 
-        var myTuple = new MyTuple<byte, long, Vector3D, byte>((byte)TargetRelation.Friendly, Me.CubeGrid.EntityId, Me.GetPosition(), 0); 
+    {
+	MatrixD refWorldMatrix = reference.WorldMatrix;
+	if(motherSignalRotation) {
+	Vector3D tmp = new Vector3D(0,1,0);
+	var rm = MatrixD.CreateRotationZ(t%5000/5000f*MathHelper.TwoPi);
+	tmp = Vector3D.Rotate(tmp, rm);
+
+	var newUp = Vector3D.TransformNormal(tmp, refLookAtMatrix);
+
+	var rd = MatrixD.CreateFromDir(reference.WorldMatrix.Forward, newUp);
+	refWorldMatrix = rd;
+	}
+        var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)TargetRelation.Friendly, Me.CubeGrid.EntityId, Me.GetPosition(), 0, encodeMessage(MOTHER_CODE, refWorldMatrix, reference.GetShipVelocities().LinearVelocity, 0));
         IGC.SendBroadcastMessage(IGC_TAG, myTuple); 
     } 
  
@@ -228,7 +343,7 @@ void NetworkTargets()
             if (targetData.IngestCount > MAX_REBROADCAST_INGEST_COUNT) 
                 continue; 
  
-            var myTuple = new MyTuple<byte, long, Vector3D, byte>((byte)targetData.Relation, kvp.Key, targetData.Position, targetData.IngestCount); 
+            var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)targetData.Relation, kvp.Key, targetData.Position, targetData.IngestCount, encodeMessage(targetData.Code, new MatrixD(), targetData.Velocity, 0)); 
             IGC.SendBroadcastMessage(IGC_TAG, myTuple); 
         } 
     } 
@@ -251,31 +366,12 @@ void GetTurretTargets()
             var target = block.GetTargetedEntity(); 
  
             if (target.Relationship == MyRelationsBetweenPlayerAndBlock.Enemies) 
-                targetDataDict[target.EntityId] = new TargetData(target.Position, TargetRelation.Enemy, 0); 
+                targetDataDict[target.EntityId] = new TargetData(target.Position, TargetRelation.Enemy, 0, target.Velocity, "", target.Orientation, 0); 
             else 
-                targetDataDict[target.EntityId] = new TargetData(target.Position, TargetRelation.Neutral, 0); 
+                targetDataDict[target.EntityId] = new TargetData(target.Position, TargetRelation.Neutral, 0, target.Velocity, "", target.Orientation, 0); 
         } 
     } 
  
-    // Define reference ship controller 
-    reference = GetControlledShipController(controllers); // Primary, get active controller 
-    if (reference == null) 
-    { 
-        if (lastActiveShipController != null) 
-        { 
-            // Backup, use last active controller 
-            reference = lastActiveShipController; 
-        } 
-        else if (reference == null && controllers.Count != 0) 
-        { 
-            // Last case, resort to the first controller in the list 
-            reference = controllers[0]; 
-        } 
-        else 
-        { 
-            return; 
-        } 
-    } 
  
     lastActiveShipController = reference; 
  
@@ -352,15 +448,23 @@ struct TargetData
 { 
     public Vector3D Position; 
     public TargetRelation Relation; 
-    public byte IngestCount; 
+    public byte IngestCount;
+    public Vector3D Velocity;
+    public string Code;
+    public MatrixD Mat;
+    public double Round;
  
-    public TargetData(Vector3D position, TargetRelation relation, byte ingestCount) 
+    public TargetData(Vector3D position, TargetRelation relation, byte ingestCount, Vector3D velocity, string code, MatrixD mat, double round) 
     { 
         Position = position; 
         Relation = relation; 
-        IngestCount = ingestCount; 
+        IngestCount = ingestCount;
+	Velocity = velocity;
+	Code = code;
+	Mat = mat;
+	Round = round;
     } 
-} 
+}
 #endregion 
  
 #region Radar Surface 
@@ -533,7 +637,7 @@ class RadarSurface
         MySprite sprite; 
         float textSize = scale * HUD_TEXT_SIZE; 
         Vector2 halfScreenSize = viewportSize * 0.5f; 
-        sprite = MySprite.CreateText($"WMI Radar System", FONT, _textColor, textSize, TextAlignment.CENTER); 
+        sprite = MySprite.CreateText($"WMI Radar System" + debugInfo, FONT, _textColor, textSize, TextAlignment.CENTER); 
         sprite.Position = screenCenter + new Vector2(0, -halfScreenSize.Y); 
         frame.Add(sprite); 
  
@@ -1359,3 +1463,252 @@ public class RuntimeTracker
 } 
 #endregion 
 #endregion 
+
+// util
+T getBlockByName<T>(string name, bool sameGrid = true, bool sameName = false)
+where T:class,IMyTerminalBlock
+{
+List<T> blocks = new List<T>();
+
+GridTerminalSystem.GetBlocksOfType<T>(blocks, b => (
+!sameGrid || (sameGrid && b.CubeGrid == Me.CubeGrid) 
+) && (
+(sameName && b.CustomName == name)||
+(!sameName && b.CustomName.Contains(name))
+)
+);
+if (blocks.Count > 0) return blocks[0];
+return null;
+}
+
+void init() {
+    // Define reference ship controller
+    reference = getBlockByName<IMyShipController>(COCKPIT_NAME);
+    //reference = GetControlledShipController(controllers); // Primary, get active controller 
+    if (reference == null) 
+    { 
+        if (lastActiveShipController != null) 
+        { 
+            // Backup, use last active controller 
+            reference = lastActiveShipController; 
+        } 
+        else if (reference == null && controllers.Count != 0) 
+        { 
+            // Last case, resort to the first controller in the list 
+            reference = controllers[0]; 
+        } 
+        else 
+        { 
+            return; 
+        } 
+    }
+    dcsComputer = getBlockByName<IMyProgrammableBlock>(DCS_NAME);
+    fcsComputer = getBlockByName<IMyProgrammableBlock>(FCS_NAME);
+
+    inited = true;
+}
+
+void decodeMessage(string msg, out string motherCode, out MatrixD matrix, out Vector3D velocity, out double r) {
+String[] kv = msg.Split(':');
+motherCode = kv[0];
+String[] args;
+args = kv[1].Split(',');
+matrix = new MatrixD(Convert.ToDouble(args[0]),Convert.ToDouble(args[1]),Convert.ToDouble(args[2]),Convert.ToDouble(args[3]),
+Convert.ToDouble(args[4]),Convert.ToDouble(args[5]),Convert.ToDouble(args[6]),Convert.ToDouble(args[7]),
+Convert.ToDouble(args[8]),Convert.ToDouble(args[9]),Convert.ToDouble(args[10]),Convert.ToDouble(args[11]),
+Convert.ToDouble(args[12]),Convert.ToDouble(args[13]),Convert.ToDouble(args[14]),Convert.ToDouble(args[15]));
+
+Vector3D shipPosition = new Vector3D(matrix.M41, matrix.M42, matrix.M43);
+
+MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), matrix.Forward, matrix.Up);
+
+velocity = new Vector3D(Convert.ToDouble(args[16]), Convert.ToDouble(args[17]), Convert.ToDouble(args[18]));
+
+r = Convert.ToDouble(args[19]);
+}
+
+string encodeMessage(string motherCode, MatrixD refWorldMatrix, Vector3D speed, double r){
+string message = motherCode + ":" + refWorldMatrix.M11+","+refWorldMatrix.M12+","+refWorldMatrix.M13+","+refWorldMatrix.M14+","+
+refWorldMatrix.M21+","+refWorldMatrix.M22+","+refWorldMatrix.M23+","+refWorldMatrix.M24+","+
+refWorldMatrix.M31+","+refWorldMatrix.M32+","+refWorldMatrix.M33+","+refWorldMatrix.M34+","+
+MePosition.X+","+MePosition.Y+","+MePosition.Z+","+refWorldMatrix.M44+","+
+speed.X+","+speed.Y+","+speed.Z + "," + r;
+return message;
+}
+
+
+void PlayAction(IMyTerminalBlock block, String action, String cmd = null) {
+
+if (cmd != null) {
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode());
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();
+    argumentList.Add(tap);
+
+if (block != null) {
+block.GetActionWithName(action).Apply(block, argumentList);
+}
+} else {
+block.GetActionWithName(action).Apply(block);
+}
+}
+
+public class CustomConfiguration
+{
+public IMyTerminalBlock configBlock;
+public Dictionary<string, string> config;
+
+public CustomConfiguration(IMyTerminalBlock block)
+{
+configBlock = block;
+config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+}
+
+public void Load()
+{
+ParseCustomData(configBlock, config);
+}
+
+public void Save()
+{
+WriteCustomData(configBlock, config);
+}
+
+public string Get(string key, string defVal = null)
+{
+return config.GetValueOrDefault(key.Trim(), defVal);
+}
+
+public void Get(string key, ref string res)
+{
+string val;
+if (config.TryGetValue(key.Trim(), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref int res)
+{
+int val;
+if (int.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref float res)
+{
+float val;
+if (float.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref double res)
+{
+double val;
+if (double.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref bool res)
+{
+bool val;
+if (bool.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+public void Get(string key, ref bool? res)
+{
+bool val;
+if (bool.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Set(string key, string value)
+{
+config[key.Trim()] = value;
+}
+
+public static void ParseCustomData(IMyTerminalBlock block, Dictionary<string, string> cfg, bool clr = true)
+{
+if (clr)
+{
+cfg.Clear();
+}
+
+string[] arr = block.CustomData.Split(new char[] {'\r','\n'}, StringSplitOptions.RemoveEmptyEntries);
+for (int i = 0; i < arr.Length; i++)
+{
+string ln = arr[i];
+string va;
+
+int p = ln.IndexOf('=');
+if (p > -1)
+{
+va = ln.Substring(p + 1);
+ln = ln.Substring(0, p);
+}
+else
+{
+va = "";
+}
+cfg[ln.Trim()] = va.Trim();
+}
+}
+
+public static void WriteCustomData(IMyTerminalBlock block, Dictionary<string, string> cfg)
+{
+StringBuilder sb = new StringBuilder(cfg.Count * 100);
+foreach (KeyValuePair<string, string> va in cfg)
+{
+sb.Append(va.Key).Append('=').Append(va.Value).Append('\n');
+}
+block.CustomData = sb.ToString();
+}
+}
+
+Vector3D LockTargetVelocity = Vector3D.Zero;
+Vector3D LockTargetPosition = Vector3D.Zero;
+Vector3D radarHighThreatPosition = Vector3D.Zero;
+void parseFcsTarget() {
+if (fcsComputer == null) return;
+// parse locktarget from fcs
+
+CustomConfiguration cfgTarget = new CustomConfiguration(fcsComputer);
+cfgTarget.Load();
+
+string tmpS = "";
+cfgTarget.Get("Position", ref tmpS);
+Vector3D.TryParse(tmpS, out LockTargetPosition);
+
+cfgTarget.Get("Velocity", ref tmpS);
+Vector3D.TryParse(tmpS, out LockTargetVelocity);
+
+cfgTarget.Get("radarHighThreatPosition", ref tmpS);
+Vector3D.TryParse(tmpS, out radarHighThreatPosition);
+
+int tmpI = 0;
+cfgTarget.Get("TargetCount", ref tmpI);
+
+int targetCount = tmpI;
+for (int i = 0; i < targetCount; i++) {
+Vector3D tmpP, tmpV;
+cfgTarget.Get("Position"+i, ref tmpS);
+Vector3D.TryParse(tmpS, out tmpP);
+cfgTarget.Get("Velocity"+i, ref tmpS);
+Vector3D.TryParse(tmpS, out tmpV);
+long tmpL;
+cfgTarget.Get("EntityId"+i, ref tmpS);
+long.TryParse(tmpS, out tmpL);
+targetDataDict[tmpL] = new TargetData(tmpP, TargetRelation.Enemy, MAX_REBROADCAST_INGEST_COUNT, tmpV, MOTHER_CODE, new MatrixD(), 0);
+} 
+
+
+}

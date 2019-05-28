@@ -986,7 +986,7 @@ void GetBlocks(){
 
 	//初始化飞船类
 	MyShip = new Ship(BK);
-	if(MyShip.Cockpit!=null)
+	if(MyShip.Cockpit!=null && MyShip.Cockpit is IMyTextSurfaceProvider)
 	InfoLCD.Add(((IMyTextSurfaceProvider)MyShip.Cockpit).GetSurface(1));
 
 	// add by kaien
