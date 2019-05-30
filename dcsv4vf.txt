@@ -218,6 +218,11 @@ string MISSILE_TAG="#A#";
 // sm mode
 bool isSM = false;
 
+// auto height hold
+bool ahhOn = false;
+bool useAhh = true;
+double ahh = 0;
+
 Program()
 {
 //Runtime.UpdateFrequency = UpdateFrequency.Update1;
@@ -534,7 +539,7 @@ ParseSensor();
 }
 
 if (motherCode != null) {
-sendSignal();
+//sendSignal();
 }
 if (sonCode != null) {
 if(notDocked()) MaintainSpeed();
@@ -719,6 +724,21 @@ SetBlocksValueColor(lcdBackList, "BackgroundColor", new Color(1,1,1));
 }
 }
 
+if (isUnderControl && ahhOn && !isDown && !isLaunch) {
+double h = 0;
+bool getted = msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h);
+if (getted) {
+var needD = ahh - h;
+var needV = needD;
+var m2m = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
+var needA = needV - m2m.Y;
+var nud = Cockpit.WorldMatrix.Up.Dot(naturalGravity);
+string dsdr = DimSpeed(needA, upThrusters, downThrusters, ref thrusterPercentY, m2m.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
+lastSpeedY = m2m.Y;
+debugInfo = " \nneedV: " + needV + " " + m2m.Y + "\n " + upThrusters[0].CustomName + " " + upThrusters[0].GetValue<float>("Override") + "\n" + dsdr;
+}
+}
+
 Main_RT(arguments, updateType);
 
 Main_VT();
@@ -747,8 +767,8 @@ SetGyroOverride(true);
 }
 DimSpeedAll(maintainSpeedToMe,refLookAtMatrix);
 }
-
 }
+
 Vector3D dummyP;
 bool isDummyInit = false;
 bool isDummy = false;
@@ -834,6 +854,23 @@ SetThrusterListOverride(backwardThrusters, 0f);
 }
 if(inputVec.Z > 0.1){
 SetThrusterListOverride(backwardThrusters, -1f);
+}
+// ahh
+Vector3D inputVecWorld = Vector3D.TransformNormal(inputVec, msc.WorldMatrix);
+bool wantUD = false;
+if (naturalGravity.Length() > 0.1 && inputVec.Length() >0.1) {
+  wantUD = Math.Abs(inputVecWorld.Dot(Vector3D.Normalize(naturalGravity))) > 0.1;
+}
+if (useAhh && !ahhOn && !wantUD) {
+double h = 0;
+if (msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h)) {
+ahh = h;
+ahhOn = true;
+}
+}
+if (wantUD) {
+ahhOn = false;
+resetThrusters();
 }
 }
 bool cd = false;
@@ -1005,7 +1042,7 @@ lcd.FontColor = new Color(0,76,255);
 
 void recordNp(out double l, out double u , out double f, out string h, out string t) {
 Vector3D shipPosition = new Vector3D(shipMatrix.M41, shipMatrix.M42, shipMatrix.M43);
-Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
+Vector3D myPosition = MePosition;
 Vector3D myToShipPosition = myPosition - shipPosition;
 MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
 myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
@@ -1898,6 +1935,7 @@ if (speed < - tlimit) speed = -tlimit;
 // 求当前加速度
 var nowA = (nowSpeed - lastSpeed) * 60;
 var needA = (speed + nowSpeed - lastSpeed);
+dr += "needA: " + needA;
 
 accleHis[dimIdx,accleHisIdx[dimIdx]] = needA;
 accleHisIdx[dimIdx] = (accleHisIdx[dimIdx] + 1) % 10;
@@ -1947,7 +1985,7 @@ maxAllF = maxAllFd;
 
 if (maxAllF == 0)percent = 0;
 else percent = (float) needF / maxAllF;
-dr+=percent+" "+(incThrusters.Count+decThrusters.Count);
+dr+="\nPer: " + percent+" "+(incThrusters.Count+decThrusters.Count);
 float zF = 0F;
 if (dampenersOn) zF = 0.000001F;
 
@@ -1956,7 +1994,7 @@ for (int i = 0; i < incThrusters.Count; i++) {
 ((IMyThrust)incThrusters[i]).ThrustOverridePercentage = zF;
 }
 for (int i = 0; i < decThrusters.Count; i++) {
-((IMyThrust)decThrusters[i]).ThrustOverridePercentage = 0;
+((IMyThrust)decThrusters[i]).ThrustOverridePercentage = zF;
 }
 } else if (percent > 0) {
 for (int i = 0; i < incThrusters.Count; i++) {
@@ -1975,16 +2013,16 @@ t.ThrustOverridePercentage = 0;
 }
 } else {
 for (int i = 0; i < offGridThrust.Count; i++) {
-((IMyThrust)offGridThrust[i]).ThrustOverridePercentage = 0;
+((IMyThrust)offGridThrust[i]).ThrustOverridePercentage = zF;
 }
 }
 }
 for (int i = 0; i < decThrusters.Count; i++) {
-((IMyThrust)decThrusters[i]).ThrustOverridePercentage = 0;
+((IMyThrust)decThrusters[i]).ThrustOverridePercentage = zF;
 }
 } else {
 for (int i = 0; i < incThrusters.Count; i++) {
-((IMyThrust)incThrusters[i]).ThrustOverridePercentage = 0;
+((IMyThrust)incThrusters[i]).ThrustOverridePercentage = zF;
 }
 for (int i = 0; i < decThrusters.Count; i++) {
 ((IMyThrust)decThrusters[i]).ThrustOverridePercentage =  -percent;
@@ -2006,48 +2044,8 @@ return src;
 }
 }
 
-void sendSignal() {
-MatrixD refWorldMatrix = Cockpit.WorldMatrix;
-if(motherSignalRotation) {
-Vector3D tmp = new Vector3D(0,1,0);
-var rm = MatrixD.CreateRotationZ(t%5000/5000f*MathHelper.TwoPi);
-tmp = Vector3D.Rotate(tmp, rm);
-
-var newUp = Vector3D.TransformNormal(tmp, refLookAtMatrix);
-
-var rd = MatrixD.CreateFromDir(Cockpit.WorldMatrix.Forward, newUp);
-refWorldMatrix = rd;
-}
-Vector3D currentPos = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
-Vector3D speed = Cockpit.GetShipVelocities().LinearVelocity;
-
-IMyRadioAntenna ant = GridTerminalSystem.GetBlockWithName(stAName) as IMyRadioAntenna;
-if (i == 0) {
-string message = motherCode + ":" + refWorldMatrix.M11+","+refWorldMatrix.M12+","+refWorldMatrix.M13+","+refWorldMatrix.M14+","+
-refWorldMatrix.M21+","+refWorldMatrix.M22+","+refWorldMatrix.M23+","+refWorldMatrix.M24+","+
-refWorldMatrix.M31+","+refWorldMatrix.M32+","+refWorldMatrix.M33+","+refWorldMatrix.M34+","+
-currentPos.X+","+currentPos.Y+","+currentPos.Z+","+refWorldMatrix.M44+","+
-speed.X+","+speed.Y+","+speed.Z;
-if (!LockTargetPosition.Equals( Vector3D.Zero)) {
-Vector3D dir = LockTargetPosition - currentPos;
-dir = Vector3D.Normalize(dir);
-Vector3D pos = LockTargetPosition;
-message += "," + pos.X + "," + pos.Y + "," + pos.Z + "," + LockTargetVelocity.X+ "," + LockTargetVelocity.Y+ "," + LockTargetVelocity.Z + "," + (((t % flyByAttackRoundTime)/(flyByAttackRoundTime*1.0D)) * MathHelper.TwoPi);
-} else if (motherPointerMode) {
-Vector3D direction;
-direction = CalculateTurretViewVector(homingTurret);
-Vector3D pointTarget = currentPos + direction * pointDis;
-message += "," + pointTarget.X + "," + pointTarget.Y + "," + pointTarget.Z + "," + speed.X + "," + speed.Y + "," + speed.Z;
-}
-ant.TransmitMessage(message);
-lastSendingTime=t;
-}
-
-i = (i+1) % 40;
-}
-
 Vector3D calcSpeedToMeAndAvoid(Vector3D maintainSpeed) {
-Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
+Vector3D myPosition = MePosition;
 Vector3D needSpeedToMe = Vector3D.TransformNormal(maintainSpeed - Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
 Vector3D tmp = needSpeedToMe;
 Vector3D apDiff;
@@ -2257,13 +2255,7 @@ if (flyByOn || (dockingOn && notDocked())) {
 var dr= DimSpeedAll(maintainSpeedToMeAA,refLookAtMatrix);
  }
 
-// 发射避撞信号
-if (t %40 ==20) {
-Vector3D currentPos = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
-IMyRadioAntenna ant = GridTerminalSystem.GetBlockWithName(stAName) as IMyRadioAntenna;
-string message = sonCode+"-AVOID:"+Cockpit.EntityId+","+currentPos.X+","+currentPos.Y+","+currentPos.Z;
-ant.TransmitMessage(message);
-}
+
 }
 
 string DimSpeedAll(Vector3D maintainSpeedToMe, MatrixD refLookAtMatrix) {
@@ -2370,7 +2362,7 @@ if (mdei.EntityId == 0) return;
 MatrixD refWorldMatrix = mdei.Orientation;
 Vector3D currentPos = mdei.Position;
 Vector3D speed = mdei.Velocity;
-Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
+Vector3D myPosition = MePosition;
 
 string message = sonCode + ":" + refWorldMatrix.M11+","+refWorldMatrix.M12+","+refWorldMatrix.M13+","+refWorldMatrix.M14+","+
 refWorldMatrix.M21+","+refWorldMatrix.M22+","+refWorldMatrix.M23+","+refWorldMatrix.M24+","+
@@ -2594,8 +2586,8 @@ Vector3D shipPosition = new Vector3D(shipMatrix.M41, shipMatrix.M42, shipMatrix.
 MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
 
 
-Vector3D myPosition = Cockpit.CubeGrid.GridIntegerToWorld(Cockpit.Position);
-Vector3D myToShipPosition = myPosition - shipPosition;
+Vector3D myPosition = MePosition;
+Vector3D myToShipPosition = MePosition - shipPosition;
 myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
 distanceInfo=Math.Round(-myToShipPosition.X,2) + " " + Math.Round(myToShipPosition.Y,2) + " " + Math.Round(-myToShipPosition.Z,2);
 Vector3D targetPosition = new Vector3D(0,0,0);

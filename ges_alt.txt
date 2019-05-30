@@ -60,7 +60,7 @@ float meRpm;
 int meFullMode = 0;
 float meRpmToggle = 0;
 float meSeqValue = 0.5F;
-static float pp=0.1F,pi=0.1F,pd=0F, pim=5F;
+static float pp=1F,pi=0.1F,pd=0F, pim=5F;
 PIDController mePID = new PIDController(pp, pi, pd,pim,-pim,60);
 int t = 0;
 
