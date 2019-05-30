@@ -729,13 +729,13 @@ double h = 0;
 bool getted = msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h);
 if (getted) {
 var needD = ahh - h;
-var needV = needD / 100f;
+var needV = needD;
 var m2m = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
 var needA = needV - m2m.Y;
-debugInfo = "needA: " + needA;
 var nud = Cockpit.WorldMatrix.Up.Dot(naturalGravity);
-DimSpeed(needA, upThrusters, downThrusters, ref thrusterPercentY, m2m.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
+string dsdr = DimSpeed(needA, upThrusters, downThrusters, ref thrusterPercentY, m2m.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
 lastSpeedY = m2m.Y;
+debugInfo = " \nneedV: " + needV + " " + m2m.Y + "\n " + upThrusters[0].CustomName + " " + upThrusters[0].GetValue<float>("Override") + "\n" + dsdr;
 }
 }
 
@@ -767,8 +767,8 @@ SetGyroOverride(true);
 }
 DimSpeedAll(maintainSpeedToMe,refLookAtMatrix);
 }
-
 }
+
 Vector3D dummyP;
 bool isDummyInit = false;
 bool isDummy = false;
@@ -870,6 +870,7 @@ ahhOn = true;
 }
 if (wantUD) {
 ahhOn = false;
+resetThrusters();
 }
 }
 bool cd = false;
@@ -1934,6 +1935,7 @@ if (speed < - tlimit) speed = -tlimit;
 // 求当前加速度
 var nowA = (nowSpeed - lastSpeed) * 60;
 var needA = (speed + nowSpeed - lastSpeed);
+dr += "needA: " + needA;
 
 accleHis[dimIdx,accleHisIdx[dimIdx]] = needA;
 accleHisIdx[dimIdx] = (accleHisIdx[dimIdx] + 1) % 10;
@@ -1983,7 +1985,7 @@ maxAllF = maxAllFd;
 
 if (maxAllF == 0)percent = 0;
 else percent = (float) needF / maxAllF;
-dr+=percent+" "+(incThrusters.Count+decThrusters.Count);
+dr+="\nPer: " + percent+" "+(incThrusters.Count+decThrusters.Count);
 float zF = 0F;
 if (dampenersOn) zF = 0.000001F;
 
@@ -1992,7 +1994,7 @@ for (int i = 0; i < incThrusters.Count; i++) {
 ((IMyThrust)incThrusters[i]).ThrustOverridePercentage = zF;
 }
 for (int i = 0; i < decThrusters.Count; i++) {
-((IMyThrust)decThrusters[i]).ThrustOverridePercentage = 0;
+((IMyThrust)decThrusters[i]).ThrustOverridePercentage = zF;
 }
 } else if (percent > 0) {
 for (int i = 0; i < incThrusters.Count; i++) {
@@ -2011,16 +2013,16 @@ t.ThrustOverridePercentage = 0;
 }
 } else {
 for (int i = 0; i < offGridThrust.Count; i++) {
-((IMyThrust)offGridThrust[i]).ThrustOverridePercentage = 0;
+((IMyThrust)offGridThrust[i]).ThrustOverridePercentage = zF;
 }
 }
 }
 for (int i = 0; i < decThrusters.Count; i++) {
-((IMyThrust)decThrusters[i]).ThrustOverridePercentage = 0;
+((IMyThrust)decThrusters[i]).ThrustOverridePercentage = zF;
 }
 } else {
 for (int i = 0; i < incThrusters.Count; i++) {
-((IMyThrust)incThrusters[i]).ThrustOverridePercentage = 0;
+((IMyThrust)incThrusters[i]).ThrustOverridePercentage = zF;
 }
 for (int i = 0; i < decThrusters.Count; i++) {
 ((IMyThrust)decThrusters[i]).ThrustOverridePercentage =  -percent;
