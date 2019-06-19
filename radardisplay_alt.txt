@@ -81,7 +81,7 @@ const string INI_TEXT_SURFACE_TEMPLATE = "Show on screen {0}";
  
 const int MAX_REBROADCAST_INGEST_COUNT = 6; 
 
-string MOTHER_CODE = "2ndUsagi";
+string MOTHER_CODE = "2ndUsagi1";
 static string debugInfo = "";
 string COCKPIT_NAME = "Reference";
 int t = 0;
@@ -124,7 +124,7 @@ float MaxRange
     } 
 } 
  
-string textPanelName = "Radar"; 
+string textPanelName = "R_LCD"; 
 float projectionAngle = 60f; 
 float turretMaxRange = 800f; 
  
@@ -224,6 +224,7 @@ void callDcsSendAvoid() {
 	var v = item.Value;
 	if (v.Relation != TargetRelation.Friendly) return false;
 	if ((MePosition - v.Position).Length() > 50) return false;
+	if (k == Me.CubeGrid.EntityId) return false;
 	return true;
     }).ToList();
     s.Sort((l,r)=>
@@ -1538,7 +1539,7 @@ return message;
 
 
 void PlayAction(IMyTerminalBlock block, String action, String cmd = null) {
-
+if (block == null) return;
 if (cmd != null) {
     TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode());
     List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();

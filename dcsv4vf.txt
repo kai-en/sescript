@@ -223,6 +223,10 @@ bool ahhOn = false;
 bool useAhh = true;
 double ahh = 0;
 
+// suspect mode
+bool susMode = false;
+bool glideOn = false;
+
 Program()
 {
 //Runtime.UpdateFrequency = UpdateFrequency.Update1;
@@ -262,6 +266,7 @@ dockingOn=false;
 setDampenersOverride(Cockpit, false);
 PlayActionList(thrusters, "OnOff_On");
 turnOn = true;
+ahhOn = false;
 PlayActionList(connectors, "OnOff_Off");
 PlayActionList(landingGears, "OnOff_Off");
 }
@@ -288,6 +293,7 @@ flyByOn=false;
 setDampenersOverride(Cockpit, false);
 PlayActionList(thrusters, "OnOff_On");
 turnOn = true;
+ahhOn = false;
 PlayActionList(connectors, "OnOff_On");
 PlayActionList(landingGears, "OnOff_On");
 }
@@ -519,12 +525,14 @@ switch(commandCache) {
 case "FLYBYON":
 if ( t > commandStart + commandWaitTic) {
 startFlyBy();
+ahhOn = false;
 commandCache=null;
 }
 break;
 case "DOCKINGON":
 if ( t > commandStart + (commandAllTic-commandWaitTic)) {
 startDocking();
+ahhOn = false;
 commandCache=null;
 }
 break;
@@ -735,13 +743,24 @@ var needA = needV - m2m.Y;
 var nud = Cockpit.WorldMatrix.Up.Dot(naturalGravity);
 string dsdr = DimSpeed(needA, upThrusters, downThrusters, ref thrusterPercentY, m2m.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
 lastSpeedY = m2m.Y;
-debugInfo = " \nneedV: " + needV + " " + m2m.Y + "\n " + upThrusters[0].CustomName + " " + upThrusters[0].GetValue<float>("Override") + "\n" + dsdr;
 }
 }
 
 Main_RT(arguments, updateType);
 
 Main_VT();
+
+if(true){
+// auto forward
+if(inputVec.Length() < 0.1 && aeroSpeedLevel>0){
+Vector3D mySpeedToMe = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
+if(mySpeedToMe.Z > (-20*aeroSpeedLevel)){
+SetThrusterListOverride(forwardThrusters, 100f);
+}else {
+SetThrusterListOverride(forwardThrusters, -1f);
+}
+}
+}
 
 // start dummy
 if (isDummy) {
@@ -861,7 +880,7 @@ bool wantUD = false;
 if (naturalGravity.Length() > 0.1 && inputVec.Length() >0.1) {
   wantUD = Math.Abs(inputVecWorld.Dot(Vector3D.Normalize(naturalGravity))) > 0.1;
 }
-if (useAhh && !ahhOn && !wantUD) {
+if (useAhh && !ahhOn && !wantUD && !(flyByOn || dockingOn)) {
 double h = 0;
 if (msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h)) {
 ahh = h;
@@ -1295,6 +1314,10 @@ GridTerminalSystem.GetBlocksOfType<IMyCameraBlock> (cameraList,b=>b.CubeGrid==Me
 cameraList.ForEach(delegate(IMyCameraBlock cam){cam.ApplyAction("OnOff_On");cam.EnableRaycast = true;});
 findByGroup("LCD-Back-G",lcdBackList);
 
+if (isBase){
+downStartPos = Cockpit.GetPosition();
+isDown = true;
+}
 init = true;
 }
 
@@ -1834,6 +1857,7 @@ cfg.Get("limitInnerRotor", ref limitInnerRotor);
 cfg.Get("isAeroDynamic", ref isAeroDynamic);
 cfg.Get("angleWhenDown", ref angleWhenDown);
 cfg.Get("maxTargetCount", ref maxTargetCount);
+cfg.Get("susMode", ref susMode);
 // new para here
 
 cfg.Get("dockingForwardDistance", ref dockingForwardDistance);
@@ -2054,23 +2078,15 @@ double rate = 0.1;
 if (flyByOn && !isApproach) {
 long nKey = 0;
 double nDis = 0;
-double avgDis = 0;
 int count = 0;
 foreach(var item in avoidMap.ToList()) {
 if (nKey == 0 || (item.Value - myPosition).Length() < nDis) {
 nKey = item.Key;
 nDis = (item.Value - myPosition).Length();
 }
-avgDis += (item.Value - myPosition).Length();
 count ++;
 }
 if (count > 0) {
-avgDis = avgDis / count;
-double sumDiff = 0;
-foreach(var item in avoidMap.ToList()) {
-sumDiff += Math.Abs(avgDis - (item.Value - myPosition).Length());
-}
-
 Vector3D thatPos = avoidMap[nKey];
 apDiff = thatPos - myPosition;
 if (apDiff.Length() < 50) {
@@ -2097,7 +2113,6 @@ return needSpeedToMe;
 
 void MaintainSpeed() {
 RefreshMaintainSpeed();
-
 maintainSpeedToMeAA = calcSpeedToMeAndAvoid(maintainSpeed);
 
 // 计算转向
@@ -2160,6 +2175,12 @@ d = new Vector3D(1,0,0);
 sd = d;
 }
 SetGyroYaw(AimRatio*sd.X*60);
+// CODING
+debugInfo = " " + maintainSpeedToMeAA.Y ;
+if (isAeroDynamic && maintainSpeedToMeAA.Y > 0) {
+sd.Y += maintainSpeedToMeAA.Y * 0.1;
+debugInfo += "\n  " + maintainSpeedToMeAA.Y * 0.1 + "\n "  + shipDirectionToMe.Y;
+}
 SetGyroPitch(AimRatio*sd.Y*20);
 sd.Z=0;
 if (sd.Length()>isTurningLimit) isTurning=true;
@@ -2253,8 +2274,7 @@ SetGyroOverride(true);
 // 维持速度
 if (flyByOn || (dockingOn && notDocked())) {
 var dr= DimSpeedAll(maintainSpeedToMeAA,refLookAtMatrix);
- }
-
+}
 
 }
 
@@ -2513,6 +2533,11 @@ MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.
 
 shipSpeed = new Vector3D(Convert.ToDouble(args[16]), Convert.ToDouble(args[17]), Convert.ToDouble(args[18]));
 needFlyByAim = false;
+if (susMode) {
+flyByAimPosition = shipPosition;
+flyByAimSpeed = Vector3D.Zero;
+needFlyByAim = true;
+}
 if (args.Count() >= 25) {
 flyByAimPosition = new Vector3D(Convert.ToDouble(args[19]),Convert.ToDouble(args[20]),Convert.ToDouble(args[21]));
 flyByAimSpeed = new Vector3D(Convert.ToDouble(args[22]),Convert.ToDouble(args[23]),Convert.ToDouble(args[24]));
@@ -3364,7 +3389,7 @@ needA -= mstmn * 10.0;
 }
 if(backwardThrusters.Where( t => {
 return ((IMyThrust)t).Enabled;
-}).ToList().Count == 0 && ngtome.Z < 5){
+}).ToList().Count == 0 && ngtome.Z < 5 && glideOn){
 needA.Z=0;
 }
 var tl = 0f;
@@ -3382,6 +3407,8 @@ tl = MathHelper.Clamp(tl, -0.5f*(float)Math.PI, 0.5f*(float)Math.PI);
 if(needA.Y<0 && inputVec.Z == 0) noyt = true;
 else if (needA.Y>2) noyt = false;
 
+var backLimit = -18;
+if(flyByOn) backLimit = -5;
 if ((naturalGravityLength < 0.01f && tl == 0 && needA.Y < 0.5)) tl = -(float)Math.PI * 0.5f;
 else if (naturalGravityLength > 0.01f && isAeroDynamic &&
 (aeroSpeedLevel>0 || (flyByOn&& mstm.Z<-20))

@@ -12,6 +12,12 @@ List<IMyTerminalBlock> missileWelders = null;
 List<List<IMyTerminalBlock>> missileWeldersSort = null; 
 List<List<IMyTerminalBlock>> gcWeldersSort = null; 
 List<List<IMyTerminalBlock>> gcLightSort = null; 
+List<List<IMyTerminalBlock>> gcLightSortR = null; 
+List<IMyTerminalBlock> gcLights = new List<IMyTerminalBlock>();
+List<IMyTerminalBlock> gcLight2 = new List<IMyTerminalBlock>();
+
+string gcSuperLaserName = "Super-Laser-G";
+List<IMyTerminalBlock> superLaser = new List<IMyTerminalBlock>();
 
 List<IMyTerminalBlock> gcWelderList = null; 
  
@@ -53,7 +59,6 @@ public Program()
 void findByGroup(string groupName, List<IMyTerminalBlock> blocks) { 
   var group = GridTerminalSystem.GetBlockGroupWithName(groupName); 
   if (group == null) { 
-    Echo("no group for name " + groupName); 
     return; 
   } 
   group.GetBlocks(blocks); 
@@ -223,9 +228,24 @@ void PlayActionList(List<IMyTerminalBlock> blocks, String action) {
     { 
         blocks[i].GetActionWithName(action).Apply(blocks[i]); 
     } 
-} 
+}
+
+void PlayActionListWithName(List<IMyTerminalBlock> blocks, String action) {
+    if(blocks == null) return;
+	for(int i = 0; i < blocks.Count; i ++)
+	{
+		List<ITerminalAction> resultList = new List<ITerminalAction>();
+		blocks[i].GetActions(resultList);
+		foreach(var a in resultList) {
+			string name = a.Name.ToString();
+			if (name.Equals(action)) {
+				a.Apply(blocks[i]);
+			}
+		}
+	}
+}
  
-void init() { 
+void init() {
   Cockpit = getBlockByName(shipControllerPointZeroName) as IMyShipController; 
  
   // Add 
@@ -239,10 +259,13 @@ void init() {
  
   missileWeldersSort = sortByPosition(missileWelders, "ZX", true);
 
-  List<IMyTerminalBlock> gcLights = new List<IMyTerminalBlock>();
   findByGroup(gcLightGroupName, gcLights);
 
+  findByGroup(gcLightGroupName+"2", gcLight2);
+  findByGroup(gcSuperLaserName, superLaser);
+
   gcLightSort = sortByPosition(gcLights, "Z", false);
+  gcLightSortR = sortByPosition(gcLights, "Z", true);
  
   gcWelderList = new List<IMyTerminalBlock>(); 
   findByGroup("Welder-GC-G", gcWelderList);
@@ -265,8 +288,7 @@ public void Main(string argument, UpdateType updateSource)
     init(); 
     return; 
   } 
-  // Echo(seqBlockList.Count() + " " + seqIntervalList.Count() + " " + seqStartList.Count() + " " + seqActionList.Count() + " "); 
- 
+  
   // Add 
   switch(argument) { 
   case "ReverseMissileRotor": 
@@ -415,6 +437,14 @@ public void Main(string argument, UpdateType updateSource)
     addSeq(dronePBSorted, "Run", 120, argumentList);  
   }
   break;
+  case "FIRELASER":
+  {
+    fireLaserCommand();
+    PlayActionListWithName(superLaser, "Shoot once");
+  }
+  break;
+  default:
+  break;
 } 
  
   runSeq(); 
@@ -516,7 +546,73 @@ missileRightStage = 3;
 missileRightStage = 0;
 }
 
+  fireLaser();
+
   counter ++;
   Echo(debugInfo);
 } 
+
+long fireLaserStart = 0L;
+long fireLaserIntervalStart = 20L;
+long fireLaserInterval = 13L;
+long fireLaserSteps = 7L;
+long fireLaserDeduct = 1L;
+long fireLaserNextTime = 0L;
+long fireLaserP1Time = 1060L;
+long fireLaserP2Time = 1600L;
+bool fireLaserP2Fired = false;
+Color fireLaserColorMax = new Color(255, 191, 227);
+
+void fireLaserCommand() {
+if(fireLaserStart == 0) {
+fireLaserStart = counter;
+fireLaserInterval = fireLaserIntervalStart;
+fireLaserNextTime = 0L;
+}
+}
+
+void fireLaser() {
+if (fireLaserStart == 0) return;
+long time = counter - fireLaserStart;
+if (time < fireLaserNextTime) return;
+if (time < fireLaserP1Time) {
+if (time == fireLaserNextTime) {
+   var nextTime = fireLaserNextTime + fireLaserInterval * fireLaserSteps + 1;
+   if (nextTime > fireLaserP1Time) nextTime = fireLaserP1Time;
+   float p = nextTime * 1.0F / fireLaserP1Time;
+   Color flcm = fireLaserColorMax;
+   Color nowColor = new Color((int)(p*flcm.R), (int)(p*flcm.G), (int)(p*flcm.B));
+   SetBlocksValueColor(gcLights, "Color", nowColor);  
+   SetBlocksValueColor(gcLight2, "Color", nowColor);  
+
+  addSeq(gcLightSortR, "OnOff_On", fireLaserInterval);
+  if (fireLaserNextTime != 0)
+  PlayActionList(gcLight2, "OnOff_On");
+}
+
+if (time == fireLaserNextTime + fireLaserInterval) {
+  addSeq(gcLightSortR, "OnOff_Off", fireLaserInterval);
+  fireLaserNextTime += fireLaserInterval * fireLaserSteps + 1;
+  fireLaserInterval -= fireLaserDeduct;
+}
+
+} else if (time < fireLaserP2Time) {
+  if(!fireLaserP2Fired) {
+  addSeq(gcLightSort, "OnOff_On", 2);
+  fireLaserP2Fired = true;
+  }
+} else {
+  addSeq(gcLightSort, "OnOff_Off", fireLaserInterval);
+  PlayActionList(gcLight2, "OnOff_Off");
+fireLaserStart = 0L;
+fireLaserP2Fired = false;
+}
  
+}
+
+void SetBlocksValueColor(List<IMyTerminalBlock> blocks, String name, Color v) {  
+	for(int i = 0; i < blocks.Count; i ++)      
+	{      
+		blocks[i].SetValue(name, v);    
+	}    
+}  
