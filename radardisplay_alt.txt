@@ -218,7 +218,7 @@ void Main(string arg, UpdateType updateSource)
 }
 
 void callDcsSendAvoid() {
-    if (t % 40 != 20) return;
+    if (t % 4 != 2) return;
     List<KeyValuePair<long, TargetData>> s = targetDataDict.Where( item => {
         var k = item.Key;
 	var v = item.Value;
@@ -241,7 +241,7 @@ PlayAction(dcsComputer, "Run", message);
 }
 
 void callDcsSendPosition(){
-    if (t % 40 != 0) return;
+    if (t % 4 != 0) return;
     foreach (var item in targetDataDict) {
     	var k = item.Key;
 	var v = item.Value;
@@ -332,7 +332,7 @@ void NetworkTargets()
 	var rd = MatrixD.CreateFromDir(reference.WorldMatrix.Forward, newUp);
 	refWorldMatrix = rd;
 	}
-        var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)TargetRelation.Friendly, Me.CubeGrid.EntityId, Me.GetPosition(), 0, encodeMessage(MOTHER_CODE, refWorldMatrix, reference.GetShipVelocities().LinearVelocity, 0));
+        var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)TargetRelation.Friendly, Me.CubeGrid.EntityId, reference.GetPosition(), 0, encodeMessage(MOTHER_CODE, refWorldMatrix, reference.GetShipVelocities().LinearVelocity, 0));
         IGC.SendBroadcastMessage(IGC_TAG, myTuple); 
     } 
  
@@ -428,7 +428,8 @@ void Draw(float startProportion, float endProportion)
  
 void PrintDetailedInfo() 
 { 
-    Echo($"WMI Radar System Online{RunningSymbol()}\n(Version {VERSION} - {DATE})"); 
+    Echo($"WMI Radar System Online{RunningSymbol()}\n(Version {VERSION} - {DATE})");
+    Echo(debugInfo);
     Echo($"{lastSetupResult}"); 
     Echo($"Text surfaces: {textSurfaces.Count}"); 
     Echo($"\nReference seat:\n\"{(reference?.CustomName)}\""); 

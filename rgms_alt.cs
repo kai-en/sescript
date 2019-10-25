@@ -1,5 +1,7 @@
 static int rgms_no = 0;
-static float missileGravityRate = 2F;
+static float missileGravityRate = 5F;
+
+string debugInfo = "";
 
 //Introduction
             #region Introduction
@@ -83,7 +85,8 @@ static float missileGravityRate = 2F;
 
 	    // a b K
 	    public int delayStartCount = 0;
-
+	    public Vector3D TargetVelocity = Vector3D.Zero;
+	    public Vector3D TargetVelocityPanel = Vector3D.Zero;
             }
             List<MISSILE> MISSILES = new List<MISSILE>();
 
@@ -160,6 +163,7 @@ static float missileGravityRate = 2F;
                 OP_BAR();
                 QuickEcho(MISSILES.Count, "Active (Fired) Missiles:");
                 QuickEcho(Runtime.LastRunTimeMs, "Runtime:");
+Echo(debugInfo);
                 Echo("Version:  " + VERSION);
 	    Echo("PNGain: " + PNGain);
 	    Echo("Offset: " + Offset);
@@ -277,6 +281,11 @@ static float missileGravityRate = 2F;
                 yield return true;
                 yield return true;
                 yield return true; //Safety Tick
+	    int dropTime = 30;
+	    if(Me.CubeGrid.GridSizeEnum == MyCubeSize.Large) dropTime = 0;
+	    for (int i = 0; i < dropTime; i++) {
+	    	yield return true;
+	    }
 
                 //Launches Missile & Gathers Next Scanner
                 PREP_FOR_LAUNCH(MISSILES.Count - 1);
@@ -310,7 +319,6 @@ static float missileGravityRate = 2F;
 	    if (panelInfo.StartsWith("[T:") && tokens.Length >= 7) {
 	       targetPanelPosition = new Vector3D(Convert.ToDouble(tokens[1]),Convert.ToDouble(tokens[2]),Convert.ToDouble(tokens[3]));
 	       targetPanelVelocity = new Vector3D(Convert.ToDouble(tokens[4]),Convert.ToDouble(tokens[5]),Convert.ToDouble(tokens[6]));
-	       //targetPanelVelocity += - missileGravityRate * RC.GetNaturalGravity();
 	       targetPanelHasTarget = true;
 	    }
 
@@ -326,7 +334,6 @@ static float missileGravityRate = 2F;
 	        ENEMY_POS = targetPanelPosition;
 	        usePanel = true;
 	        Vector3D dir = ENEMY_POS - RC.GetPosition();;
-		// CODING
 	        dir = Vector3D.Normalize(dir);
 	        var rcmt = RC.WorldMatrix;
 	        Vector3D tmp = Vector3D.Reject(dir, rcmt.Up);
@@ -354,11 +361,15 @@ static float missileGravityRate = 2F;
 
                 Vector3D TargetPosition = ENEMY_POS;
                 Vector3D TargetPositionPrev = This_Missile.TARGET_PREV_POS;
-                Vector3D TargetVelocity = (TargetPosition - This_Missile.TARGET_PREV_POS) / Global_Timestep;
+                Vector3D TargetVelocityNew = (TargetPosition - This_Missile.TARGET_PREV_POS) / Global_Timestep;
+                Vector3D TargetAcc = (TargetVelocityNew - This_Missile.TargetVelocity) * 60;
+                This_Missile.TargetVelocity = TargetVelocityNew;
 
 	    // a b K
 	    if (usePanel) {
-	        TargetVelocity = targetPanelVelocity;
+                    TargetAcc = (targetPanelVelocity - This_Missile.TargetVelocityPanel) * 60;
+	        This_Missile.TargetVelocity = targetPanelVelocity;
+                    This_Missile.TargetVelocityPanel = targetPanelVelocity;
 	    }
 
                 //Uses RdavNav Navigation APN Guidance System
@@ -367,7 +378,9 @@ static float missileGravityRate = 2F;
                 //Setup LOS rates and PN system
                 Vector3D LOS_Old = Vector3D.Normalize(TargetPositionPrev - MissilePositionPrev);
                 Vector3D LOS_New = Vector3D.Normalize(TargetPosition - MissilePosition);
-                Vector3D Rel_Vel = Vector3D.Normalize(TargetVelocity - MissileVelocity);
+                Vector3D Rel_Vel = Vector3D.Normalize(This_Missile.TargetVelocity - MissileVelocity); 
+                Vector3D targetRange = TargetPosition - MissilePosition;
+	    Vector3D targetV = This_Missile.TargetVelocity - MissileVelocity;
 
                 //And Assigners
                 Vector3D am = new Vector3D(1, 0, 0); double LOS_Rate; Vector3D LOS_Delta;
@@ -382,7 +395,7 @@ static float missileGravityRate = 2F;
                 //-----------------------------------------------
 
                 //Closing Velocity
-                double Vclosing = (TargetVelocity - MissileVelocity).Length();
+                double Vclosing = (This_Missile.TargetVelocity - MissileVelocity).Length();
 
                 //If Under Gravity Use Gravitational Accel
                 Vector3D GravityComp = -RC.GetNaturalGravity() * missileGravityRate;
@@ -402,14 +415,17 @@ static float missileGravityRate = 2F;
                 double ThrustPower = RdavUtils.Vector_Projection_Scalar(MissileForwards, Vector3D.Normalize(LateralAccelerationComponent)); //TESTTESTTEST
                 ThrustPower = This_Missile.IsLargeGrid ? MathHelper.Clamp(ThrustPower, 0.9, 1) : ThrustPower;
 
-	    // var thrusterLowerLimit = 0.4;
-	    float thrusterLowerLimit = 0.9F;
-	    if ((TargetPosition - MissilePosition).Length() < 500) thrusterLowerLimit = 0.4F; // a b k 
+	    var thrusterLowerLimit = 0.4f;
+	    //float thrusterLowerLimit = 0.9F;
+	    if ((TargetPosition - MissilePosition).Length() < 1000) thrusterLowerLimit = 0.4F; // a b k 
                 ThrustPower = MathHelper.Clamp(ThrustPower, thrusterLowerLimit, 1); //for improved thrust performance on the get-go
+                ThrustPower = 1;
                 foreach (IMyThrust thruster in This_Missile.THRUSTERS)
                 {
                     if (thruster.ThrustOverridePercentage !=  ThrustPower) //12 increment inequality to help conserve on performance
-                    { thruster.ThrustOverridePercentage = (float)ThrustPower; }
+                    {
+                        thruster.ThrustOverridePercentage = (float)ThrustPower;
+                    }
                 }
 
                 //Calculates Remaining Force Component And Adds Along LOS
@@ -419,8 +435,61 @@ static float missileGravityRate = 2F;
 
                 //-----------------------------------------------
 
+
                 //Guides To Target Using Gyros
                 am = Vector3D.Normalize(LateralAccelerationComponent + GravityComp);
+
+if(true) {
+// 新算法
+// 1 求不需要的速度
+Vector3D tarN = Vector3D.Normalize(targetRange);
+Vector3D rv = Vector3D.Reject(targetV, tarN);
+Vector3D ra = Vector3D.Reject(TargetAcc, tarN);
+
+// 2 换算不需要的加速度 平行制导率
+double GUILD_RATE = 0.3;
+Vector3D rdo = rv * GUILD_RATE * 60 + ra * 0.5;
+
+// 1.1 比例导引法 PN
+double PN_RATE = 3;
+Vector3D losD = (LOS_New - LOS_Old) * PN_RATE * 60;
+//if (targetRange.Length() > 500) rdo = 0.5 * rdo + 0.5 * losD;
+
+// 3 加上抵抗重力所需的加速度 = 需要抵消的加速度 rd
+Vector3D rd = rdo - (RC.GetNaturalGravity()/2);
+double rdl = rd.Length();
+
+// 4 推力 / 质量 = 可以提供的加速度的长度 sdl
+//double MISSILE_MASS = 1661.4;
+double MISSILE_MASS = 1407.4;
+double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust / MISSILE_MASS;
+
+// 5 剩余加速度长度 pdl = sqrt(sdl^2 - rdl^2)
+if (sdl < rdl) sdl = rdl;
+double pdl = Math.Sqrt(sdl*sdl - rdl * rdl);
+
+// 6 剩余加速度方向  nor(reject(los, nor(rd))
+Vector3D pdN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(rd)));
+if (pdN.Length() == 0) pdN = LOS_New;
+
+// 7 剩余加速度
+Vector3D pd = pdN * pdl;
+
+// 8 总加速度
+Vector3D sd = rd + pd;
+
+// 9 总加速度方向
+Vector3D nam = Vector3D.Normalize(sd);
+
+debugInfo = losD.Length() + "\n";
+debugInfo += rdo.Length() + "\n";
+debugInfo += targetRange.Length() + "\n";
+
+am = nam;
+
+// CODING
+}
+
                 double Yaw; double Pitch;
                 GyroTurn6(am, 18, 0.3, This_Missile.THRUSTERS[0], This_Missile.GYRO as IMyGyro, This_Missile.PREV_Yaw, This_Missile.PREV_Pitch, out Pitch, out Yaw);
 
@@ -436,7 +505,7 @@ static float missileGravityRate = 2F;
 	    bool targetNeer = (TargetPosition - MissilePosition).LengthSquared() < This_Missile.FuseDistance * This_Missile.FuseDistance;
 	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 20*20 ;
                 if ((targetGetFar)&& This_Missile.WARHEADS.Count > 0) //A mighty earth shattering kaboom
-                { (This_Missile.WARHEADS[0] as IMyWarhead).Detonate(); }
+                { /*(This_Missile.WARHEADS[0] as IMyWarhead).Detonate();*/ }
 
             }
             #endregion
@@ -960,4 +1029,8 @@ void PlayActionList(List<IMyTerminalBlock> blocks, String action) {
 		var a = blocks[i].GetActionWithName(action);
 		if (a!=null) a.Apply(blocks[i]);
 	}
+}
+
+string displayVector3D(Vector3D tar) {
+return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
 }

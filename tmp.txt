@@ -136,3 +136,7 @@ https://github.com/malware-dev/MDK-SE/wiki/Sandbox.ModAPI.Ingame.IMyIntergridCom
 关系
 非关系
 
+(* 0.18 60)
+
+
+БЦ СкайЛайт, Ленинградский пр-т., 39 строение 79

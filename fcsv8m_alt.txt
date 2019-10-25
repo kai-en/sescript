@@ -57,6 +57,8 @@ int pulseT = 0;
 IMyTextPanel radarOutputLCD = null;
 bool radarWaitNewPos = true;
 Vector3D radarHighThreatPosition = Vector3D.Zero;
+IMySoundBlock fcsSound = null;
+List<IMyTerminalBlock> fcsLightList = new List<IMyTerminalBlock>();
 
 // --------- 搜索参数设置 ------------
 double SearchDistance = 5000;//常规搜索距离
@@ -141,7 +143,7 @@ LCDNameTag = args[1];
 CamerasNameTag = new string[]{"", "ALL"}; 
 GyroscopesNameTag = new string[]{"", "ALL"}; 
 ThurstsNameTag = new string[]{"", "ALL"}; 
-WeaponsNameTag = new string[]{"", "ALL"};
+WeaponsNameTag = new string[]{"ALL_FIX_WEAPON_G", "ALL"};
 double.TryParse(args[2], out SearchDistance);
 homingTurretName = args[3];
 useTurretAsAimer=args[4].Equals("True");
@@ -209,7 +211,9 @@ void Main(string arguments)
 	
 	//接受指令
 	switch(arguments){
-		case("OnOff"):NeedScan = !NeedScan; MyTargetList = new List<Target>(); selectedTarget = 0; break;
+		case("OnOff"):NeedScan = !NeedScan; MyTargetList = new List<Target>(); selectedTarget = 0;
+					if (fcsSound != null) fcsSound.Stop();
+		break;
 		case("Aim"):NeedAimMode += 1; if(NeedAimMode > 2){NeedAimMode = 0;}; break;
 		case("Lock"):ShipLock(); break;
 		case("Weapon"):NeedWeaponMode += 1; if(NeedWeaponMode > 1){NeedWeaponMode = 0;}; break;
@@ -467,6 +471,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 		if(!FoundTarget.IsEmpty() && MyTargetList.Where(t => FoundTarget.EntityId == t.EntityId).ToList().Count == 0){
 			Target MyTarget = new Target(FoundTarget);
 			MyTargetList.Add(MyTarget);
+			if (fcsSound != null) fcsSound.Play();
 		}
 	}
 	if (MyTargetList.Count > 0){
@@ -503,6 +508,9 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 		else if(t - MyTarget.TimeStamp >= 60){
 			if (selectedTarget == MyTargetList.Count - 1 && MyTargetList.Count > 1) selectedTarget --; 
 			MyTargetList.Remove(MyTarget);
+
+			if (MyTargetList.Count == 0 && fcsSound != null) fcsSound.Stop();
+
 			// mod by kaien
 			// NeedScan = false;
 		}
@@ -535,6 +543,8 @@ void ShipPulseScan(Vector3D CenterPoint){
 	if(!Target.IsEmpty() && JudgeTargetRelationship(Target) && MyTargetList.Where(t=>Target.EntityId == t.EntityId).ToList().Count == 0){
 		Target MyTarget = new Target(Target);
 		MyTargetList.Add(MyTarget);
+		if (fcsSound != null) fcsSound.Play();
+
 		NeedScan = true;
 	}
 }
@@ -773,18 +783,23 @@ void ShowInfoLCD(){
 		if(!NeedScan){
 		// mod by kaien
 			lcd.FontColor=new Color(BackgroundColorWhenIdle.X, BackgroundColorWhenIdle.Y, BackgroundColorWhenIdle.Z);
+			SetBlocksValueColor(fcsLightList, "Color", new Color(255,255,255));  
+
 		}
 		else if(MyTarget.EntityId == 0){
 		// mod by kaien
 			lcd.FontColor=new Color(BackgroundColorWhenSearch.X, BackgroundColorWhenSearch.Y, BackgroundColorWhenSearch.Z);
+			SetBlocksValueColor(fcsLightList, "Color", lcd.FontColor) ;
 		}
 		else if(MyTarget.AccurateLockPositionToTarget.Length() == 0){
 		// mod by kaien
 			lcd.FontColor=new Color(BackgroundColorWhenTarget.X, BackgroundColorWhenTarget.Y, BackgroundColorWhenTarget.Z);
+			SetBlocksValueColor(fcsLightList, "Color", lcd.FontColor) ;
 		}
 		else{
 		// mod by kaien
 			lcd.FontColor=new Color(BackgroundColorWhenTLock.X, BackgroundColorWhenTLock.Y, BackgroundColorWhenTLock.Z);
+			SetBlocksValueColor(fcsLightList, "Color", lcd.FontColor) ;
 		}
 		//lcd.ShowPublicTextOnScreen();
 		lcd.WriteText(info);
@@ -986,8 +1001,10 @@ void GetBlocks(){
 
 	//初始化飞船类
 	MyShip = new Ship(BK);
-	if(MyShip.Cockpit!=null && MyShip.Cockpit is IMyTextSurfaceProvider)
-	InfoLCD.Add(((IMyTextSurfaceProvider)MyShip.Cockpit).GetSurface(1));
+	if(MyShip.Cockpit!=null && MyShip.Cockpit is IMyTextSurfaceProvider) {
+	IMyTextSurface ts = ((IMyTextSurfaceProvider)MyShip.Cockpit).GetSurface(1);
+	if (ts!=null)InfoLCD.Add(ts);
+	}
 
 	// add by kaien
 	MyShip.myPositionOffset = myPositionOffset;
@@ -1030,7 +1047,12 @@ void GetBlocks(){
 	List<IMyShipController> tmscl = new List<IMyShipController>();
 	GridTerminalSystem.GetBlocksOfType (tmscl, b=>b.CustomName.Contains(HeadNameTag));
 	if(tmscl.Count > 0) MyShip.Head = tmscl[0];
-	
+
+	findByGroup("fcs-light-g", fcsLightList);
+
+	List<IMyTerminalBlock> tmpList = new List<IMyTerminalBlock>();
+	GridTerminalSystem.GetBlocksOfType<IMySoundBlock> (tmpList, b => b.CubeGrid == Me.CubeGrid);
+	if (tmpList.Count > 0) fcsSound = (IMySoundBlock)tmpList[0];
 }
 
 // ==== 飞船类 ====
@@ -1842,6 +1864,12 @@ if (group == null) return;
 group.GetBlocks(blocks);
 }
 
+void SetBlocksValueColor(List<IMyTerminalBlock> blocks, String name, Color v) {  
+	for(int i = 0; i < blocks.Count; i ++)      
+	{      
+		blocks[i].SetValue(name, v);    
+	}    
+}  
 
 /*
  ===== 开发随笔 =====
@@ -1885,3 +1913,5 @@ group.GetBlocks(blocks);
  double ScanSpeed = (RightAngleCameras.Count*2000)/(Vector3D.Distance(Point, this.Position)*60);//每个循环可用于扫描的摄像头个数
  实际上是在用保守频率扫描，即采用这种频率扫描任意距离的物体，摄像头的总储能既不增加也不减少，刚好恢复速度足够消耗速度。而实际上，这个方法由于t%取整的问题，还会让储能缓慢增加，也就是说比预期的效果要差一些
 */
+
+
