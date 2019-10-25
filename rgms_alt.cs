@@ -449,6 +449,7 @@ Vector3D ra = Vector3D.Reject(TargetAcc, tarN);
 // 2 换算不需要的加速度 平行制导率
 double GUILD_RATE = 0.3;
 Vector3D rdo = rv * GUILD_RATE * 60 + ra * 0.5;
+// if (rdo.Length() > 100) rdo = Vector3D.Normalize(rdo) * 100;
 
 // 1.1 比例导引法 PN
 double PN_RATE = 3;
@@ -456,7 +457,7 @@ Vector3D losD = (LOS_New - LOS_Old) * PN_RATE * 60;
 //if (targetRange.Length() > 500) rdo = 0.5 * rdo + 0.5 * losD;
 
 // 3 加上抵抗重力所需的加速度 = 需要抵消的加速度 rd
-Vector3D rd = rdo - (RC.GetNaturalGravity()/2);
+Vector3D rd = rdo - (RC.GetNaturalGravity() * 0.9);
 double rdl = rd.Length();
 
 // 4 推力 / 质量 = 可以提供的加速度的长度 sdl
