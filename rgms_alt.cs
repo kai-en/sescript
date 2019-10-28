@@ -87,7 +87,9 @@ string debugInfo = "";
 	    public int delayStartCount = 0;
 	    public Vector3D TargetVelocity = Vector3D.Zero;
 	    public Vector3D TargetVelocityPanel = Vector3D.Zero;
-            }
+	    public double nearest = 1000000;
+	    public Vector3D lastVelocity = Vector3D.Zero;
+	    }
             List<MISSILE> MISSILES = new List<MISSILE>();
 
             //Consts
@@ -357,7 +359,9 @@ Echo(debugInfo);
                 //Sorts CurrentVelocities
                 Vector3D MissilePosition = This_Missile.GYRO.CubeGrid.WorldVolume.Center;
                 Vector3D MissilePositionPrev = This_Missile.MIS_PREV_POS;
+		Vector3D lastVelocity = This_Missile.lastVelocity;
                 Vector3D MissileVelocity = (MissilePosition - MissilePositionPrev) / Global_Timestep;
+		This_Missile.lastVelocity = MissileVelocity;
 
                 Vector3D TargetPosition = ENEMY_POS;
                 Vector3D TargetPositionPrev = This_Missile.TARGET_PREV_POS;
@@ -440,6 +444,7 @@ Echo(debugInfo);
                 am = Vector3D.Normalize(LateralAccelerationComponent + GravityComp);
 
 if(true) {
+debugInfo = "";
 // 新算法
 // 1 求不需要的速度
 Vector3D tarN = Vector3D.Normalize(targetRange);
@@ -449,16 +454,23 @@ Vector3D ra = Vector3D.Reject(TargetAcc, tarN);
 // 2 换算不需要的加速度 平行制导率
 double GUILD_RATE = 0.3;
 Vector3D rdo = rv * GUILD_RATE * 60 + ra * 0.5;
-// if (rdo.Length() > 100) rdo = Vector3D.Normalize(rdo) * 100;
 
 // 1.1 比例导引法 PN
-double PN_RATE = 3;
-Vector3D losD = (LOS_New - LOS_Old) * PN_RATE * 60;
-//if (targetRange.Length() > 500) rdo = 0.5 * rdo + 0.5 * losD;
+double PN_RATE = 3000;
+Vector3D losD = (LOS_New - LOS_Old) * 60 + ra * 0.5;
+double losDl = losD.Length();
+debugInfo += "losDl: " + losDl + "\n";
+Vector3D sideN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(MissileVelocity)));
+Vector3D graN = Vector3D.Normalize(RC.GetNaturalGravity());
+Vector3D rdo_pn = sideN * (losDl * PN_RATE);
+
 
 // 3 加上抵抗重力所需的加速度 = 需要抵消的加速度 rd
 Vector3D rd = rdo - (RC.GetNaturalGravity() * 0.9);
 double rdl = rd.Length();
+Vector3D rd_pn = rdo_pn - RC.GetNaturalGravity();
+double rdl_pn = rd_pn.Length();
+debugInfo += "rdl_pn: " + rdl_pn + "\n";
 
 // 4 推力 / 质量 = 可以提供的加速度的长度 sdl
 //double MISSILE_MASS = 1661.4;
@@ -467,24 +479,39 @@ double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust / MISSILE_MASS;
 
 // 5 剩余加速度长度 pdl = sqrt(sdl^2 - rdl^2)
 if (sdl < rdl) sdl = rdl;
+if (sdl < rdl_pn) rdl_pn = sdl;
 double pdl = Math.Sqrt(sdl*sdl - rdl * rdl);
+double pdl_pn = Math.Sqrt(sdl*sdl - rdl_pn * rdl_pn);
 
 // 6 剩余加速度方向  nor(reject(los, nor(rd))
 Vector3D pdN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(rd)));
 if (pdN.Length() == 0) pdN = LOS_New;
 
+Vector3D pdN_pn = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(rd_pn)));
+
+
 // 7 剩余加速度
 Vector3D pd = pdN * pdl;
+Vector3D pd_pn = pdN_pn * pdl_pn;
 
 // 8 总加速度
 Vector3D sd = rd + pd;
+Vector3D sd_pn = rd_pn + pd_pn;
+debugInfo += "sd_pn_l" + sd_pn.Length() + "\n";
 
 // 9 总加速度方向
 Vector3D nam = Vector3D.Normalize(sd);
+debugInfo += "ori nam: " + Vector3D.Dot(nam, graN) + "\n";
+nam = Vector3D.Normalize(sd_pn);
+debugInfo += "now nam: " + Vector3D.Dot(nam, graN) + "\n";
 
-debugInfo = losD.Length() + "\n";
-debugInfo += rdo.Length() + "\n";
-debugInfo += targetRange.Length() + "\n";
+debugInfo += "losD " + losD.Length() + "\n";
+//debugInfo += rdo.Length() + "\n";
+if (targetRange.Length() < This_Missile.nearest)
+This_Missile.nearest = targetRange.Length();
+debugInfo += This_Missile.nearest + "\n";
+double pn_test = (Vector3D.Normalize(MissileVelocity) - Vector3D.Normalize(lastVelocity)).Length() / ((LOS_New - LOS_Old).Length()*60);
+//debugInfo += "pn_test" + pn_test;
 
 am = nam;
 
