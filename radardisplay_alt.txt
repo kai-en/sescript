@@ -58,7 +58,10 @@ enum TargetRelation : byte { Neutral = 0, Enemy = 1, Friendly = 2 }
 const string IGC_TAG = "IGC_IFF_MSG"; 
  
 const string INI_SECTION_GENERAL = "Radar - General"; 
-const string INI_BCAST = "Share own position"; 
+const string INI_BCAST = "Share own position";
+const string INI_MASTER_CODE = "Master code";
+const string INI_SLAVE_CODE = "Slave code";
+
 const string INI_NETWORK = "Share targets"; 
 const string INI_USE_RANGE_OVERRIDE = "Use radar range override"; 
 const string INI_RANGE_OVERRIDE = "Radar range override (m)"; 
@@ -777,7 +780,10 @@ void WriteCustomDataIni()
     generalIni.Set(INI_SECTION_GENERAL, INI_USE_RANGE_OVERRIDE, useRangeOverride); 
     generalIni.Set(INI_SECTION_GENERAL, INI_RANGE_OVERRIDE, rangeOverride); 
     generalIni.Set(INI_SECTION_GENERAL, INI_PROJ_ANGLE, projectionAngle); 
- 
+
+    generalIni.Set(INI_SECTION_GENERAL, INI_MASTER_CODE, MOTHER_CODE); 
+    generalIni.Set(INI_SECTION_GENERAL, INI_SLAVE_CODE, SON_CODE); 
+
     MyIniHelper.SetColorChar(INI_SECTION_COLORS, INI_TEXT, textColor, generalIni); 
     MyIniHelper.SetColorChar(INI_SECTION_COLORS, INI_BACKGROUND, backColor, generalIni); 
     MyIniHelper.SetColorChar(INI_SECTION_COLORS, INI_RADAR_LINES, lineColor, generalIni); 
@@ -799,6 +805,8 @@ void ParseCustomDataIni()
     generalIni.TryParse(Me.CustomData); 
  
     broadcastIFF = generalIni.Get(INI_SECTION_GENERAL, INI_BCAST).ToBoolean(broadcastIFF); 
+    MOTHER_CODE = generalIni.Get(INI_SECTION_GENERAL, INI_MASTER_CODE).ToString(MOTHER_CODE); 
+    SON_CODE = generalIni.Get(INI_SECTION_GENERAL, INI_SLAVE_CODE).ToString(SON_CODE); 
     networkTargets = generalIni.Get(INI_SECTION_GENERAL, INI_NETWORK).ToBoolean(networkTargets); 
     useRangeOverride = generalIni.Get(INI_SECTION_GENERAL, INI_USE_RANGE_OVERRIDE).ToBoolean(useRangeOverride); 
     rangeOverride = generalIni.Get(INI_SECTION_GENERAL, INI_RANGE_OVERRIDE).ToSingle(rangeOverride); 

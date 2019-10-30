@@ -36,8 +36,8 @@ soundBlockNameTag=Sound Block fcs
 shipLength=30
 commandAllTic = 100
 commandWaitTic = 0
-homingTurretName=Gatling Turret
 limitInnerRotor=true
+ScanRange=3000
 
 custom data sample for mother ship
 
