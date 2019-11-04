@@ -450,7 +450,7 @@ debugInfo = "";
 // 4 推力 / 质量 = 可以提供的加速度的长度 sdl
 //double MISSILE_MASS = 1661.4;
 double MISSILE_MASS = 1407.4;
-double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust / MISSILE_MASS;
+double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust * This_Missile.THRUSTERS.Count / MISSILE_MASS;
 
 // 1 求不需要的速度
 Vector3D tarN = Vector3D.Normalize(targetRange);
@@ -459,6 +459,7 @@ Vector3D ra = Vector3D.Reject(TargetAcc, tarN);
 
 // 2 换算不需要的加速度 平行制导率
 double GUILD_RATE = 0.3;
+if (Vector3D.Dot(targetV, targetRange) > 0) GUILD_RATE = 0.03;
 Vector3D rdo = rv * GUILD_RATE * 60
 + ra * 0.5
 ;
@@ -504,7 +505,8 @@ Vector3D sd_pn = rd_pn + pd_pn;
 
 // 9 总加速度方向
 Vector3D nam = Vector3D.Normalize(sd);
-//if(targetRange.Length()>500)nam = Vector3D.Normalize(sd_pn);
+//if(targetRange.Length()>500)
+//nam = Vector3D.Normalize(sd_pn);
 
 if (targetRange.Length() < This_Missile.nearest)
 This_Missile.nearest = targetRange.Length();
@@ -530,9 +532,9 @@ am = nam;
                 if ((TargetPosition - MissilePosition).LengthSquared() < 20 * 20 && This_Missile.WARHEADS.Count > 0) //Arms
                 { foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).IsArmed = true; } }
 	    bool targetNeer = (TargetPosition - MissilePosition).LengthSquared() < This_Missile.FuseDistance * This_Missile.FuseDistance;
-	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 20*20 ;
+	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 4*4 ;
                 if ((targetGetFar)&& This_Missile.WARHEADS.Count > 0) //A mighty earth shattering kaboom
-                { /*(This_Missile.WARHEADS[0] as IMyWarhead).Detonate();*/ }
+                { (This_Missile.WARHEADS[0] as IMyWarhead).Detonate(); }
 
             }
             #endregion

@@ -11,7 +11,6 @@ vf walk mode
 
 custom data sample for son ship:
 
-sonCode=1st
 stAName=Antenna fcs
 CockpitNameTag=R_FORWARD
 DCSLCDNameTag=DCS_LCD
@@ -41,7 +40,6 @@ ScanRange=3000
 
 custom data sample for mother ship
 
-motherCode=1st
 stAName=Antenna fcs
 CockpitNameTag=Flight Seat 3
 DCSLCDNameTag=DCS_LCD
@@ -1572,7 +1570,7 @@ bool flyByOn=false;
 string flyByOffsetDirection="LEFT";
 double flyByDistance=100;
 String motherCode=null;
-String sonCode=null;
+String sonCode="RADAR";
 String stAName = "Antenna";
 double flyByForwardDistance=0;
 double flyByUpDistance=0;

@@ -373,7 +373,7 @@ void ShipScan(){
 		tHas = true;
 		} else if (MyShip.Cockpit.IsUnderControl) {
 		direction = Vector3D.Normalize(MyShip.Cockpit.WorldMatrix.Forward);
-		} else if (MyShip.Head.IsUnderControl) {
+		} else if (MyShip.Head!=null && MyShip.Head.IsUnderControl) {
 		direction = Vector3D.Normalize(MyShip.Head.WorldMatrix.Forward);
 		}
 		else if (!flyByAimPosition.Equals(Vector3D.Zero)) {
@@ -459,8 +459,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 		if (tHas) {
 			Point = targetPosition;
 		}
-
-		MyDetectedEntityInfo FoundTarget = new MyDetectedEntityInfo();;
+		MyDetectedEntityInfo FoundTarget = new MyDetectedEntityInfo();
 		if (tPulse) {
 		ShipPulseScan(Point); // this func will set MyTarget already, so do not need to set FoundTarget
 		radarWaitNewPos = false;

@@ -211,7 +211,12 @@ void Main(string arg, UpdateType updateSource)
     if (arg.Equals(IGC_TAG)) 
     { 
         ProcessNetworkMessage(); 
-    } 
+    } else {
+	// CODING
+	string command = arg;
+	var myTuple = new MyTuple<string, string>(MOTHER_CODE, command);
+	IGC.SendBroadcastMessage(IGC_TAG, myTuple);
+    }
  
     runtimeTracker.AddInstructions();
 
@@ -239,7 +244,7 @@ void callDcsSendAvoid() {
 
 void sendAvoid(KeyValuePair<long, TargetData> item) {
 var p = item.Value.Position;
-string message = SON_CODE+"-AVOID:"+item.Key+","+p.X+","+p.Y+","+p.Z;
+string message = "RADAR"+"-AVOID:"+item.Key+","+p.X+","+p.Y+","+p.Z;
 PlayAction(dcsComputer, "Run", message);
 }
 
@@ -267,7 +272,7 @@ debugInfo = "error";
 }
 Vector3D speed = td.Velocity;
 string motherCode = td.Code;
-string message = motherCode + ":" + refWorldMatrix.M11+","+refWorldMatrix.M12+","+refWorldMatrix.M13+","+refWorldMatrix.M14+","+
+string message = "RADAR" + ":" + refWorldMatrix.M11+","+refWorldMatrix.M12+","+refWorldMatrix.M13+","+refWorldMatrix.M14+","+
 refWorldMatrix.M21+","+refWorldMatrix.M22+","+refWorldMatrix.M23+","+refWorldMatrix.M24+","+
 refWorldMatrix.M31+","+refWorldMatrix.M32+","+refWorldMatrix.M33+","+refWorldMatrix.M34+","+
 currentPos.X+","+currentPos.Y+","+currentPos.Z+","+refWorldMatrix.M44+","+
@@ -316,7 +321,15 @@ void ProcessNetworkMessage()
             { 
                 targetDataDict[entityId] = new TargetData(position, TargetRelation.Enemy, ingestCount, velocity, motherCode, targetMatrix, 0);
             } 
-        } 
+        } else if(messageData is MyTuple<string, string>) {
+		// CODING
+		var myTuple = (MyTuple<string, string>)messageData;
+		string motherCode = myTuple.Item1;
+		if (motherCode == SON_CODE) {
+			string command = myTuple.Item2;
+			PlayAction(dcsComputer, "Run", "RADAR:" + command);
+		}
+	}
     } 
 } 
  
