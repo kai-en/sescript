@@ -118,6 +118,7 @@ double naturalGravityLength;
 Vector3D holdPosition;
 bool isHold = false;
 bool isDown = false;
+bool isME = false;
 bool isLaunch = false;
 bool isBase = false;
 bool motherSignalRotation = false;
@@ -659,8 +660,8 @@ Vector3D needSpeed = (holdPosition - MePosition) / 10f - MeVelocity;
 Vector3D maintainSpeedToMe = Vector3D.TransformNormal(needSpeed, refLookAtMatrix);
 Vector3D nowSpeedToMe = Vector3D.TransformNormal(Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
 if (isDown) {
-var ds = -11;
-if (!isBase) ds = -2;
+var ds = -2;
+if (isBase && isME) ds = -11;
 Vector3D mstm = Vector3D.Zero;
 if(naturalGravityLength > 0.01) {
 mstm = - Vector3D.Normalize(naturalGravity) * ds;
@@ -3393,7 +3394,7 @@ needGra *= (24 - levelV) / 24;
 var ngtome = Vector3D.TransformNormal(needGra, refLookAtMatrix);
 needA -= ngtome;
 Vector3D mstm = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
-if (inputVec.Length()<0.01f && dampenersOn) {
+if (inputVec.Length()<0.01f && dampenersOn && aeroSpeedLevel==0) {
 Vector3D mstmn = mstm;
 if (mstm.Length()>0) {
 if (mstm.Length() > 1) mstmn = mstm * (1f/mstm.Length());
@@ -3403,7 +3404,7 @@ needA -= mstmn * 10.0;
 if(backwardThrusters.Where( t => {
 return ((IMyThrust)t).Enabled;
 }).ToList().Count == 0 && ngtome.Z < 5 && glideOn){
-needA.Z=0;
+//needA.Z=0;
 }
 var tl = 0f;
 if (naturalGravityLength < 0.01f && (Math.Abs(needA.Z)<2 || MeVelocity.Length() < 2 )) {
@@ -3446,7 +3447,7 @@ List<IMyTerminalBlock> rl = rotorLeft[i], rr = rotorRight[i];
 var ta = targetAngleLeft;
 if (i>0) {
 if (limitInnerRotor) {
-ta = (float)maxTo(ta, 0.4);
+// ta = (float)maxTo(ta, 0.4);
 }else{
 if (legMode == 1) {
 if (i == 1) {

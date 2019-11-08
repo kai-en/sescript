@@ -107,7 +107,7 @@ static Vector3D PBPosition;
 IMyShipController Cockpit;
 string HeadNameTag = "VF_HEAD";
 IMyShipController Head;
-static bool isAeroDynamic = true;
+static bool isAeroDynamic = false;
 static float aeroTRM = 0f;// transport rotor margin 0.2
 static float aeroFM = 0f;// front margin 0.05
 static int aeroACS = -180;

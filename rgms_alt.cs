@@ -89,6 +89,8 @@ string debugInfo = "";
 	    public Vector3D TargetVelocityPanel = Vector3D.Zero;
 	    public double nearest = 1000000;
 	    public Vector3D lastVelocity = Vector3D.Zero;
+	    public PIDController pidA = new PIDController(1F, 0F, 0F, 1F, 1F, 60);
+	    public PIDController pidE = new PIDController(1F, 0F, 0F, 1F, 1F, 60);
 	    }
             List<MISSILE> MISSILES = new List<MISSILE>();
 
@@ -449,7 +451,8 @@ debugInfo = "";
 
 // 4 推力 / 质量 = 可以提供的加速度的长度 sdl
 //double MISSILE_MASS = 1661.4;
-double MISSILE_MASS = 1407.4;
+//double MISSILE_MASS = 1407.4;
+double MISSILE_MASS = 6424.799;
 double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust * This_Missile.THRUSTERS.Count / MISSILE_MASS;
 
 // 1 求不需要的速度
@@ -458,9 +461,11 @@ Vector3D rv = Vector3D.Reject(targetV, tarN);
 Vector3D ra = Vector3D.Reject(TargetAcc, tarN);
 
 // 2 换算不需要的加速度 平行制导率
+Vector3D rvN = Vector3D.Normalize(rv);
+double newLen = Math.Atan2(rv.Length(), 10);
+Vector3D newRv = rvN * newLen;
 double GUILD_RATE = 0.3;
-if (Vector3D.Dot(targetV, targetRange) > 0) GUILD_RATE = 0.03;
-Vector3D rdo = rv * GUILD_RATE * 60
+Vector3D rdo = newRv * GUILD_RATE * 60
 + ra * 0.5
 ;
 
@@ -471,7 +476,7 @@ double losDl = losD.Length();
 debugInfo += "losDl: " + losDl + "\n";
 Vector3D sideN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(MissileVelocity)));
 Vector3D graN = Vector3D.Normalize(RC.GetNaturalGravity());
-double rdol_pn = losDl * PN_RATE;
+double rdol_pn = Math.Atan2(losDl,10) * PN_RATE;
 //if (rdol_pn > sdl * 0.5) rdol_pn = sdl * 0.5;
 Vector3D rdo_pn = sideN * rdol_pn;
 
@@ -520,7 +525,7 @@ am = nam;
 }
 
                 double Yaw; double Pitch;
-                GyroTurn6(am, 18, 0.3, This_Missile.THRUSTERS[0], This_Missile.GYRO as IMyGyro, This_Missile.PREV_Yaw, This_Missile.PREV_Pitch, out Pitch, out Yaw);
+                GyroTurn6(am, 18, 0.3, This_Missile.THRUSTERS[0], This_Missile.GYRO as IMyGyro, This_Missile.PREV_Yaw, This_Missile.PREV_Pitch, out Pitch, out Yaw, ref This_Missile);
 
                 //Updates For Next Tick Round
                 This_Missile.TARGET_PREV_POS = TargetPosition;
@@ -534,7 +539,7 @@ am = nam;
 	    bool targetNeer = (TargetPosition - MissilePosition).LengthSquared() < This_Missile.FuseDistance * This_Missile.FuseDistance;
 	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 4*4 ;
                 if ((targetGetFar)&& This_Missile.WARHEADS.Count > 0) //A mighty earth shattering kaboom
-                { (This_Missile.WARHEADS[0] as IMyWarhead).Detonate(); }
+                { foreach (var item in This_Missile.WARHEADS){ (item as IMyWarhead).Detonate();} }
 
             }
             #endregion
@@ -973,7 +978,7 @@ am = nam;
             ---------------------------------------                            
             function will: A Variant of PD damped gyroturn used for missiles
             //----------==--------=------------=-----------=---------------=------------=-----=-----*/
-            void GyroTurn6(Vector3D TARGETVECTOR, double GAIN, double DAMPINGGAIN,IMyTerminalBlock REF, IMyGyro GYRO, double YawPrev, double PitchPrev, out double NewPitch, out double NewYaw)
+            void GyroTurn6(Vector3D TARGETVECTOR, double GAIN, double DAMPINGGAIN,IMyTerminalBlock REF, IMyGyro GYRO, double YawPrev, double PitchPrev, out double NewPitch, out double NewYaw, ref MISSILE missile)
             {
                 //Pre Setting Factors
                 NewYaw = 0;
@@ -1006,6 +1011,7 @@ am = nam;
                 var REF_Matrix = MatrixD.CreateWorld(REF.GetPosition(), (Vector3)ShipForward, (Vector3)ShipUp).GetOrientation();
                 var Vector = Vector3.Transform((new Vector3D(ShipForwardElevation, ShipForwardAzimuth, 0)), REF_Matrix); //Converts To World
                 var TRANS_VECT = Vector3.Transform(Vector, Matrix.Transpose(GYRO.WorldMatrix.GetOrientation()));  //Converts To Gyro Local
+		debugInfo += "Turn def: " + TRANS_VECT.Length() + "\n";
 
                 //Logic Checks for NaN's
                 if (double.IsNaN(TRANS_VECT.X) || double.IsNaN(TRANS_VECT.Y) || double.IsNaN(TRANS_VECT.Z))
@@ -1013,8 +1019,10 @@ am = nam;
 
                 //Applies To Scenario
                 GYRO.Pitch = (float)MathHelper.Clamp((-TRANS_VECT.X) * GAIN, -1000, 1000);
+//		GYRO.Pitch = (float)MathHelper.Clamp( missile.pidE.Filter(-TRANS_VECT.X, 2) , -1000, 1000);
                 GYRO.Yaw = (float)MathHelper.Clamp(((-TRANS_VECT.Y)) * GAIN, -1000, 1000);
                 GYRO.Roll = (float)MathHelper.Clamp(((-TRANS_VECT.Z)) * GAIN, -1000, 1000);
+//		GYRO.Roll = (float)MathHelper.Clamp( missile.pidA.Filter(-TRANS_VECT.Z, 2) , -1000, 1000);
 
 	    // a b K
 	    // assume the gyro is in front of the missile, use Yaw to make the missile fit gravity
@@ -1062,4 +1070,54 @@ void PlayActionList(List<IMyTerminalBlock> blocks, String action) {
 
 string displayVector3D(Vector3D tar) {
 return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
+}
+
+public class PIDController
+{
+public static double DEF_SMALL_GRID_P = 31.42;
+public static double DEF_SMALL_GRID_I = 0;
+public static double DEF_SMALL_GRID_D = 10.48;
+
+public static double DEF_BIG_GRID_P = 15.71;
+public static double DEF_BIG_GRID_I = 0;
+public static double DEF_BIG_GRID_D = 7.05;
+
+double integral;
+double lastInput;
+
+double gain_p;
+double gain_i;
+double gain_d;
+double upperLimit_i;
+double lowerLimit_i;
+double second;
+
+public PIDController(double pGain, double iGain, double dGain, double iUpperLimit = 0, double iLowerLimit = 0, float stepsPerSecond = 60f)
+{
+gain_p = pGain;
+gain_i = iGain;
+gain_d = dGain;
+upperLimit_i = iUpperLimit;
+lowerLimit_i = iLowerLimit;
+second = stepsPerSecond;
+}
+
+public double Filter(double input, int round_d_digits)
+{
+double roundedInput = Math.Round(input, round_d_digits);
+
+integral = integral + (input / second);
+integral = (upperLimit_i > 0 && integral > upperLimit_i ? upperLimit_i : integral);
+integral = (lowerLimit_i < 0 && integral < lowerLimit_i ? lowerLimit_i : integral);
+
+double derivative = (roundedInput - lastInput) * second;
+lastInput = roundedInput;
+
+return (gain_p * input) + (gain_i * integral) + (gain_d * derivative);
+}
+
+public void Reset()
+{
+integral = lastInput = 0;
+}
 }
