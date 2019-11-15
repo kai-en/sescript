@@ -52,6 +52,7 @@ liFcsSearchGroupName=Li-fcs-search-G
 liFcsLockGroupName=Li-fcs-lock-G
 macAV=0.005
 isBase=true
+maxTargetCount=1
 
 son ship commands
 
@@ -759,8 +760,10 @@ if(ft < 0){
 SetThrusterListOverride(forwardThrusters, -ft);
 SetThrusterListOverride(backwardThrusters, 0);
 }else {
+if (naturalGravityLength>0.01){
 SetThrusterListOverride(forwardThrusters, 0);
 SetThrusterListOverride(backwardThrusters, ft);
+}
 }
 } else {
 SetThrusterListOverride(forwardThrusters, -1f);

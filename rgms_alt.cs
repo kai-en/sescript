@@ -1,5 +1,10 @@
 static int rgms_no = 0;
-static float missileGravityRate = 5F;
+// static float missileGravityRate = 5F;
+double GUILD_RATE = 0.3;
+double ATAN_BASE = 0.5;
+double APID_P = 100;
+double APID_D = 0.6;
+double MISSILE_MASS = 5276.4;
 
 string debugInfo = "";
 
@@ -40,7 +45,7 @@ string debugInfo = "";
             //CHANGE LAUNCH DISTANCE HERE: 
             //(only uses this value of it is not 0)
             //Launch distance of the missile (in m) before guidance
-            double LaunchDist = 10; 
+            double LaunchDist = 20; 
 
             //CHANGE MISSILE TAG HERE:
             //Changes The prefix tag that the missile uses
@@ -89,13 +94,16 @@ string debugInfo = "";
 	    public Vector3D TargetVelocityPanel = Vector3D.Zero;
 	    public double nearest = 1000000;
 	    public Vector3D lastVelocity = Vector3D.Zero;
-	    public PIDController pidA = new PIDController(1F, 0F, 0F, 1F, 1F, 60);
-	    public PIDController pidE = new PIDController(1F, 0F, 0F, 1F, 1F, 60);
+	    public Vector3D lastAVelocity = Vector3D.Zero;
+	    public Vector3D lastForward = Vector3D.Zero;
+	    public PIDController pidA = new PIDController(1F, 0F, 2F, 1F, 1F, 60);
+	    public PIDController pidE = new PIDController(1F, 0F, 2F, 1F, 1F, 60);
+	    public PIDController pidR = new PIDController(1F, 0F, 2F, 1F, 1F, 60);
 	    }
             List<MISSILE> MISSILES = new List<MISSILE>();
 
             //Consts
-            double Global_Timestep = 0.016;
+            double Global_Timestep = 0.01667; 
             double PNGain = 3;
 	double Offset = 0;
             double ThisShipSize = 10;
@@ -115,7 +123,7 @@ string debugInfo = "";
             Program()
             {
                 //Sets Runtime
-                Runtime.UpdateFrequency = Global_Timestep == 0.16? UpdateFrequency.Update10 : UpdateFrequency.Update1;
+                Runtime.UpdateFrequency = Global_Timestep == 0.1667? UpdateFrequency.Update10 : UpdateFrequency.Update1;
 
                 //Setup String
                 string SetupString = "Rdavs Guided Missile Script Hints Tips & Setup \n================================================== \n \n \nSystem Setup \n=================== \n \nTo Set Up The Ship: \n------------------------ \n- Put this Code Into a P-block \n- Install a sound block (optional) \n- Install a turret called #A# (seeker turret) \n- Recompile if prompted to 'reset' \n- To fire from the toolbar 'run' this Pb with \n  the argument 'Fire' \n \n\nTo Set Up A Missile: \n--------------------------- \n- Every Missile Requires: \n    ~ 1 gyro\n    ~ Forward thrusters \n    ~ 1 Merge Block \n    ~ 1 battery/power source \n    ~ Warheads (optional) \n    ~ Side thrusters (if in gravity)\n \n- Call everything on missile #A# \n- Weld/paste missile onto launching ship \n- Same missile design can be pasted multiple times \n- Missile(s) are now ready to fire!\n\n \n\nSystem Usage \n=================== \n \nMove to engagement distance (800m), a distinctive  \ntarget lock bleeping will sound from the sound block. \n(if sound block installed) \n \n'Run' The programmable block with the argument  \n'Fire' this will launch the next available missile.  \nthis action can be bound to the toolbar of any cockpit. \n \nA ship can have up to 100 missiles active at any one  \npoint, missile setup for every missile is identical  \nand thus missiles can be printed, copy pasted, etc. \n\n- NOTE:\n- For ALL missiles the weight of the missile\n  (can be found in the 'info' tab in kg)\n  should be written as a number into the \n  custom data of the missiles gyro.\n  This is not compulsory but is necessary for\n  accurate guidance.\n\n\nTroubleshooting: \n============================\n\nif you find that your missiles are:\n\n - Sinking and hit the ground in gravity\n - Miss the target / have sub par guidance\n - Not tracking an enemy\n - Not firing at all\n\nHere are some of the most common faults:\n\n- Check the terminal of the PB, this might show\n  some useful error readouts\n\n- Boost the acceleration of the missile! \n  (especially if unable to hit targets)\n\n- Ensure the turret (called #A#) is turned on \n  and set to attack enemy targets, what this turret\n  targets is what the script will track\n\n- The weight of the missile should be input\n  into the gyros custom data,\n\n- Lateral (side) thrusters are not compulsory but\n  are very useful at helping the guidance\n  especially in natural gravity\n\n \n \nHints & Tips \n=================== \n \n  \nPerformance Tips:  \n------------------------ \n \n- Use light and fast missiles for best small ship  \n  tracking capability, the key to a good hit rate is \n  good missile design!\n \n- For 'best' target tracking ensure your missile has  \n  at least 3x the acceleration of the ship you are  \n  intending to take out. \n \n- Lateral (sideways) thrusters can be used for better  \n  gravity correction and handling. \n \n \nUsage Tips: \n---------------------- \n \n- ID'ing the target can be done with common sense, (ie looking \n  at what the seeker turret is currently looking at) \n \n- you can fire a missile without lock to 'laser guide it'  \n  (ie it follows where you are pointing your ship) \n  towards an enemy, once close tracking will engage \n \n- The missile will (by default) not engage guidance until further  \n  than the ships radius away from where it launched. This should  \n  make it practical for launch tubes/ not damaging the launching ship.  \n\n- If a customn launch distance is required this can be changed by changing\n  the 'launch distance' value in the code shortly after the introduction\n\n- An extra seeker turret can be put on the missile itself (must be called #A#)\n  this missile will then use that turret to guide itself.\n\n- The missile tracking is good but as with anything depends on the pilots\n  ability to use them well, read up on real-world missile usage to help \n  boost your hit rate.\n\n\n\n  \n"; 
@@ -169,8 +177,9 @@ string debugInfo = "";
                 QuickEcho(Runtime.LastRunTimeMs, "Runtime:");
 Echo(debugInfo);
                 Echo("Version:  " + VERSION);
-	    Echo("PNGain: " + PNGain);
+	    //Echo("PNGain: " + PNGain);
 	    Echo("Offset: " + Offset);
+	    Echo("Agile: " + GUILD_RATE + " " + ATAN_BASE + " " + APID_P + " " + APID_D);
                 Echo("\nInfo:\n---------------");
                 Echo(Lstrundata);
 
@@ -337,7 +346,7 @@ Echo(debugInfo);
 	    else if(targetPanelHasTarget){
 	        ENEMY_POS = targetPanelPosition;
 	        usePanel = true;
-	        Vector3D dir = ENEMY_POS - RC.GetPosition();;
+	        Vector3D dir = ENEMY_POS - RC.GetPosition();
 	        dir = Vector3D.Normalize(dir);
 	        var rcmt = RC.WorldMatrix;
 	        Vector3D tmp = Vector3D.Reject(dir, rcmt.Up);
@@ -391,6 +400,9 @@ Echo(debugInfo);
                 //And Assigners
                 Vector3D am = new Vector3D(1, 0, 0); double LOS_Rate; Vector3D LOS_Delta;
                 Vector3D MissileForwards = This_Missile.THRUSTERS[0].WorldMatrix.Backward;
+		This_Missile.lastAVelocity = MissileForwards - This_Missile.lastForward;
+		if (This_Missile.lastForward == Vector3D.Zero) This_Missile.lastAVelocity = Vector3D.Zero;
+		This_Missile.lastForward = MissileForwards;
 
                 //Vector/Rotation Rates
                 if (LOS_Old.Length() == 0)
@@ -404,7 +416,7 @@ Echo(debugInfo);
                 double Vclosing = (This_Missile.TargetVelocity - MissileVelocity).Length();
 
                 //If Under Gravity Use Gravitational Accel
-                Vector3D GravityComp = -RC.GetNaturalGravity() * missileGravityRate;
+                //Vector3D GravityComp = -RC.GetNaturalGravity() * missileGravityRate;
 
                 //Calculate the final lateral acceleration
                 Vector3D LateralDirection = Vector3D.Normalize(Vector3D.Cross(Vector3D.Cross(Rel_Vel, LOS_New), Rel_Vel));
@@ -443,70 +455,78 @@ Echo(debugInfo);
 
 
                 //Guides To Target Using Gyros
-                am = Vector3D.Normalize(LateralAccelerationComponent + GravityComp);
+                // am = Vector3D.Normalize(LateralAccelerationComponent + GravityComp);
+		
 
 if(true) {
-debugInfo = "";
 // 新算法
-
 // 4 推力 / 质量 = 可以提供的加速度的长度 sdl
-//double MISSILE_MASS = 1661.4;
-//double MISSILE_MASS = 1407.4;
-double MISSILE_MASS = 6424.799;
+
 double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust * This_Missile.THRUSTERS.Count / MISSILE_MASS;
 
 // 1 求不需要的速度
+debugInfo = "TR: " + targetRange.Length() + "\n";
 Vector3D tarN = Vector3D.Normalize(targetRange);
 Vector3D rv = Vector3D.Reject(targetV, tarN);
-Vector3D ra = Vector3D.Reject(TargetAcc, tarN);
+debugInfo += "RV: " + rv.Length() + "\n";
+//Vector3D ra = Vector3D.Reject(TargetAcc, tarN);
 
 // 2 换算不需要的加速度 平行制导率
 Vector3D rvN = Vector3D.Normalize(rv);
-double newLen = Math.Atan2(rv.Length(), 10);
+double newLen = Math.Atan2(rv.Length(), ATAN_BASE);
 Vector3D newRv = rvN * newLen;
-double GUILD_RATE = 0.3;
 Vector3D rdo = newRv * GUILD_RATE * 60
-+ ra * 0.5
+//+ ra * 0.5
 ;
 
 // 1.1 比例导引法 PN
 double PN_RATE = 3000;
-Vector3D losD = (LOS_New - LOS_Old) * 60 + ra * 0.5;
+Vector3D losD = (LOS_New - LOS_Old) * 60
+//+ ra * 0.5
+;
 double losDl = losD.Length();
-debugInfo += "losDl: " + losDl + "\n";
 Vector3D sideN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(MissileVelocity)));
 Vector3D graN = Vector3D.Normalize(RC.GetNaturalGravity());
-double rdol_pn = Math.Atan2(losDl,10) * PN_RATE;
+double rdol_pn = Math.Atan2(losDl, ATAN_BASE) * PN_RATE;
 //if (rdol_pn > sdl * 0.5) rdol_pn = sdl * 0.5;
 Vector3D rdo_pn = sideN * rdol_pn;
 
 
 // 3 加上抵抗重力所需的加速度 = 需要抵消的加速度 rd
-Vector3D rd = rdo - (RC.GetNaturalGravity() * 0.9);
+Vector3D rd = rdo - RC.GetNaturalGravity();
 double rdl = rd.Length();
 Vector3D rd_pn = rdo_pn - RC.GetNaturalGravity();
 double rdl_pn = rd_pn.Length();
 
 
-// 5 剩余加速度长度 pdl = sqrt(sdl^2 - rdl^2)
-if (sdl < rdl) sdl = rdl;
-if (sdl < rdl_pn) rdl_pn = sdl;
-double pdl = Math.Sqrt(sdl*sdl - rdl * rdl);
-double pdl_pn = Math.Sqrt(sdl*sdl - rdl_pn * rdl_pn);
+// 5 剩余加速度长度
+// 5.1 rd相对于LOS 需要的侧向加速度
+Vector3D rd2 = Vector3D.Reject(rd, tarN);
+double rd2l = rd2.Length();
+if (sdl < rd2l) sdl = rd2l;
+// 5.2 剩余加速度长度 
+double pdl = Math.Sqrt(sdl*sdl - rd2l * rd2l);
 
-// 6 剩余加速度方向  nor(reject(los, nor(rd))
-Vector3D pdN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(rd)));
-if (pdN.Length() == 0) pdN = LOS_New;
+Vector3D rd2_pn = Vector3D.Reject(rd_pn, tarN);
+double rd2l_pn = rd2_pn.Length();
+if (sdl < rd2l_pn) rd2l_pn = sdl;
+double pdl_pn = Math.Sqrt(sdl*sdl - rd2l_pn * rd2l_pn);
 
-Vector3D pdN_pn = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(rd_pn)));
+// 6 剩余加速度方向  = los
+//Vector3D pdN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(rd)));
+//if (pdN.Length() == 0) pdN = LOS_New;
+Vector3D pdN = LOS_New;
+
+//Vector3D pdN_pn = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(rd_pn)));
+Vector3D pdN_pn = LOS_New;
 
 // 7 剩余加速度
 Vector3D pd = pdN * pdl;
 Vector3D pd_pn = pdN_pn * pdl_pn;
 
 // 8 总加速度
-Vector3D sd = rd + pd;
-Vector3D sd_pn = rd_pn + pd_pn;
+Vector3D sd = rd2 + pd;
+Vector3D sd_pn = rd2_pn + pd_pn;
 
 // 9 总加速度方向
 Vector3D nam = Vector3D.Normalize(sd);
@@ -515,17 +535,25 @@ Vector3D nam = Vector3D.Normalize(sd);
 
 if (targetRange.Length() < This_Missile.nearest)
 This_Missile.nearest = targetRange.Length();
-debugInfo += This_Missile.nearest + "\n";
 double pn_test = (Vector3D.Normalize(MissileVelocity) - Vector3D.Normalize(lastVelocity)).Length() / ((LOS_New - LOS_Old).Length()*60);
-debugInfo += "pn_test: " + pn_test + "\n";
 
 am = nam;
+
+var missileLookAt = MatrixD.CreateLookAt(new Vector3D(), This_Missile.GYRO.WorldMatrix.Up, This_Missile.GYRO.WorldMatrix.Backward);
+var amToMe = Vector3D.TransformNormal(am, missileLookAt);
+var rr = Vector3D.Normalize(Vector3D.Reject(This_Missile.GYRO.WorldMatrix.Up, Vector3D.Normalize(RC.GetNaturalGravity())));
+var rangle = 1 - Vector3D.Dot(rr, tarN);
+debugInfo += "RA: " + rangle + "\n";
+
+debugInfo += "amToMe: " + displayVector3D(amToMe) + "\n";
+debugInfo += This_Missile.nearest + "\n";
+
 
 // CODING
 }
 
                 double Yaw; double Pitch;
-                GyroTurn6(am, 18, 0.3, This_Missile.THRUSTERS[0], This_Missile.GYRO as IMyGyro, This_Missile.PREV_Yaw, This_Missile.PREV_Pitch, out Pitch, out Yaw, ref This_Missile);
+                GyroTurn6(am, APID_P, APID_D, This_Missile.THRUSTERS[0], This_Missile.GYRO as IMyGyro, This_Missile.PREV_Yaw, This_Missile.PREV_Pitch, out Pitch, out Yaw, ref This_Missile);
 
                 //Updates For Next Tick Round
                 This_Missile.TARGET_PREV_POS = TargetPosition;
@@ -539,7 +567,9 @@ am = nam;
 	    bool targetNeer = (TargetPosition - MissilePosition).LengthSquared() < This_Missile.FuseDistance * This_Missile.FuseDistance;
 	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 4*4 ;
                 if ((targetGetFar)&& This_Missile.WARHEADS.Count > 0) //A mighty earth shattering kaboom
-                { foreach (var item in This_Missile.WARHEADS){ (item as IMyWarhead).Detonate();} }
+                {
+		foreach (var item in This_Missile.WARHEADS){ (item as IMyWarhead).Detonate();}
+                }
 
             }
             #endregion
@@ -993,6 +1023,7 @@ am = nam;
                 var InvQuat = Quaternion.Inverse(Quat_Two);
 
                 Vector3D DirectionVector = TARGETVECTOR; //RealWorld Target Vector
+		
                 Vector3D RCReferenceFrameVector = Vector3D.Transform(DirectionVector, InvQuat); //Target Vector In Terms Of RC Block
 
                 //Convert To Local Azimuth And Elevation
@@ -1011,27 +1042,28 @@ am = nam;
                 var REF_Matrix = MatrixD.CreateWorld(REF.GetPosition(), (Vector3)ShipForward, (Vector3)ShipUp).GetOrientation();
                 var Vector = Vector3.Transform((new Vector3D(ShipForwardElevation, ShipForwardAzimuth, 0)), REF_Matrix); //Converts To World
                 var TRANS_VECT = Vector3.Transform(Vector, Matrix.Transpose(GYRO.WorldMatrix.GetOrientation()));  //Converts To Gyro Local
-		debugInfo += "Turn def: " + TRANS_VECT.Length() + "\n";
+		
 
                 //Logic Checks for NaN's
                 if (double.IsNaN(TRANS_VECT.X) || double.IsNaN(TRANS_VECT.Y) || double.IsNaN(TRANS_VECT.Z))
                 { return; }
 
                 //Applies To Scenario
-                GYRO.Pitch = (float)MathHelper.Clamp((-TRANS_VECT.X) * GAIN, -1000, 1000);
-//		GYRO.Pitch = (float)MathHelper.Clamp( missile.pidE.Filter(-TRANS_VECT.X, 2) , -1000, 1000);
-                GYRO.Yaw = (float)MathHelper.Clamp(((-TRANS_VECT.Y)) * GAIN, -1000, 1000);
-                GYRO.Roll = (float)MathHelper.Clamp(((-TRANS_VECT.Z)) * GAIN, -1000, 1000);
-//		GYRO.Roll = (float)MathHelper.Clamp( missile.pidA.Filter(-TRANS_VECT.Z, 2) , -1000, 1000);
+                GYRO.Pitch = (float)MathHelper.Clamp((-TRANS_VECT.X) * GAIN , -30, 30);
+		//GYRO.Pitch = (float)MathHelper.Clamp( missile.pidE.Filter(-TRANS_VECT.X, 2) , -30, 30);
+                //GYRO.Yaw = (float)MathHelper.Clamp(((-TRANS_VECT.Y)) * GAIN, -30, 30);
+                GYRO.Roll = (float)MathHelper.Clamp(((-TRANS_VECT.Z)) * GAIN , -30, 30);
+		//GYRO.Roll = (float)MathHelper.Clamp( missile.pidA.Filter(-TRANS_VECT.Z, 2) , -1000, 1000);
 
+		// CODING
 	    // a b K
 	    // assume the gyro is in front of the missile, use Yaw to make the missile fit gravity
 	    var ng = RC.GetNaturalGravity();
 	    if (ng.Length() > 0.01) {
 	       MatrixD gyroMat = GYRO.WorldMatrix;
 	       var diff = diffGravity(gyroMat.Left, ng, gyroMat.Up);
-	       GYRO.Yaw =(float) (diff * 60 * -1);
-	    }
+	       GYRO.Yaw =(float) missile.pidR.Filter(-diff,2);
+	    } 
                 GYRO.GyroOverride = true;
             }
             #endregion

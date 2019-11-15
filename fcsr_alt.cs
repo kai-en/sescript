@@ -59,7 +59,7 @@ const string RotorNagtiveTag = "[-]"; //×ª×Ó¸º×ª±êÇ©¡£µ±×ª×ÓÃû×ÖÀïÍêÈ«°üº¬Õâ¸ö±ê
 string CockpitNameTag = "Reference";
 
 // ============== Õ½¶·ÉèÖÃ ==============
-const double AttackDistance = 950; //Ä¬ÈÏÎäÆ÷µÄ×Ô¶¯¿ª»ğ¾àÀë
+const double AttackDistance = 910; //Ä¬ÈÏÎäÆ÷µÄ×Ô¶¯¿ª»ğ¾àÀë
 static bool OnlyAttackUpPlane = false; //×Ô¶¯Ñ¡ÔñÄ¿±êÊ±ÊÇ·ñÖ»Ñ¡Ôñ×ª×Ó»ù×ùÅÚËşµÄÉÏ°ëÇòÃæÀïµÄÄ¿±ê£¨µ±Ä¿±êµÍÓÚ¸ÃÅÚËşÊ±²»Ñ¡ÔñÕâ¸öÄ¿±ê£©
 
 // ============== ½ø½×¿ª»ğ»úÖÆ ============
@@ -69,10 +69,14 @@ static bool OnlyAttackUpPlane = false; //×Ô¶¯Ñ¡ÔñÄ¿±êÊ±ÊÇ·ñÖ»Ñ¡Ôñ×ª×Ó»ù×ùÅÚËşµÄÉ
 const string FireTimerNameTag = "[Fire_Timer]";  //×Ô¶¯¿ª»ğ¶¨Ê±¿éÃû×Ö±êÇ©£¬¶¨Ê±¿éÃû×ÖĞèÒªÍêÈ«°üº¬Õâ¸ö±êÇ©¡£
 
 // ================ ÎäÆ÷×Óµ¯²ÎÊıÉèÖÃ =============
-const double BulletInitialSpeed = 170; //×Óµ¯³õËÙ¶È
-const double BulletAcceleration = 10; //×Óµ¯¼ÓËÙ¶È
-const double BulletMaxSpeed = 190; //×Óµ¯×î´óËÙ¶È
+const double BulletInitialSpeed = 400; //×Óµ¯³õËÙ¶È
+const double BulletAcceleration = 0; //×Óµ¯¼ÓËÙ¶È
+const double BulletMaxSpeed = 400; //×Óµ¯×î´óËÙ¶È
 const double ShootDistance = 910; //¿ª»ğ¾àÀë
+const double BulletInitialSpeed2 = 170; //×Óµ¯³õËÙ¶È
+const double BulletAcceleration2 = 10; //×Óµ¯¼ÓËÙ¶È
+const double BulletMaxSpeed2 = 190; //×Óµ¯×î´óËÙ¶È
+const double ShootDistance2 = 910; //¿ª»ğ¾àÀë
 
 // ============== ÆäËûÉèÖÃ ==============
 static int AttentionRandomTime = 180; //Ëæ»ú¾¯½äÄ£Ê½µÄÇĞ»»¼ä¸ô£¬60ÊÇ1Ãë£¬120ÊÇ2Ãë£¬Õâ¸öÊı±ØĞëÊÇÕûÊı
@@ -188,13 +192,13 @@ void Main(string arguments)
 			}
 			R.CheckPlayerControl();//¼ì²âÍæ¼Ò¿ØÖÆ
 			R.ShowLCD();//LCDÏÔÊ¾×´Ì¬ĞÅÏ¢
-			Echo("debugInfo" + R.debugInfo);
+			Echo("debugInfo " + R.isRocket + " " + R.debugInfo);
 			
 		}
 	}else{
 		foreach(RotorBase R in FCSR){
 			R.Attention(1, mode);
-			Echo("debugInfo" + R.debugInfo);
+			Echo("debugInfo " + R.isRocket + " " + R.debugInfo);
 		}
 	}
 	
@@ -451,6 +455,9 @@ public class RotorBase
 			if(block is IMyUserControllableGun){
 				Weapons.Add(block);
 			}
+			if(block is IMySmallGatlingGun) {
+				 this.isRocket = false;
+			}
 		}
 		
 		//»ñÈ¡×Ô¶¨Òå¿ª»ğ¶¨Ê±¿é
@@ -655,7 +662,7 @@ public class RotorBase
 		
 		if(MyAttackTarget.EntityId != 0){
 			debugInfo = "";
-			bool isAimedOK = this.AimAtTarget(MyAttackTarget);
+			bool isAimedOK = this.AimAtTarget(MyAttackTarget, false);
 			bool sensorActive = false;
 			foreach(IMySensorBlock sensor in this.Sensors){
 				if(sensor.IsActive){sensorActive = true;}
@@ -717,17 +724,17 @@ public class RotorBase
 	private List<Vector3D> Aim_PID_Data = new List<Vector3D>();
 	bool AimAtTarget(Vector3D Position)
 	{
-		return AimAtTarget(Position, new Vector3D(), new Vector3D(), 100000, 0, 100000);
+		return AimAtTarget(Position, new Vector3D(), new Vector3D(), true);
 	}
 	
 	bool AimAtTarget(Vector3D Position, Vector3D Velocity, Vector3D Acceleration)
 	{
-		return AimAtTarget(Position, Velocity, Acceleration, 100000, 0, 100000);
+		return AimAtTarget(Position, Velocity, Acceleration, true);
 	}
 	
-	bool AimAtTarget(Target aimTarget)
+	bool AimAtTarget(Target aimTarget, bool isStraight)
 	{
-		return AimAtTarget(aimTarget.Position, aimTarget.Velocity, aimTarget.Acceleration, BulletInitialSpeed, BulletAcceleration, BulletMaxSpeed);
+		return AimAtTarget(aimTarget.Position, aimTarget.Velocity, aimTarget.Acceleration, isStraight);
 	}
 
 	Vector3D maxTo(Vector3D ori, Double l) {
@@ -738,23 +745,38 @@ public class RotorBase
 		 }
 	}
 	
-	bool AimAtTarget(Vector3D Position, Vector3D Velocity, Vector3D Acceleration, double BulletInitialSpeed, double BulletAcceleration, double BulletMaxSpeed)
+	bool AimAtTarget(Vector3D Position, Vector3D Velocity, Vector3D Acceleration, bool isStraight)
 	{
 		if (this.Weapons.Count == 0) return false;
 		bool isRocket = this.isRocket;
 		MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.AimBlock.WorldMatrix.Forward, this.AimBlock.WorldMatrix.Up);
 		Vector3D thisV;
 		Vector3D thisA;
+		double bs, ba, bm;
 		if (isRocket == true) {
 			thisV = this.Velocity * 0.3;
 			thisA = new Vector3D(0,0,0);
+			bs = BulletInitialSpeed2;
+			ba = BulletAcceleration2;
+			bm = BulletMaxSpeed2;
 		} else {
 			thisV = this.Velocity;
 			thisA = this.Acceleration;
+			bs = BulletInitialSpeed;
+			ba = BulletAcceleration;
+			bm = BulletMaxSpeed;
 		}
-		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position, Velocity, Acceleration, BulletInitialSpeed, BulletAcceleration, BulletMaxSpeed);
-		Vector3D TargetPositionToMe = Vector3D.Normalize(Vector3D.TransformNormal(HitPoint - this.AimBlock.GetPosition(), refLookAtMatrix));
+		if (isStraight){
+		bs = 100000;
+		ba = 0;
+		bm = 100000;
+		}
 		
+		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position, Velocity, Acceleration, bs, ba, bm);
+		Vector3D TargetPositionToMe = Vector3D.Normalize(Vector3D.TransformNormal(HitPoint - this.AimBlock.GetPosition(), refLookAtMatrix));
+		Vector3D aimDir = CalcAim(this.Position, thisV, Position, Velocity, bs, ba, bm);
+		var aimDirToMe = Vector3D.TransformNormal(aimDir,  refLookAtMatrix);
+		debugInfo += Vector3D.Dot(aimDirToMe, TargetPositionToMe) + "\n";
 		//´¢´æ²ÉÑùµã
 		if(Aim_PID_Data.Count < Aim_PID_T){
 			for(int i = 0; i < Aim_PID_T; i ++){
@@ -1059,4 +1081,30 @@ public void Reset()
 {
 integral = lastInput = 0;
 }
+}
+
+static Vector3D CalcAim(Vector3D mp, Vector3D mv, Vector3D tp, Vector3D tv, double bs, double ba, double bm) {
+
+var los = Vector3D.Normalize(tp - mp);
+var rv = Vector3D.Reject(tv-mv, los);
+var ov = (tv-mv) - rv; // ¼ÙÉè
+var ovl = ov.Length();
+if (Vector3D.Dot(ov, los) < 0) ovl = -ovl;
+var rvd = Vector3D.Normalize(rv);
+var rvl = rv.Length();
+if (bs == bm) {
+var lvl = Math.Sqrt(bm*bm - rvl*rvl);
+var aim = Vector3D.Normalize( los + rvd*(rvl/lvl));
+return aim;
+} else {
+// ¼ÙÉèÒ»¶¨³¬¹ı¼ÓËÙ½×¶Î
+var accSpeed = (bs + bm)/2;
+var accTime = (bm - bs) / ba;
+// ÉèÊ£Óà×·¼°Ê±¼äÎªx, ¼Ğ½ÇcosÎªc
+// µÈÊ½1Ö±Ïß¾àÀë  (tp - mp).Length() + ovl*(accTime + x)  = accTime * ( accSpeed * c) + bm*c*x;
+// µÈÊ½2²àÏòËÙ¶È rv.Length() = (accSpeed * (1-c*c) * accTime + bm * (1 - c*c) * x ) / (accTime + x);
+// ·½³ÌÌ«¸´ÔÓ
+return Vector3D.Zero;
+}
+
 }
