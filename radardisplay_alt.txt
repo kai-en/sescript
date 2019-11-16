@@ -235,6 +235,7 @@ void callDcsSendAvoid() {
 	if (k == Me.CubeGrid.EntityId) return false;
 	return true;
     }).ToList();
+    debugInfo = "Avoid list: " + s.Count;
     s.Sort((l,r)=>
         (int)((MePosition - r.Value.Position).Length() -
 	(MePosition - l.Value.Position).Length())

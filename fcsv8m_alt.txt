@@ -999,11 +999,11 @@ void GetBlocks(){
 		BK.AddList(BK_Temp);
 	}
 	
-	if(WeaponsNameTag[0] == ""){
+	//if(WeaponsNameTag[0] == ""){
 		BK_Temp = new List<IMyTerminalBlock>();
 		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CubeGrid == Me.CubeGrid && b is IMyUserControllableGun && !(b is IMyLargeTurretBase) && (WeaponsNameTag[1] == "ALL" ? true : WeaponsNameTag[1] == "" ? false : b.CustomName.Contains(WeaponsNameTag[1])));
 		BK.AddList(BK_Temp);
-	}
+	//}
 
 	// a b K
 	BK_Temp = new List<IMyTerminalBlock>();

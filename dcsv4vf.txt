@@ -146,7 +146,6 @@ Vector3D mySpeedToMe = Vector3D.Zero;
 List<IMySensorBlock> sensors = new List<IMySensorBlock>();
 long lastMotherSignalTime=0;
 
-string Debug;
 bool init = false;
 bool configFinish = false;
 IMyShipController Cockpit;
@@ -242,7 +241,6 @@ Runtime.UpdateFrequency = UpdateFrequency.Update1;
 if ((updateType & UpdateType.Update1) != 0) {
 arguments = "";
 }
-Debug = "系统正常";
 
 if (!configFinish) {
 ProcessCustomConfiguration();
@@ -525,6 +523,8 @@ if ((updateType & UpdateType.Update1) == 0) {
 ShowLCD();
 return;
 }
+debugInfo = "";
+
 switch(commandCache) {
 case "FLYBYON":
 if ( t > commandStart + commandWaitTic) {
@@ -752,9 +752,9 @@ lastSpeedY = m2m.Y;
 }
 }
 
-if(true){
+if(!(flyByOn||dockingOn)){
 // auto forward
-if(inputVec.Length() < 0.1 && aeroSpeedLevel>0){
+if(inputVec.Length() < 0.1 && aeroSpeedLevel>0 ){
 ft = (float)ftPid.Filter( (-10*aeroSpeedLevel) - mySpeedToMe.Z, 2);
 if(ft < 0){
 SetThrusterListOverride(forwardThrusters, -ft);
@@ -1053,6 +1053,7 @@ string br = "\n";
 string info = "";
 info += (rulerOn?"Turning":"") + "  Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (isApproach ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + br;
 info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") + (t - lastSendingTime<120 && t%60<30 ?"=>":"") + (t - lastReceivingTime<120 && t%60<30?"<=":"") + br;
+info += "Speed level: " + aeroSpeedLevel + '\n';
 info += " Location " + distanceInfo + br;
 if (gcTargetPanel != null) {
 info += " Target: " + gcTargetPanel.GetPublicTitle() + "\n";
@@ -1293,7 +1294,7 @@ if (tmp != null) LCD.Add(tmp);
 }
 
 if(LCD.Count < 1)
-{debugInfo = DCSLCDNameTag  + "未找到";}
+{debugInfo = DCSLCDNameTag  + " not found";}
 
 Gyroscopes = new List<IMyTerminalBlock>();
 if(GyroscopesNameTag != "")
@@ -1307,7 +1308,7 @@ FilterSameGrid(Me.CubeGrid, ref Gyroscopes);
 }
 if(Gyroscopes.Count < 1)
 {
-Debug = "没有任何陀螺仪";
+debugInfo = "No Gyro";
 }
 
 setupGyroField(Gyroscopes, ref gyroYawField, ref gyroYawFactor, ref gyroPitchField, ref gyroPitchFactor, ref gyroRollField, ref gyroRollFactor, Cockpit);
@@ -2324,9 +2325,9 @@ return "";
 
 DimSpeed(maintainSpeedToMe.X, rightThrusters, leftThrusters, ref thrusterPercentX, nowSpeedToMe.X, lastSpeedX, "LEFT".Equals(dockingApproach)||"RIGHT".Equals(dockingApproach), nrl,0);
 lastSpeedX = nowSpeedToMe.X;
-dr += DimSpeed(maintainSpeedToMe.Y, upThrustersIfHead, downThrustersIfHead, ref thrusterPercentY, nowSpeedToMe.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
+DimSpeed(maintainSpeedToMe.Y, upThrustersIfHead, downThrustersIfHead, ref thrusterPercentY, nowSpeedToMe.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
 lastSpeedY = nowSpeedToMe.Y;
-DimSpeed(maintainSpeedToMe.Z, backwardThrustersIfHead, forwardThrustersIfHead, ref thrusterPercentZ, nowSpeedToMe.Z, lastSpeedZ, "FORWARD".Equals(dockingApproach)||"BACKWARD".Equals(dockingApproach), nbf,2);
+dr=DimSpeed(maintainSpeedToMe.Z, backwardThrustersIfHead, forwardThrustersIfHead, ref thrusterPercentZ, nowSpeedToMe.Z, lastSpeedZ, "FORWARD".Equals(dockingApproach)||"BACKWARD".Equals(dockingApproach), nbf,2);
 lastSpeedZ = nowSpeedToMe.Z;
 return dr;
 }
@@ -2634,7 +2635,7 @@ MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.
 Vector3D myPosition = MePosition;
 Vector3D myToShipPosition = MePosition - shipPosition;
 myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
-distanceInfo=Math.Round(-myToShipPosition.X,2) + " " + Math.Round(myToShipPosition.Y,2) + " " + Math.Round(-myToShipPosition.Z,2);
+distanceInfo=displayVector3D(myToShipPosition);
 targetPosition = calcApproach(myToShipPosition, shipPosition, ref isApproach);
 
 if (flyByOn) {
@@ -2704,9 +2705,7 @@ shipSpeed = flyByAimSpeed;
 
 bool isClose = Math.Abs(myToShipPosition.X) < shipWidth && Math.Abs(myToShipPosition.Y) < shipHeight && Math.Abs(myToShipPosition.Z) < shipLength && (!isApproach);
 Vector3D shipSpeedBaseShip = Vector3D.TransformNormal(shipSpeed, shipLookAtMatrix);
-Vector3D targetPositionBaseShip = Vector3D.TransformNormal(targetPosition, shipLookAtMatrix);
-Vector3D myPositionBaseShip = Vector3D.TransformNormal(myPosition, shipLookAtMatrix);
-Vector3D diffPositionBaseShip = targetPositionBaseShip - myPositionBaseShip;
+Vector3D diffPositionBaseShip =  Vector3D.TransformNormal(targetPosition - myPosition, shipLookAtMatrix);
 
 if (isClose) {
 Vector3D m2s = myPosition - shipPosition;
