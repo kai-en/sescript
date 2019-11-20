@@ -227,7 +227,6 @@ double ahh = 0;
 
 // suspect mode
 bool susMode = false;
-bool glideOn = false;
 int lastNoHighSpeed = 0;
 
 Program()
@@ -260,7 +259,7 @@ List<IMyTerminalBlock> welderList;
 switch (arguments)
 {
 case ("FLYBY"):
-if (sonCode == null) break;
+if (sonCode == null || shipPosition==Vector3D.Zero) break;
 attackMode=false;
 flyByOn = !flyByOn;
 if (flyByOn) {
@@ -527,6 +526,7 @@ debugInfo = "";
 
 switch(commandCache) {
 case "FLYBYON":
+if(shipPosition==Vector3D.Zero) break;
 if ( t > commandStart + commandWaitTic) {
 startFlyBy();
 ahhOn = false;
@@ -1269,7 +1269,8 @@ isApproach = true;
 }
 Cockpit = getBlockByName(CockpitNameTag) as IMyShipController;
 if(Cockpit == null)
-{Echo(CockpitNameTag  + "Î´ÕÒµ½");}
+{Echo(CockpitNameTag  + "Î´ÕÒµ½"); return;}
+setDampenersOverride(Cockpit, true);
 refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);
 
 Head = getBlockByName(HeadNameTag) as IMyShipController;
@@ -2444,7 +2445,7 @@ if (motherCode != null) {
 IMyRadioAntenna ant = GridTerminalSystem.GetBlockWithName(stAName) as IMyRadioAntenna;
 ant.TransmitMessage(motherCode+":FLYBYON");
 }
-if (sonCode == null) break;
+if (sonCode == null || shipPosition==Vector3D.Zero) break;
 commandCache="FLYBYON";
 commandStart=t;
 break;
@@ -3260,7 +3261,12 @@ t.Enabled = true;
 t.ThrustOverridePercentage = percent;
 t.Enabled = true;
 } else {
-t.Enabled = false;
+if(dampenersOn) {
+t.ThrustOverridePercentage = 0.0001f;
+} else {
+t.ThrustOverridePercentage = 0f;
+}
+t.Enabled = true;
 }
 });
 }
@@ -3402,11 +3408,6 @@ if (mstm.Length()>0) {
 if (mstm.Length() > 1) mstmn = mstm * (1f/mstm.Length());
 }
 needA -= mstmn * 10.0;
-}
-if(backwardThrusters.Where( t => {
-return ((IMyThrust)t).Enabled;
-}).ToList().Count == 0 && ngtome.Z < 5 && glideOn){
-//needA.Z=0;
 }
 var tl = 0f;
 if (naturalGravityLength < 0.01f && (Math.Abs(needA.Z)<2 || MeVelocity.Length() < 2 )) {

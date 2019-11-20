@@ -61,6 +61,7 @@ const string INI_SECTION_GENERAL = "Radar - General";
 const string INI_BCAST = "Share own position";
 const string INI_MASTER_CODE = "Master code";
 const string INI_SLAVE_CODE = "Slave code";
+const string INI_START_WHEN_COMPILED = "Start when compiled";
 
 const string INI_NETWORK = "Share targets"; 
 const string INI_USE_RANGE_OVERRIDE = "Use radar range override"; 
@@ -103,7 +104,8 @@ string FCS_NAME = "fcs";
 IMyBroadcastListener broadcastListener; 
  
 float rangeOverride = 1000; 
-bool useRangeOverride = false; 
+bool useRangeOverride = false;
+bool startWhenCompiled = true;
 bool networkTargets = true; 
 bool broadcastIFF = true; 
  
@@ -133,7 +135,7 @@ float turretMaxRange = 800f;
  
 Scheduler scheduler; 
 RuntimeTracker runtimeTracker; 
-ScheduledAction grabBlockAction; 
+//ScheduledAction grabBlockAction; 
  
 Dictionary<long, TargetData> targetDataDict = new Dictionary<long, TargetData>(); 
 List<IMyLargeTurretBase> turrets = new List<IMyLargeTurretBase>(); 
@@ -146,7 +148,7 @@ const double cycleTime = 1.0 / 60.0;
 string lastSetupResult = ""; 
 bool isSetup = false; 
  
-readonly RadarSurface radarSurface; 
+RadarSurface radarSurface; 
 readonly MyIni generalIni = new MyIni(); 
 readonly MyIni textSurfaceIni = new MyIni(); 
 #endregion 
@@ -155,37 +157,15 @@ readonly MyIni textSurfaceIni = new MyIni();
 Program() 
 { 
     ParseCustomDataIni(); 
-    GrabBlocks(); 
- 
-    radarSurface = new RadarSurface(backColor, lineColor, planeColor, textColor, projectionAngle, MaxRange); 
- 
+
+    if (startWhenCompiled) {
     Runtime.UpdateFrequency = UpdateFrequency.Update1; 
-    runtimeTracker = new RuntimeTracker(this); 
- 
-    // Scheduler creation 
-    scheduler = new Scheduler(this); 
-    grabBlockAction = new ScheduledAction(GrabBlocks, 0.1); 
-    scheduler.AddScheduledAction(grabBlockAction); 
-    scheduler.AddScheduledAction(UpdateRadarRange, 1); 
-    scheduler.AddScheduledAction(PrintDetailedInfo, 1); 
- 
-    scheduler.AddQueuedAction(GetTurretTargets, cycleTime);                                             // cycle 1 
-    scheduler.AddQueuedAction(radarSurface.SortContacts, cycleTime);                                    // cycle 2 
- 
-    float step = 1f / 7f; 
-    scheduler.AddQueuedAction(() => Draw(0 * step, 1 * step), cycleTime);                               // cycle 3 
-    scheduler.AddQueuedAction(() => Draw(1 * step, 2 * step), cycleTime);                               // cycle 4 
-    scheduler.AddQueuedAction(() => Draw(2 * step, 3 * step), cycleTime);                               // cycle 5 
-    scheduler.AddQueuedAction(() => Draw(3 * step, 4 * step), cycleTime);                               // cycle 6 
-    scheduler.AddQueuedAction(() => Draw(4 * step, 5 * step), cycleTime);                               // cycle 7 
-    scheduler.AddQueuedAction(() => Draw(5 * step, 6 * step), cycleTime);                               // cycle 8 
-    scheduler.AddQueuedAction(() => Draw(6 * step, 7 * step), cycleTime);                               // cycle 9 
-    scheduler.AddQueuedAction(radarSurface.ClearContacts, cycleTime);                                   // cycle 10 
- 
- 
     // IGC Register 
     broadcastListener = IGC.RegisterBroadcastListener(IGC_TAG); 
-    broadcastListener.SetMessageCallback(IGC_TAG); 
+    broadcastListener.SetMessageCallback(IGC_TAG);
+    }
+ 
+ 
 }
 
 void updateMotion(){
@@ -200,6 +180,14 @@ void Main(string arg, UpdateType updateSource)
 {
 	if (!inited) {
 	init();
+	if (arg.Equals("TurnOn")) {
+	   startWhenCompiled = true;
+	   // IGC Register 
+	   broadcastListener = IGC.RegisterBroadcastListener(IGC_TAG); 
+	   broadcastListener.SetMessageCallback(IGC_TAG);
+	   Runtime.UpdateFrequency = UpdateFrequency.Update1;
+	   WriteCustomDataIni();
+	} 
 	return;
 	}
 	updateMotion();
@@ -450,7 +438,7 @@ void PrintDetailedInfo()
     Echo($"{lastSetupResult}"); 
     Echo($"Text surfaces: {textSurfaces.Count}"); 
     Echo($"\nReference seat:\n\"{(reference?.CustomName)}\""); 
-    Echo($"\nNext refresh in {Math.Max(grabBlockAction.RunInterval - grabBlockAction.TimeSinceLastRun, 0):N0} seconds"); 
+    //Echo($"\nNext refresh in {Math.Max(grabBlockAction.RunInterval - grabBlockAction.TimeSinceLastRun, 0):N0} seconds"); 
     Echo(runtimeTracker.Write()); 
 } 
  
@@ -796,7 +784,8 @@ void WriteCustomDataIni()
     generalIni.Set(INI_SECTION_GENERAL, INI_PROJ_ANGLE, projectionAngle); 
 
     generalIni.Set(INI_SECTION_GENERAL, INI_MASTER_CODE, MOTHER_CODE); 
-    generalIni.Set(INI_SECTION_GENERAL, INI_SLAVE_CODE, SON_CODE); 
+    generalIni.Set(INI_SECTION_GENERAL, INI_SLAVE_CODE, SON_CODE);
+    generalIni.Set(INI_SECTION_GENERAL, INI_START_WHEN_COMPILED, startWhenCompiled); 
 
     MyIniHelper.SetColorChar(INI_SECTION_COLORS, INI_TEXT, textColor, generalIni); 
     MyIniHelper.SetColorChar(INI_SECTION_COLORS, INI_BACKGROUND, backColor, generalIni); 
@@ -809,7 +798,7 @@ void WriteCustomDataIni()
     MyIniHelper.SetColorChar(INI_SECTION_COLORS, INI_FRIENDLY, allyIconColor, generalIni); 
     MyIniHelper.SetColorChar(INI_SECTION_COLORS, INI_FRIENDLY_ELEVATION, allyElevationColor, generalIni); 
     generalIni.SetSectionComment(INI_SECTION_COLORS, "Colors are defined with RGBAlpha color codes where\nvalues can range from 0,0,0,0 [transparent] to 255,255,255,255 [white]."); 
- 
+
     Me.CustomData = generalIni.ToString(); 
 } 
  
@@ -825,6 +814,8 @@ void ParseCustomDataIni()
     useRangeOverride = generalIni.Get(INI_SECTION_GENERAL, INI_USE_RANGE_OVERRIDE).ToBoolean(useRangeOverride); 
     rangeOverride = generalIni.Get(INI_SECTION_GENERAL, INI_RANGE_OVERRIDE).ToSingle(rangeOverride); 
     projectionAngle = generalIni.Get(INI_SECTION_GENERAL, INI_PROJ_ANGLE).ToSingle(projectionAngle); 
+    startWhenCompiled = generalIni.Get(INI_SECTION_GENERAL, INI_START_WHEN_COMPILED).ToBoolean(startWhenCompiled);
+    Echo("startWhenCompiled " + startWhenCompiled);
  
     textColor = MyIniHelper.GetColorChar(INI_SECTION_COLORS, INI_TEXT, generalIni, textColor); 
     backColor = MyIniHelper.GetColorChar(INI_SECTION_COLORS, INI_BACKGROUND, generalIni, backColor); 
@@ -836,7 +827,7 @@ void ParseCustomDataIni()
     neutralElevationColor = MyIniHelper.GetColorChar(INI_SECTION_COLORS, INI_NEUTRAL_ELEVATION, generalIni, neutralElevationColor); 
     allyIconColor = MyIniHelper.GetColorChar(INI_SECTION_COLORS, INI_FRIENDLY, generalIni, allyIconColor); 
     allyElevationColor = MyIniHelper.GetColorChar(INI_SECTION_COLORS, INI_FRIENDLY_ELEVATION, generalIni, allyElevationColor); 
- 
+
     WriteCustomDataIni(); 
  
     if (radarSurface != null) 
@@ -1008,7 +999,33 @@ void GrabBlocks()
     { 
         isSetup = true; 
         ParseCustomDataIni(); 
-    } 
+    }
+
+    radarSurface = new RadarSurface(backColor, lineColor, planeColor, textColor, projectionAngle, MaxRange); 
+
+    runtimeTracker = new RuntimeTracker(this); 
+ 
+    // Scheduler creation 
+    scheduler = new Scheduler(this); 
+    //grabBlockAction = new ScheduledAction(GrabBlocks, 0.1); 
+    //scheduler.AddScheduledAction(grabBlockAction); 
+    scheduler.AddScheduledAction(UpdateRadarRange, 1); 
+    scheduler.AddScheduledAction(PrintDetailedInfo, 1); 
+ 
+    scheduler.AddQueuedAction(GetTurretTargets, cycleTime);                                             // cycle 1 
+    scheduler.AddQueuedAction(radarSurface.SortContacts, cycleTime);                                    // cycle 2 
+ 
+    float step = 1f / 7f; 
+    scheduler.AddQueuedAction(() => Draw(0 * step, 1 * step), cycleTime);                               // cycle 3 
+    scheduler.AddQueuedAction(() => Draw(1 * step, 2 * step), cycleTime);                               // cycle 4 
+    scheduler.AddQueuedAction(() => Draw(2 * step, 3 * step), cycleTime);                               // cycle 5 
+    scheduler.AddQueuedAction(() => Draw(3 * step, 4 * step), cycleTime);                               // cycle 6 
+    scheduler.AddQueuedAction(() => Draw(4 * step, 5 * step), cycleTime);                               // cycle 7 
+    scheduler.AddQueuedAction(() => Draw(5 * step, 6 * step), cycleTime);                               // cycle 8 
+    scheduler.AddQueuedAction(() => Draw(6 * step, 7 * step), cycleTime);                               // cycle 9 
+    scheduler.AddQueuedAction(radarSurface.ClearContacts, cycleTime);                                   // cycle 10 
+ 
+
 } 
 #endregion 
  
@@ -1506,6 +1523,8 @@ return null;
 }
 
 void init() {
+   GrabBlocks(); 
+
     // Define reference ship controller
     reference = getBlockByName<IMyShipController>(COCKPIT_NAME);
     //reference = GetControlledShipController(controllers); // Primary, get active controller 
