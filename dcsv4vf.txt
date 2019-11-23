@@ -1875,6 +1875,7 @@ cfg.Get("commandAllTic", ref commandAllTic);
 cfg.Get("isBig", ref isBig);
 cfg.Get("isDummy", ref isDummy);
 cfg.Get("isBase", ref isBase);
+cfg.Get("isME", ref isME);
 cfg.Get("droneAttackRange", ref droneAttackRange);
 cfg.Get("isPrinted", ref isPrinted);
 cfg.Get("limitInnerRotor", ref limitInnerRotor);

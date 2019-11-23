@@ -39,7 +39,8 @@ static string[] GyroscopesNameTag = {"", "NOT_EXIST_GYRO"}; //陀螺仪编组名
 static string[] ThurstsNameTag = {"", "NOT_EXIST_THRUST"}; //推进器编组名、方块名（设为ALL采用所有的）
 static string[] WeaponsNameTag = {"", "NOT_EXIST_WEAPON"}; //固定武器编组名，方块名（设为ALL采用所有的）
 static string RadarOutputNameTag="RadarOutput";
-static string OnOffNameTag="FCSOnOffTag";
+static string lockNameTag="FCSLockTag";
+static string searchNameTag="FCSSearchTag";
 // add by kaien
 string homingTurretName = "NOT_EXIST_TURRET";
 bool useTurretAsAimer=false;
@@ -60,7 +61,8 @@ bool radarWaitNewPos = true;
 Vector3D radarHighThreatPosition = Vector3D.Zero;
 IMySoundBlock fcsSound = null;
 List<IMyTerminalBlock> fcsLightList = new List<IMyTerminalBlock>();
-List<IMyTerminalBlock> onOffBlockList = new List<IMyTerminalBlock>();
+List<IMyTerminalBlock> lockBlockList = new List<IMyTerminalBlock>();
+List<IMyTerminalBlock> searchBlockList = new List<IMyTerminalBlock>();
 
 // --------- 搜索参数设置 ------------
 double SearchDistance = 5000;//常规搜索距离
@@ -215,7 +217,8 @@ void Main(string arguments)
 	switch(arguments){
 		case("OnOff"):NeedScan = !NeedScan; MyTargetList = new List<Target>(); selectedTarget = 0;
 					if (fcsSound != null) fcsSound.Stop();
-					TurnBlocksOnOff(onOffBlockList, false);
+					TurnBlocksOnOff(lockBlockList, false);
+					TurnBlocksOnOff(searchBlockList, NeedScan);
 		break;
 		case("Aim"):NeedAimMode += 1; if(NeedAimMode > 2){NeedAimMode = 0;}; break;
 		case("Lock"):ShipLock(); break;
@@ -481,7 +484,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 			Target MyTarget = new Target(FoundTarget);
 			MyTargetList.Add(MyTarget);
 			if (fcsSound != null) fcsSound.Play();
-			TurnBlocksOnOff(onOffBlockList, true);
+			TurnBlocksOnOff(lockBlockList, true);
 		}
 	}
 	if (MyTargetList.Count > 0){
@@ -520,7 +523,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 			MyTargetList.Remove(MyTarget);
 
 			if (MyTargetList.Count == 0 && fcsSound != null) fcsSound.Stop();
-			TurnBlocksOnOff(onOffBlockList, false);
+			TurnBlocksOnOff(lockBlockList, false);
 
 			// mod by kaien
 			// NeedScan = false;
@@ -555,7 +558,7 @@ void ShipPulseScan(Vector3D CenterPoint){
 		Target MyTarget = new Target(Target);
 		MyTargetList.Add(MyTarget);
 		if (fcsSound != null) fcsSound.Play();
-		TurnBlocksOnOff(onOffBlockList, true);
+		TurnBlocksOnOff(lockBlockList, true);
 
 		NeedScan = true;
 	}
@@ -1065,8 +1068,10 @@ void GetBlocks(){
 	GridTerminalSystem.GetBlocksOfType<IMySoundBlock> (tmpList, b => b.CubeGrid == Me.CubeGrid);
 	if (tmpList.Count > 0) fcsSound = (IMySoundBlock)tmpList[0];
 
-	GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock> (tmpList, b => b.CustomName.Contains(OnOffNameTag));
-	onOffBlockList.AddRange(tmpList);	
+	GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock> (tmpList, b => b.CustomName.Contains(lockNameTag));
+	lockBlockList.AddRange(tmpList);	
+	GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock> (tmpList, b => b.CustomName.Contains(searchNameTag));
+	searchBlockList.AddRange(tmpList);	
 }
 
 // ==== 飞船类 ====

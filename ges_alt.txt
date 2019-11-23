@@ -284,6 +284,16 @@ void Main(string arguments)
 	  }
 	  meMaxG = 0;
 	break;
+	case "MESTANDUP":
+	    GyrosMe[0][0].SetValue("Yaw", 10f);
+	    GyrosMe[1][0].SetValue("Yaw", -10f);
+	  meMaxG = 0;
+	break;
+	case "MEHOLDUP":
+	    GyrosMe[0][0].SetValue("Yaw", 3f);
+	    GyrosMe[1][0].SetValue("Yaw", -3f);
+	  meMaxG = 0;
+	break;
 	}     
   
 	if (!fireMode && OnOff != Cockpit.IsUnderControl) {  

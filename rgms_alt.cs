@@ -7,6 +7,7 @@ double APID_D = 0.6;
 //double MISSILE_MASS = 5276.4;
 //double MISSILE_MASS = 1661.4;
 double MISSILE_MASS = 1407.4;
+double LaunchDist = 150; 
 
 string debugInfo = "";
 
@@ -47,7 +48,6 @@ string debugInfo = "";
             //CHANGE LAUNCH DISTANCE HERE: 
             //(only uses this value of it is not 0)
             //Launch distance of the missile (in m) before guidance
-            double LaunchDist = 20; 
 
             //CHANGE MISSILE TAG HERE:
             //Changes The prefix tag that the missile uses
