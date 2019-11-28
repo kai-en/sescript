@@ -7,8 +7,9 @@ double APID_D = 0.6;
 //double MISSILE_MASS = 5276.4;
 //double MISSILE_MASS = 1661.4;
 double MISSILE_MASS = 1407.4;
-double LaunchDist = 150; 
-
+double LaunchDist = 150;
+int dropTime = 0;
+	    
 string debugInfo = "";
 
 //Introduction
@@ -296,7 +297,7 @@ Echo(debugInfo);
                 yield return true;
                 yield return true;
                 yield return true; //Safety Tick
-	    int dropTime = 30;
+
 	    if(Me.CubeGrid.GridSizeEnum == MyCubeSize.Large) dropTime = 0;
 	    for (int i = 0; i < dropTime; i++) {
 	    	yield return true;

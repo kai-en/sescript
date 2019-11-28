@@ -175,6 +175,7 @@ Vector3D MeVelocity;
 Vector3D MeLastVelocity;
 Vector3D MeAcceleration;
 Vector3D inputVec;
+Vector3D inputVec_RT = Vector3D.Zero;
 float inputRoll;
 bool isUnderControl = false;
 MyShipMass myShipMass;
@@ -522,7 +523,6 @@ if ((updateType & UpdateType.Update1) == 0) {
 ShowLCD();
 return;
 }
-debugInfo = "";
 
 switch(commandCache) {
 case "FLYBYON":
@@ -584,6 +584,7 @@ cp.WritePublicTitle("");
 
 ShowLCD();
 NavigationInfoUpdata(false);
+inputVec_RT = inputVec;
 if(notDocked()) {
 if ( dockingOn && dockable() ) {
 PlayActionList(landingGears, "Lock");
@@ -746,6 +747,7 @@ var needD = ahh - h;
 var needV = needD;
 var m2m = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
 var needA = needV - m2m.Y;
+inputVec_RT.Y = needA;
 var nud = Cockpit.WorldMatrix.Up.Dot(naturalGravity);
 string dsdr = DimSpeed(needA, upThrusters, downThrusters, ref thrusterPercentY, m2m.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
 lastSpeedY = m2m.Y;
@@ -908,7 +910,7 @@ ahhOn = true;
 }
 if (wantUD) {
 ahhOn = false;
-resetThrusters();
+resetThrusters(false);
 }
 }
 bool cd = false;
@@ -986,8 +988,8 @@ mySpeedToMe = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
 }
 
 
-void resetThrusters(){
-setDampenersOverride(Cockpit, true);
+void resetThrusters(bool needD = true){
+if(needD)setDampenersOverride(Cockpit, true);
 for (int i = 0; i < thrusters.Count; i++) {
 PlayAction(thrusters[i], "OnOff_On");
 thrusters[i].SetValue("Override", 0f);
@@ -2200,7 +2202,6 @@ sd = d;
 }
 SetGyroYaw(AimRatio*sd.X*60);
 if (isAeroDynamic && maintainSpeedToMeAA.Y > 0) {
-// coding
 var dy = (float)Math.Atan2(maintainSpeedToMeAA.Y, Math.Abs(maintainSpeedToMeAA.Z));
 sd.Y += dy;
 }
@@ -2949,14 +2950,6 @@ double fullBurnDotProduct ;
 void Main_RT(string argument, UpdateType updateType)
 {
 double maxThrustAngle = 10;
-if (naturalGravityLength > 0.01f) {
-maxThrustAngle = 75;
-} else {
-if(dockingOn || isApproach)
-maxThrustAngle = 10;
-else
-maxThrustAngle = 15;
-}
 maxThrustDotProduct = Math.Cos(maxThrustAngle * Math.PI / 180);
 minDampeningDotProduct = Math.Cos(minDampeningAngle * Math.PI / 180);
 fullBurnDotProduct = Math.Cos(fullBurnToleranceAngle * Math.PI / 180);
@@ -3013,33 +3006,75 @@ inputVec.Z = MathHelper.Clamp( ft, -1, 1);
 }
 }
 }
-var desiredDirection = Vector3D.TransformNormal(inputVec, refMatrix); //world relative input vector
-if (desiredDirection.LengthSquared() > 0)
+
+if(true) {
+// CODING
+Vector3D needA = inputVec_RT * 10.0; // 1G
+if ((flyByOn||dockingOn) && maintainSpeedToMeAA.Length()>0) {
+var ms = maintainSpeedToMeAA;
+if (ms.Length() > 10f) {
+ms *= 10f/ms.Length();
+}
+needA += ms * 1.0;
+}
+
+var gravityVecNorm = Vector3D.Normalize(naturalGravity);
+var ngtome = Vector3D.TransformNormal(naturalGravity, refLookAtMatrix);
+needA -= ngtome;
+Vector3D mstm = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
+if (inputVec_RT.Length()<0.01f && dampenersOn) {
+Vector3D mstmn = mstm;
+if (mstm.Length()>0) {
+if (mstm.Length() > 1) mstmn = mstm * (1f/mstm.Length());
+}
+if (aeroSpeedLevel > 0) mstmn.Z = 0;
+needA -= mstmn * 10.0;
+}
+
+needA.X=0;
+var desiredDirectionVec = Vector3D.Normalize(Vector3D.TransformNormal(needA, msc.WorldMatrix));
+
+var mass = msc.CalculateShipMass().PhysicalMass;
+double thrustNeed = mass * needA.Length();
+foreach (var block in onGridThrust)
 {
-desiredDirection = Vector3D.Normalize(desiredDirection);
+var dot = block.WorldMatrix.Forward.Dot(desiredDirectionVec);
+if (dot > 0)
+thrustNeed -= dot * block.CurrentThrust;
 }
 
-// flyby adjust
-var nowSpeed = Cockpit.GetShipVelocities().LinearVelocity;
-if (flyByOn || dockingOn) {
-var haveA = nowSpeed - lastSpeedVector;
-var needA = maintainSpeed - haveA;
-desiredDirection = Vector3D.TransformNormal(maintainSpeedToMeAA, thisReferenceBlock.WorldMatrix);
-desiredDirection = Vector3D.Normalize(desiredDirection);
-}
-lastSpeedVector = nowSpeed;
+double thrustMax = 0;
 
-bool dampenersOn = thisReferenceBlock.DampenersOverride;
-if (Cockpit.GetNaturalGravity().Length() > 0.01f) dampenersOn = true; // use with flyby script only
-
-// manually driving
-if (!flyByOn && !dockingOn) {
-dampenersOn = true;
-}
-
-if (onGridThrust.Count == 0)
+foreach (IMyThrust thisThrust in offGridThrust)
 {
-dampenersOn = useRotorThrustAsInertialDampeners;
+var thrustDirection = thisThrust.WorldMatrix.Forward;
+float scale = -(float)thrustDirection.Dot(desiredDirectionVec);
+
+if (scale > maxThrustDotProduct)
+{
+thrustMax += scale * thisThrust.MaxEffectiveThrust;
+}
+
+}
+
+var percent = thrustNeed / thrustMax;
+
+foreach (IMyThrust thisThrust in offGridThrust)
+{
+var thrustDirection = thisThrust.WorldMatrix.Forward;
+float scale = -(float)thrustDirection.Dot(desiredDirectionVec);
+
+if (scale > maxThrustDotProduct)
+{
+SetThrusterOverride(thisThrust, (float)percent);
+}else {
+SetThrusterOverride(thisThrust, 0f);
+}
+
+}
+
+
+// END CODING
 }
 
 string codeStatus = turnOn ? "Enabled" : "Disabled";
@@ -3047,10 +3082,7 @@ string dampenerStatus = dampenersOn ? "Enabled" : "Disabled";
 
 Echo($"Code status: {codeStatus}\nDampeners: {dampenerStatus}");
 
-if(turnOn){
-CancelGravity(offGridThrust, onGridThrust, thisReferenceBlock);
-}
-ApplyThrust(offGridThrust, travelVec, shipSpeed, desiredDirection, dampenersOn, turnOn);
+
 timeCurrentCycle = 0;
 }
 catch
@@ -3145,111 +3177,20 @@ return thisController;
 return SCs[0];
 }
 
-List<IMyThrust> upwardThrusters = new List<IMyThrust>();
-
-void CancelGravity(List<IMyThrust> offGridThrusters, List<IMyThrust> onGridThrusters, IMyShipController controller)
+void SetThrusterOverride(IMyThrust thruster, float percent)
 {
-upwardThrusters.Clear();
-
-var gravityVec = controller.GetNaturalGravity();
-if (Vector3D.IsZero(gravityVec))
-{
-foreach (var block in offGridThrusters)
-{
-SetThrusterOverride(block, 0.0001f);
-}
-return;
-}
-
-var gravityVecNorm = Vector3D.Normalize(gravityVec);
-double thrustSum = 0;
-foreach (var block in offGridThrusters)
-{
-var dot = block.WorldMatrix.Forward.Dot(gravityVecNorm);
-if (dot > 0)
-{
-upwardThrusters.Add(block);
-thrustSum += dot * block.MaxEffectiveThrust;
-}
-else
-{
-SetThrusterOverride(block, 0f);
+IMyThrust t = thruster;
+if(percent < 0) percent = 0;
+if(percent>0){
+t.ThrustOverridePercentage = percent;
+} else {
+if(dampenersOn) {
+t.ThrustOverridePercentage = 0.0001f;
+} else {
+t.ThrustOverridePercentage = 0f;
 }
 }
-
-foreach (var block in onGridThrusters)
-{
-var dot = block.WorldMatrix.Forward.Dot(gravityVecNorm);
-if (dot > 0)
-thrustSum -= dot * block.CurrentThrust;
-}
-
-var mass = controller.CalculateShipMass().PhysicalMass;
-var thrustProportion = (mass * gravityVec.Length()) / thrustSum;
-Echo("Thrust: " + (thrustProportion * 100).ToString());
-foreach (var block in upwardThrusters)
-{
-SetThrusterOverride(block, 100f * (float)thrustProportion);
-}
-}
-
-void ApplyThrust(List<IMyThrust> thrusters, Vector3D travelVec, double speed, Vector3D desiredDirectionVec, bool dampenersOn, bool turnOn)
-{
-if (!turnOn || (sonCode != null && !notDocked()))
-{
-foreach (IMyThrust thisThrust in thrusters)
-{
-SetThrusterOverride(thisThrust, 0.0001f);
-}
-return;
-}
-foreach (IMyThrust thisThrust in thrusters)
-{
-var thrustDirection = thisThrust.WorldMatrix.Forward;
-float scale = -(float)thrustDirection.Dot(desiredDirectionVec);
-
-if (scale > maxThrustDotProduct)
-{
-scale /= (float)fullBurnDotProduct;
-
-var velocityInThrustDirection = thrustDirection.Dot(travelVec) * speed;
-double targetOverride = 0;
-
-if (velocityInThrustDirection < 1)
-targetOverride = velocityInThrustDirection * dampenerScalingFactor;
-else
-targetOverride = velocityInThrustDirection * Math.Abs(velocityInThrustDirection) * dampenerScalingFactor;
-
-SetThrusterOverride(thisThrust, (float)Math.Max(scale * 100f, targetOverride + GetThrusterOverride(thisThrust)));
-}
-
-else if (dampenersOn && thrustDirection.Dot(travelVec) > 0 && thrustDirection.Dot(desiredDirectionVec) <= minDampeningDotProduct)
-{
-if(Cockpit.GetNaturalGravity().Length() <= 0.01f) {
-var velocityInThrustDirection = thrustDirection.Dot(travelVec) * speed;
-double targetOverride = 0;
-
-if (velocityInThrustDirection < 1)
-targetOverride = velocityInThrustDirection * dampenerScalingFactor;
-else
-targetOverride = velocityInThrustDirection * velocityInThrustDirection * dampenerScalingFactor;
-
-SetThrusterOverride(thisThrust, (float)targetOverride + GetThrusterOverride(thisThrust));
-}
-}
-else //disables thruster
-{
-//thisThrust.Enabled = false;
-SetThrusterOverride(thisThrust, 0.0001f);
-}
-}
-}
-
-const float oneOverOneHundred = 1f / 100f;
-void SetThrusterOverride(IMyThrust thruster, float overrideValue)
-{
-thruster.ThrustOverridePercentage = overrideValue * oneOverOneHundred;
-thruster.Enabled = true;
+t.Enabled = true;
 }
 void SetThrusterListOverride(List<IMyTerminalBlock> thrusterList, float percent)
 {
@@ -3314,7 +3255,7 @@ long lastVacTurn = 0;
 float vacForwardAngle = 0;
 const int pidc= 100;
 PIDController[] vtolPIDList = new PIDController[pidc];
-bool noyt=false;
+float tl = 0f;
 void Main_VT()
 {
 IMyShipController remote = null;
@@ -3335,7 +3276,6 @@ MatrixD inverse;
 Vector3D localLinearVelocity, localAngularVelocity;
 
 const float maxAngularVelovityScale = 1;
-
 
 error = "";
 
@@ -3386,7 +3326,7 @@ return;
 }
 
 if(notDocked()){
-Vector3D needA = inputVec * 10.0; // 1G
+Vector3D needA = inputVec_RT * 10.0; // 1G
 if ((flyByOn||dockingOn) && maintainSpeedToMeAA.Length()>0) {
 var ms = maintainSpeedToMeAA;
 if (ms.Length() > 10f) {
@@ -3403,27 +3343,26 @@ needGra *= (24 - levelV) / 24;
 var ngtome = Vector3D.TransformNormal(needGra, refLookAtMatrix);
 needA -= ngtome;
 Vector3D mstm = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
-if (inputVec.Length()<0.01f && dampenersOn && aeroSpeedLevel==0) {
+if (inputVec_RT.Length()<0.01f && dampenersOn && aeroSpeedLevel==0) {
 Vector3D mstmn = mstm;
 if (mstm.Length()>0) {
 if (mstm.Length() > 1) mstmn = mstm * (1f/mstm.Length());
 }
 needA -= mstmn * 10.0;
 }
-var tl = 0f;
+
 if (naturalGravityLength < 0.01f && (Math.Abs(needA.Z)<2 || MeVelocity.Length() < 2 )) {
 tl = 0; legFoldStart = t;
-} else if (t < legFoldStart + legFoldTime && inputVec.Length()<0.1){
+} else if (t < legFoldStart + legFoldTime && inputVec_RT.Length()<0.1){
 tl = 0;
 } else if(isApproach) {
 tl = (float)Math.PI * dtp;
 }else {
+if (needA.Y>3) {
 tl = (float)Math.Atan2(needA.Z, needA.Y);
 }
+}
 tl = MathHelper.Clamp(tl, -0.5f*(float)Math.PI, 0.5f*(float)Math.PI);
-
-if(needA.Y<0 && inputVec.Z == 0) noyt = true;
-else if (needA.Y>2) noyt = false;
 
 var backLimit = -18;
 if(flyByOn) backLimit = -5;
@@ -3431,7 +3370,7 @@ if ((naturalGravityLength < 0.01f && tl == 0 && needA.Y < 2)) tl = -(float)Math.
 else if (naturalGravityLength > 0.01f && isAeroDynamic &&
 (aeroSpeedLevel>0 || (flyByOn&& mstm.Z<-10))
 ) tl = -(float)Math.PI * 0.45f;
-else if (noyt) tl=0f;
+
 if(isDown){
 if (legMode<2) tl = - angleWhenDown;
 else tl = 0f;
