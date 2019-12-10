@@ -1,0 +1,78 @@
+IMyShipController msc;
+List<IMyTextSurface> textSurfaces = new List<IMyTextSurface>(); 
+bool inited = false;
+
+void init() {
+List<IMyTerminalBlock> tmpList =  new List<IMyTerminalBlock>();
+GridTerminalSystem.GetBlocksOfType<IMyShipController> (tmpList);
+if (tmpList.Count > 0) {
+msc = (IMyShipController) tmpList[0];
+}
+
+GridTerminalSystem.GetBlocksOfType<IMyTextSurface> (textSurfaces, b => ((IMyTerminalBlock)b).CustomName.Contains("test"));
+
+inited = true;
+}
+
+
+Program()
+{
+Runtime.UpdateFrequency = UpdateFrequency.Update1;
+}
+
+void Main(string arguments, UpdateType updateType){
+
+if (!inited) {
+init();
+return;
+}
+
+Vector3D inputVec = msc.MoveIndicator;
+
+foreach (var surface in textSurfaces) {
+        surface.ContentType = ContentType.SCRIPT; 
+        surface.Script = ""; 
+ 
+        Vector2 surfaceSize = surface.TextureSize;
+        Vector2 screenCenter = surfaceSize * 0.5f; 
+        Vector2 viewportSize = surface.SurfaceSize; 
+
+        using (var frame = surface.DrawFrame()) 
+        {
+	List<String> sts = new List<String>();
+	surface.GetSprites(sts);
+            foreach (var st in sts) {
+	    Echo("" + st);
+	}
+            MySprite sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", color: backColor); 
+            sprite.Position = screenCenter; 
+            frame.Add(sprite); 
+
+	Vector2 borderSize = new Vector2 ( 0.5f * surfaceSize.X, surfaceSize.Y);
+
+	sprite = new MySprite(SpriteType.TEXTURE, "SquareHollow", size: borderSize, color: borderColor);
+	sprite.Position = screenCenter;
+	frame.Add(sprite); 
+
+	float fullLen = surfaceSize.Y / 2;
+	float needLen = Math.Abs((float)inputVec.Z * fullLen);
+	float start = (float)inputVec.Z * fullLen * 0.5f;
+	Color c = forwardColor;
+	if (start > 0) c = backwardColor;
+
+	Vector2 indicatorSize = new Vector2(0.5f * surfaceSize.X, needLen);
+	Vector2 indicatorCenter = new Vector2(0.5f * surfaceSize.X, 0.5f * surfaceSize.Y + start);
+	sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", size: indicatorSize, color:c);
+	sprite.Position = indicatorCenter;
+	frame.Add(sprite); 
+
+        }
+}
+
+}
+
+Color backColor = new Color(0, 0, 0, 255); 
+Color borderColor = new Color(178, 255, 255, 255);
+Color forwardColor = new Color(178, 255, 255, 255);
+Color backwardColor = new Color(255, 178, 178, 255); 
+
