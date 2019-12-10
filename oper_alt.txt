@@ -6,6 +6,8 @@ IMyShipController Cockpit;
 string missileRotorGroupName = "Rotor-Missile-G"; 
 string missileWelderGroupName = "Welder-Missile-G"; 
 string gcLightGroupName = "Light-GC-G";
+string missileDoorGroupName = "Missile-Door-G";
+string missileLightGroupName = "Missile-Light-G";
 
 List<List<IMyTerminalBlock>> missileRotorsSort = null; 
 List<IMyTerminalBlock> missileWelders = null;
@@ -15,6 +17,8 @@ List<List<IMyTerminalBlock>> gcLightSort = null;
 List<List<IMyTerminalBlock>> gcLightSortR = null; 
 List<IMyTerminalBlock> gcLights = new List<IMyTerminalBlock>();
 List<IMyTerminalBlock> gcLight2 = new List<IMyTerminalBlock>();
+List<List<IMyTerminalBlock>> missileDoorSort = null;
+List<List<IMyTerminalBlock>> missileLightSort = null;
 
 string gcSuperLaserName = "Super-Laser-G";
 List<IMyTerminalBlock> superLaser = new List<IMyTerminalBlock>();
@@ -187,7 +191,7 @@ void runSeq() {
     string action = seqActionList[i]; 
     List<TerminalActionParameter> argumentList = seqActionParamenterList[i]; 
  
-    if ((counter - start) % interval != 0) continue;  
+    if (counter < start || (counter - start) % interval != 0) continue;  
  
     if (blockll.Count() == 0) continue; 
  
@@ -213,12 +217,12 @@ void runSeq() {
   } 
 } 
  
-void addSeq(List<List<IMyTerminalBlock>> blocks, string action, long interval, List<TerminalActionParameter> argumentList = null) { 
+void addSeq(List<List<IMyTerminalBlock>> blocks, string action, long interval, List<TerminalActionParameter> argumentList = null, long delay = 0) { 
   List<List<IMyTerminalBlock>> copyBlockLL = new List<List<IMyTerminalBlock>>(blocks); 
   seqBlockList.Add(copyBlockLL); 
   seqIntervalList.Add(interval); 
   seqActionList.Add(action); 
-  seqStartList.Add(counter); 
+  seqStartList.Add(counter + delay); 
   seqActionParamenterList.Add(argumentList); 
 } 
  
@@ -278,6 +282,13 @@ void init() {
   findByGroup(rotorMissileLeftGN, rotorMissileLeft);
   rotorMissileRight = new List<IMyTerminalBlock>();
   findByGroup(rotorMissileRightGN, rotorMissileRight);
+
+  List<IMyTerminalBlock> tmpList = new List<IMyTerminalBlock>();
+  findByGroup(missileDoorGroupName, tmpList);
+  missileDoorSort = sortByPosition(tmpList, "Z", true);
+
+  findByGroup(missileLightGroupName, tmpList);
+  missileLightSort = sortByPosition(tmpList, "Z", true);
 
   inited = true; 
 }
@@ -441,6 +452,33 @@ public void Main(string argument, UpdateType updateSource)
   {
     fireLaserCommand();
     PlayActionListWithName(superLaser, "Shoot once");
+  }
+  break;
+  case "MSDOOROPEN":
+  {
+    addSeq(missileDoorSort, "Open", 20);
+    addSeq(missileLightSort, "OnOff_On", 20);
+    String cmd = "Fire"; 
+    TerminalActionParameter tap = TerminalActionParameter.Deserialize(cmd, cmd.GetTypeCode()); 
+    List<TerminalActionParameter> argumentList = new List<TerminalActionParameter>();
+    argumentList.Add(tap);  
+    List<IMyTerminalBlock> rgmsPB = getBlockListByName("Programmable block rgms", false); 
+    List<List<IMyTerminalBlock>> rgmsPBSort = new List<List<IMyTerminalBlock>>();
+    int missileCount = 8;
+    for (int i = 0 ; i < missileCount; i ++) {
+      rgmsPBSort.Add(rgmsPB);
+    }
+    addSeq(rgmsPBSort, "Run", 10, argumentList, 20);      
+    addSeq(missileDoorSort, "Open", 20, null, 100);
+    addSeq(missileLightSort, "OnOff_Off", 20, null, 100);
+    addSeq(missileWeldersSort, "OnOff_On", 10, null, 120); 
+    addSeq(missileWeldersSort, "OnOff_Off", 10, null, 180); 
+  }
+  break;
+  case "MSDOORCLOSE":
+  {
+    addSeq(missileDoorSort, "Open", 20);
+    addSeq(missileLightSort, "OnOff_Off", 20);
   }
   break;
   default:

@@ -290,8 +290,8 @@ void Main(string arguments)
 	  meMaxG = 0;
 	break;
 	case "MEHOLDUP":
-	    GyrosMe[0][0].SetValue("Yaw", 3f);
-	    GyrosMe[1][0].SetValue("Yaw", -3f);
+	    GyrosMe[0][0].SetValue("Yaw", 4f);
+	    GyrosMe[1][0].SetValue("Yaw", -4f);
 	  meMaxG = 0;
 	break;
 	}     
@@ -1059,14 +1059,14 @@ void GetBlocks()
     for(int i =0; i < 4; i++) {
     RCSThrusters.Add(new List<IMyTerminalBlock>());
     }
-    RCSThrusters[0].Add(b_f_ad[0][0]);
-    RCSThrusters[0].Add(b_b_ad[1][0]);
-    RCSThrusters[1].Add(b_f_ad[1][0]);
-    RCSThrusters[1].Add(b_b_ad[0][0]);
-    RCSThrusters[2].Add(b_f_ad[2][0]);
-    RCSThrusters[2].Add(b_b_ad[3][0]);
-    RCSThrusters[3].Add(b_f_ad[3][0]);
-    RCSThrusters[3].Add(b_b_ad[2][0]);
+    if(b_f_ad[0].Count>0) RCSThrusters[0].Add(b_f_ad[0][0]);
+    if(b_b_ad[1].Count>0)RCSThrusters[0].Add(b_b_ad[1][0]);
+    if(b_f_ad[1].Count>0)RCSThrusters[1].Add(b_f_ad[1][0]);
+    if(b_b_ad[0].Count>0)RCSThrusters[1].Add(b_b_ad[0][0]);
+    if(b_f_ad[2].Count>0)RCSThrusters[2].Add(b_f_ad[2][0]);
+    if(b_b_ad[3].Count>0)RCSThrusters[2].Add(b_b_ad[3][0]);
+    if(b_f_ad[3].Count>0)RCSThrusters[3].Add(b_f_ad[3][0]);
+    if(b_b_ad[2].Count>0)RCSThrusters[3].Add(b_b_ad[2][0]);
     }
 
 	init = true;
