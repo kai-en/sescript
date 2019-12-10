@@ -1,0 +1,36 @@
+IMyShipController msc;
+bool inited = false;
+
+void init() {
+List<IMyTerminalBlock> tmpList =  new List<IMyTerminalBlock>();
+GridTerminalSystem.GetBlocksOfType<IMyShipController> (tmpList);
+if (tmpList.Count > 0) {
+msc = (IMyShipController) tmpList[0];
+}
+
+inited = true;
+}
+
+
+Program()
+{
+Runtime.UpdateFrequency = UpdateFrequency.Update1;
+}
+
+void Main(string arguments, UpdateType updateType){
+
+if (!inited) {
+init();
+return;
+}
+
+Echo("mass: " + msc.CalculateShipMass().PhysicalMass);
+
+}
+
+// 1661.4
+// (- 1730.4 323) 1407.4
+
+// (- 6747.799 323) 6424.799
+// (- 5599.4 323) 5276.4
+// (- 4998.8 323) 4675.8
