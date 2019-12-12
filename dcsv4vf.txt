@@ -139,7 +139,7 @@ var nf = -mySpeedToMe.Z;
 if(nf<0)nf=0;
 aeroSpeedLevel = (int)nf / 10;
 }
-PIDController ftPid = new PIDController(0.5f, 0.5f, 0f, 10f, -10f, 60);
+PIDController ftPid = new PIDController(0.5f, 0.1f, 0.01f, 10f, -10f, 60);
 float ft = 0f;
 Vector3D mySpeedToMe = Vector3D.Zero;
 
@@ -584,7 +584,8 @@ cp.WritePublicTitle("");
 
 ShowLCD();
 NavigationInfoUpdata(false);
-inputVec_RT = inputVec;
+if (inputVec != null)inputVec_RT = inputVec;
+else inputVec_RT = Vector3D.Zero;
 if(notDocked()) {
 if ( dockingOn && dockable() ) {
 PlayActionList(landingGears, "Lock");
@@ -745,9 +746,10 @@ double h = 0;
 bool getted = msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h);
 if (getted) {
 var needD = ahh - h;
+needD = needD / (Vector3D.Dot(-Vector3D.Normalize(naturalGravity), msc.WorldMatrix.Up)); // CODING
 var needV = needD;
-var m2m = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
-var needA = needV - m2m.Y;
+var m2m = mySpeedToMe;
+var needA = (needV - m2m.Y) * 10;
 inputVec_RT.Y = needA*0.1;//coding
 var nud = Cockpit.WorldMatrix.Up.Dot(naturalGravity);
 string dsdr = DimSpeed(needA, upThrusters, downThrusters, ref thrusterPercentY, m2m.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
@@ -757,13 +759,16 @@ lastSpeedY = m2m.Y;
 
 if(!(flyByOn||dockingOn)){
 // auto forward
-if(inputVec.Length() < 0.1 && aeroSpeedLevel>0 ){
-ft = (float)ftPid.Filter( (-10*aeroSpeedLevel) - mySpeedToMe.Z, 2);
+if(Math.Abs(inputVec.Z) < 0.1 && aeroSpeedLevel>0 ){
+ft = MathHelper.Clamp((float)ftPid.Filter( (-10*aeroSpeedLevel) - mySpeedToMe.Z, 2), -10, 10);
+debugInfo = "ft " + displayDouble(ft) + "\n";
 if(ft < 0){
+inputVec_RT.Z = ft * 0.5;
 SetThrusterListOverride(forwardThrusters, -ft);
 SetThrusterListOverride(backwardThrusters, 0);
 }else {
-if (naturalGravityLength>0.01){
+if (naturalGravityLength>0.01){ //CODING
+inputVec_RT.Z = ft * 0.5;
 SetThrusterListOverride(forwardThrusters, 0);
 SetThrusterListOverride(backwardThrusters, ft);
 }
@@ -2814,6 +2819,9 @@ maintainSpeed = Vector3D.TransformNormal(mSpeedBaseShip, shipMatrix);
 string displayVector3D(Vector3D tar) {
 return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
 }
+string displayDouble(double tar) {
+return ""+Math.Round(tar, 2);
+}
 
 double adjustSpeed(double distance) {
 var speed = distance;
@@ -2952,7 +2960,7 @@ double fullBurnDotProduct ;
 void Main_RT(string argument, UpdateType updateType)
 {
 double maxThrustAngle = 10;
-if (naturalGravityLength > 0.01) maxThrustAngle = 15;//coding
+if (naturalGravityLength > 0.01) maxThrustAngle = 35;//coding
 maxThrustDotProduct = Math.Cos(maxThrustAngle * Math.PI / 180);
 minDampeningDotProduct = Math.Cos(minDampeningAngle * Math.PI / 180);
 fullBurnDotProduct = Math.Cos(fullBurnToleranceAngle * Math.PI / 180);
@@ -2974,7 +2982,7 @@ refreshTime = 0;
 if (!isSetup)
 return;
 
-if (true || timeCurrentCycle >= timeMaxCycle) //CODING
+if (timeCurrentCycle >= timeMaxCycle) //CODING
 {
 try
 {
@@ -3011,20 +3019,20 @@ ms *= 10f/ms.Length();
 needA += ms * 1.0;
 }
 
-var gravityVecNorm = Vector3D.Normalize(naturalGravity);
+Vector3D mstm = mySpeedToMe;
+if (dampenersOn) {
+Vector3D mstmn = mstm;
+if (mstm.Length() > 1) mstmn = mstm * (1f/mstm.Length());
+mstmn *= -10;
+var needAN = Vector3D.Zero;
+if (needA.Length()>0) {
+needAN = Vector3D.Normalize(needA);
+mstmn = Vector3D.Reject(mstmn , needAN);
+}
+needA += mstmn; //CODING
+}
 var ngtome = Vector3D.TransformNormal(naturalGravity, refLookAtMatrix);
 needA -= ngtome;
-Vector3D mstm = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
-if (inputVec_RT.Length()<0.01f && dampenersOn) {
-Vector3D mstmn = mstm;
-if (mstm.Length()>0) {
-if (mstm.Length() > 1) mstmn = mstm * (1f/mstm.Length());
-}
-if (aeroSpeedLevel > 0) mstmn.Z = 0;
-needA -= mstmn * 1.0; //CODING
-}
-
-needA.X=0;
 
 var desiredDirectionVec = Vector3D.TransformNormal(needA, msc.WorldMatrix);
 
@@ -3038,22 +3046,21 @@ var dir = -block.WorldMatrix.Forward;
 thrustNeed -= dir * block.CurrentThrust;
 if (block.CurrentThrust > maxThrust) maxThrust = block.CurrentThrust;
 }
+thrustNeed = Vector3D.Reject(thrustNeed, msc.WorldMatrix.Left);
 double thrustMax = 0;
 var thrustNeedDir = Vector3D.Normalize(thrustNeed);
 foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-
 if (scale > maxThrustDotProduct)
 {
-thrustMax += scale * thisThrust.MaxEffectiveThrust;
+thrustMax += thisThrust.MaxEffectiveThrust;
 }
 
 }
-
-var percent = thrustNeed.Length() / thrustMax;
-
+if (thrustMax == 0) thrustMax = 1;
+var percent = (float)MathHelper.Clamp(thrustNeed.Length() / thrustMax, 0, 1);
 foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
@@ -3061,10 +3068,10 @@ float scale = -(float)thrustDirection.Dot(thrustNeedDir);
 
 if (scale > maxThrustDotProduct)
 {
-SetThrusterOverride(thisThrust, (float)percent);
+SetThrusterOverride(thisThrust, (float)percent * scale);
 }else {
 SetThrusterOverride(thisThrust, 0f);
-}
+}//CODING
 
 }
 
@@ -3230,6 +3237,7 @@ class AvgQueue{
   }
 
   public double Filter(double a) {
+    return a;
     sum -= q[idx];
     sum += a;
     q[idx]=a;
@@ -3318,34 +3326,9 @@ return;
 }
 
 if(notDocked()){
-Vector3D needA = inputVec_RT * 10.0;
-if ((flyByOn||dockingOn) && maintainSpeedToMeAA.Length()>0) {
-var ms = maintainSpeedToMeAA;
-if (ms.Length() > 10f) {
-ms *= 10f/ms.Length();
-}
-needA += ms * 1.0;
-}
-var needGra = naturalGravity;
-if(isAeroDynamic&&needGra.Length()>0.01){
-var levelV = Vector3D.Reject(MeVelocity, Vector3D.Normalize(naturalGravity)).Length();
-if (levelV > 20) levelV = 20;
-needGra *= (24 - levelV) / 24;
-}
-var ngtome = Vector3D.TransformNormal(needGra, refLookAtMatrix);
-needA -= ngtome;
-Vector3D mstm = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
-if (inputVec_RT.Length()<0.01f && dampenersOn && aeroSpeedLevel==0) {
-Vector3D mstmn = mstm;
-if (mstm.Length()>0) {
-if (mstm.Length() > 1) mstmn = mstm * (1f/mstm.Length());
-}
-needA -= mstmn * 10.0;
-}
+Vector3D needA = Vector3D.TransformNormal(thrustNeed,refLookAtMatrix) / shipMass; //CODING
 
-needA = Vector3D.TransformNormal(thrustNeed,refLookAtMatrix) / shipMass; // CODING
-debugInfo = "needA " + displayVector3D(needA) + "\n";
-if (Math.Abs(needA.Y) < 0.1) needA.Y = 0.1;
+// if (Math.Abs(needA.Y) < 0.1) needA.Y = 0.1;
 
 if (naturalGravityLength < 0.01f && (Math.Abs(needA.Z)<2 || MeVelocity.Length() < 2 )) {
 tl = 0; legFoldStart = t;
@@ -3353,13 +3336,16 @@ tl = 0; legFoldStart = t;
 tl = 0;
 } else if(isApproach) {
 tl = (float)Math.PI * dtp;
-} else if ((needA.Length() > 1 && needA.Y>=0.1) || naturalGravityLength < 0.01f) {
+} else
+if (needA.Y > 0.1 || naturalGravityLength < 0.01f)
+{
 tl = (float)Math.Atan2(needA.Z, needYAvg.Filter(needA.Y));
 }
 tl = MathHelper.Clamp(tl, -0.5f*(float)Math.PI, 0.5f*(float)Math.PI);
 
 var backLimit = -18;
 if(flyByOn) backLimit = -5;
+Vector3D mstm = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
 if ((naturalGravityLength < 0.01f && tl == 0 && needA.Y < 2)) tl = -(float)Math.PI * 0.5f;
 else if (naturalGravityLength > 0.01f && isAeroDynamic &&
 (aeroSpeedLevel>0 || (flyByOn&& mstm.Z<-10))

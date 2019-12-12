@@ -472,7 +472,7 @@ public void Main(string argument, UpdateType updateSource)
     addSeq(missileDoorSort, "Open", 20, null, 100);
     addSeq(missileLightSort, "OnOff_Off", 20, null, 100);
     addSeq(missileWeldersSort, "OnOff_On", 10, null, 120); 
-    addSeq(missileWeldersSort, "OnOff_Off", 10, null, 180); 
+    addSeq(missileWeldersSort, "OnOff_Off", 10, null, 280); 
   }
   break;
   case "MSDOORCLOSE":
