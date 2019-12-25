@@ -2,8 +2,10 @@ static int rgms_no = 0;
 // static float missileGravityRate = 5F;
 double GUILD_RATE = 0.3;
 double ATAN_BASE = 0.5;
-double APID_P = 100;
-double APID_D = 0.6;
+double APID_P = 10;
+double APID_D = 1.0;
+
+//double MISSILE_MASS = 3398.8;
 double MISSILE_MASS = 5276.4;
 //double MISSILE_MASS = 1661.4;
 //double MISSILE_MASS = 1407.4;

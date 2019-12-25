@@ -52,6 +52,7 @@ string rotorFcsGroupName="Rotor-FCS-G";
 List<IMyTerminalBlock> rotorFcsList=new List<IMyTerminalBlock>();
 PIDController[] rotorFcsPIDList = new PIDController[2];
 List<IMyTerminalBlock> rotorRocList=new List<IMyTerminalBlock>();
+List<IMyShipController> rotorLidarList=new List<IMyShipController>();
 PIDController[] rotorRocPIDList = new PIDController[2];
 int lockStopT = 0;
 int lockWaitT = 5* 60;
@@ -341,12 +342,14 @@ return Vector3D.TransformNormal(direction, turret.WorldMatrix);
 Vector3D CalculateTurretViewVector(IMyTerminalBlock rotorA, IMyTerminalBlock rotorE, IMyTerminalBlock refObj)
 {
 Vector3D direction;
-var a = -((IMyMotorStator)rotorA).Angle;
-var e = -((IMyMotorStator)rotorE).Angle;
+//CODING
+var a = ((IMyMotorStator)rotorA).Angle;
+var e = ((IMyMotorStator)rotorE).Angle;
 Vector3D.CreateFromAzimuthAndElevation(a, e, out direction);
 
 return Vector3D.TransformNormal(direction, refObj.WorldMatrix);
 }
+
 
 // 扫描目标并自动锁定
 void ShipScan(){
@@ -360,7 +363,7 @@ void ShipScan(){
 
 		// add by kaien
 		var offset = (MyShip.offsetAngleCount % 20 - 10) / 1000d;
-		Vector3D direction;
+		Vector3D direction = MyShip.Cockpit.WorldMatrix.Forward;
 		MyDetectedEntityInfo targetEntity = new MyDetectedEntityInfo();
 		bool tHas = false;
 		bool tPulse = false;
@@ -380,9 +383,9 @@ void ShipScan(){
 		pulseT = t;
 		tPulse = true;
 		}
-		} else if (rotorRocList.Count > 0) {
-		direction = CalculateTurretViewVector(rotorRocList[0], rotorRocList[1], MyShip.Cockpit);
-		targetPosition = rotorRocList[0].GetPosition() + direction * SearchDistance;
+		} else if (rotorLidarList.Count > 0) {
+                        direction = rotorLidarList[0].WorldMatrix.Forward;
+                        targetPosition = rotorLidarList[0].GetPosition() + direction * SearchDistance;
 		tHas = true;
 		} else if (MyShip.Cockpit.IsUnderControl) {
 		direction = Vector3D.Normalize(MyShip.Cockpit.WorldMatrix.Forward);
@@ -508,12 +511,13 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 				}
 			}
 			Vector3D targetPosition = Vector3D.Zero;
-			if (tHas && TrackTarget.EntityId == targetEntity.EntityId && !MyShip.Cockpit.IsUnderControl) {
+                                    bool isUnderControl = MyShip.Cockpit.IsUnderControl || (MyShip.homingTurret!=null && MyShip.homingTurret.IsUnderControl) || (rotorLidarList.Count>0&&rotorLidarList[0].IsUnderControl); //CODING
+			if (tHas && TrackTarget.EntityId == targetEntity.EntityId && !isUnderControl) {
 				Vector3D HitPoint = targetEntity.Position;
 				MatrixD TargetMainMatrix = TrackTarget.Orientation;   
 				MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
 				MyTarget.AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - TrackTarget.Position, TargetLookAtMatrix);
-			} else if (!MyShip.Cockpit.IsUnderControl && !(MyShip.homingTurret!=null && MyShip.homingTurret.IsUnderControl)){
+			} else if (!isUnderControl){
 				MyTarget.AccurateLockPositionToTarget = Vector3D.Zero;
 			}
 			
@@ -576,15 +580,20 @@ void ShipLock(){
 			if(c.IsActive){
 				double distance = Vector3D.Distance(c.GetPosition(), MyTargetList[selectedTarget].Position) + MyTargetList[selectedTarget].Diameter + 100;
 				MyDetectedEntityInfo target = c.Raycast(distance,0,0);
+                                debugInfo="lock"+"\n";
 				if(!target.IsEmpty()){
+                                debugInfo+="found"+"\n";
 					Vector3D HitPoint = new Vector3D();
 					Vector3D.TryParse(target.HitPosition.ToString(), out HitPoint);
 					MatrixD TargetMainMatrix = target.Orientation;   
 					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
 					MyTargetList[selectedTarget].AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - target.Position, TargetLookAtMatrix);
+                                        debugInfo+=MyTargetList[selectedTarget].AccurateLockPositionToTarget.Length()+"\n";
+                                        debugInfo+=selectedTarget+"\n";
 					//NeedAimMode = 1;
 				}
 				else{
+                                debugInfo="Clear\n";
 					MyTargetList[selectedTarget].AccurateLockPositionToTarget = new Vector3D();
 				}
 			}
@@ -1052,6 +1061,8 @@ void GetBlocks(){
 	    rotorRocPIDList[i] = new PIDController(pp, pi, pd,pim,-pim,12);
 	}
 
+	GridTerminalSystem.GetBlocksOfType<IMyShipController>(rotorLidarList, b => b.CustomName.Contains("Lidar"));
+            
 	// a b K
 	List<IMyTextPanel> tmpLCDs = new List<IMyTextPanel>();
 	GridTerminalSystem.GetBlocksOfType(tmpLCDs, b => b.CustomName.Contains(RadarOutputNameTag));

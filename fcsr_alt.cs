@@ -51,7 +51,7 @@
 
 // =============== 基础设置 =============
 //再次强调，每个转子炮台的所有零件必须在同一个编组中，并且这个编组中必须有一个名字包含 AimBlockKey关键字的方块用于瞄准。多个转子炮台的方块应该各自放在自己的编组，不允许冲突。
-const string FCSComputerNameTag = "Programmable block fcs"; //FCS编程块名字，用于读取其中目标，非必须。
+const string FCSComputerNameTag = "Programmable block fcsoc"; //FCS编程块名字，用于读取其中目标，非必须。
 const string AimBlockKey = "FCS#R"; //瞄准块名字关键字，可以写在名字中，只要包含这个关键字即可。
 const string LCDNameTag = "FCSR_LCD"; //LCD名字，用来显示各个目标和炮台信息，非必须，也可以是多个。
 const string RotorNagtiveTag = "[-]"; //转子负转标签。当转子名字里完全包含这个标签的时候，它会被强制认为是反向控制的转子。用来解决某些特殊结构的转子问题
@@ -60,7 +60,7 @@ string CockpitNameTag = "Reference";
 
 // ============== 战斗设置 ==============
 const double AttackDistance = 910; //默认武器的自动开火距离
-static bool OnlyAttackUpPlane = false; //自动选择目标时是否只选择转子基座炮塔的上半球面里的目标（当目标低于该炮塔时不选择这个目标）
+static bool OnlyAttackUpPlane = true; //自动选择目标时是否只选择转子基座炮塔的上半球面里的目标（当目标低于该炮塔时不选择这个目标）
 
 // ============== 进阶开火机制 ============
 //程序会自动检测原版武器并在有目标时触发武器开火。同时你也可以自己使用定时块来触发开火。你需要在需要触发自定义开火的转子基座炮台上加入一个或多个定时块，必须放进这个炮台的编组。
@@ -116,6 +116,7 @@ static float aeroTRM = 0f;// transport rotor margin 0.2
 static float aeroFM = 0f;// front margin 0.05
 static int aeroACS = -180;
 static int aeroAMP = 0;
+string debugInfo = "";
 
 Program()
 {
@@ -145,7 +146,9 @@ void Main(string arguments)
 	//获取FCS目标
 	Target FCS_T = new Target();
 	FCS_T.GetTarget(GridTerminalSystem.GetBlockWithName(FCSComputerNameTag) as IMyProgrammableBlock);
+            debugInfo = ""+FCS_T.EntityId + "\n";
 	if(FCS_T.EntityId != 0){
+                        FCS_T.isFCS=true;
 		TargetList.Add(FCS_T);
 	}
 	//获取自动武器目标
@@ -181,10 +184,12 @@ void Main(string arguments)
 	}
 	}
 
+            debugInfo += "tc " + TargetList.Count + "\n";
 	if(isOnOff && mode != 1){
 		foreach(RotorBase R in FCSR){
 			R.UpdateMotionInfo();//更新运动信息
 			if(TargetList.Count > 0){
+                                            debugInfo += "act " + true + "\n";
 				R.AttackCloestTarget(TargetList);
 			}
 			else{
@@ -202,6 +207,7 @@ void Main(string arguments)
 		}
 	}
 	
+            Echo("debugInfo "+ debugInfo);
 	ShowMainLCD();
 }
 
@@ -299,6 +305,7 @@ public class Target
 	public Vector3D Velocity;
 	public Vector3D Acceleration;
 	public MatrixD Orientation;
+            public bool isFCS = false;
 	
 	// --------- 初始化方法 -------
 	public Target()
@@ -495,7 +502,7 @@ public class RotorBase
 	// ------- 待命归位 --------
 	public void Attention(int ATMode, int aeroMode)
 	{
-		if (this.Weapons.Count == 0) return;
+		if (this.Weapons.Count == 0 && this.AimBlock is IMyShipController && (this.AimBlock as IMyShipController).IsUnderControl) return;
 		this.debugInfo = "aeromode " + aeroMode;
 		// Vector3D aimPoint = new Vector3D();
 		// MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.RotorXs[0].WorldMatrix.Forward, this.RotorXs[0].WorldMatrix.Up);
@@ -640,6 +647,23 @@ public class RotorBase
 	// ------- 攻击并搜索最近的目标 -------
 	public void AttackCloestTarget(List<Target> targetList)
 	{
+
+                if (this.Weapons.Count == 0 && this.AimBlock is IMyShipController && !((this.AimBlock as IMyShipController).IsUnderControl)) {
+                this.debugInfo = "FCS lock\n";
+                   Target FCS_T = null;
+                   foreach(var t in targetList) {
+                       if (t.isFCS) FCS_T = t;
+                   }
+                   if (FCS_T == null) {
+                      this.Attention(1,0);
+                      return;
+                   }
+                   this.debugInfo = "AimAtTarget" +displayVector3D(FCS_T.Position)+ "\n";
+                   this.AimAtTarget(FCS_T.Position);
+                   //CODING
+                   return;
+                }
+
 		double currentDis = double.MaxValue;
 		Target MyAttackTarget = new Target();
 		for(int i = 0; i < targetList.Count; i ++){
@@ -692,8 +716,7 @@ public class RotorBase
 			MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.AimBlock.WorldMatrix.Forward, this.AimBlock.WorldMatrix.Up);
 			Vector3D TargetPositionToMe = Vector3D.TransformNormal(MyAttackTarget.Position - this.Position, refLookAtMatrix);
 			//存在自定义开火定时块就执行自定义开火
-//			if(FireTimer.Count() > 0){
-			if(false){
+//			if(false && FireTimer.Count() > 0){
 //				foreach(IMyTerminalBlock fire_timer in FireTimers){
 //					int fire_distance = 0;
 //					if(!int.TryParse(fire_timer.CustomData, out fire_distance)){fire_distance = AttackDistance;}
@@ -701,8 +724,8 @@ public class RotorBase
 //						fire_timer.ApplyAction("TriggerNow");
 //					}
 //				}
-			}
-			else if(Vector3D.Distance(MyAttackTarget.Position, this.Position) <= AttackDistance && !sensorActive){
+//			}
+			if(Vector3D.Distance(MyAttackTarget.Position, this.Position) <= AttackDistance && !sensorActive){
 				if(isFireWhenAimOK){
 					if(isAimedOK){
 						this.Fire();
@@ -719,7 +742,11 @@ public class RotorBase
 		}
 		
 	}
-	
+
+string displayVector3D(Vector3D tar) {
+return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
+}
+
 	// ---------- 瞄准目标 -----------
 	private List<Vector3D> Aim_PID_Data = new List<Vector3D>();
 	bool AimAtTarget(Vector3D Position)
@@ -747,7 +774,7 @@ public class RotorBase
 	
 	bool AimAtTarget(Vector3D Position, Vector3D Velocity, Vector3D Acceleration, bool isStraight)
 	{
-		if (this.Weapons.Count == 0) return false;
+		//if (this.Weapons.Count == 0) return false;
 		bool isRocket = this.isRocket;
 		MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.AimBlock.WorldMatrix.Forward, this.AimBlock.WorldMatrix.Up);
 		Vector3D thisV;

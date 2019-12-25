@@ -4,7 +4,7 @@ IMyShipController Cockpit;
  
 // Add 
 string missileRotorGroupName = "Rotor-Missile-G"; 
-string missileWelderGroupName = "Welder-Missile-G"; 
+string missileWelderGroupName = "Missile-Welder-G"; 
 string gcLightGroupName = "Light-GC-G";
 string missileDoorGroupName = "Missile-Door-G";
 string missileLightGroupName = "Missile-Light-G";
