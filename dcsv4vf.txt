@@ -51,6 +51,7 @@ liFcsLockGroupName=Li-fcs-lock-G
 macAV=0.005
 isBase=true
 maxTargetCount=1
+ScanRange=3000
 
 son ship commands
 
@@ -132,12 +133,35 @@ bool limitInnerRotor = true;
 bool isAeroDynamic=false;
 float angleWhenDown=0;
 int aeroSpeedLevel=0;
+int sl_fs = 0;
+int sl_bs = 0;
 void aeroSLp(bool a){
+
+if (a) {
+// acc
+if (sl_fs == 0) {
+sl_fs = t;
+sl_bs = 0;
+}
+} else {
+if (sl_bs == 0) {
+sl_bs = t;
+sl_fs = 0;
+}
+}
+
 var nf = -mySpeedToMe.Z;
 if(nf<0)nf=0;
 aeroSpeedLevel = (int)nf / 10;
 }
-PIDController ftPid = new PIDController(0.5f, 0.1f, 0.01f, 10f, -10f, 60);
+
+void aeroSLz() {
+if (sl_fs != 0 && t - sl_fs > 180) aeroSpeedLevel = 10;
+if (sl_bs != 0 && t - sl_bs > 180) aeroSpeedLevel = 0;
+sl_fs = 0;
+sl_bs = 0;
+}
+
 float ft = 0f;
 Vector3D mySpeedToMe = Vector3D.Zero;
 
@@ -182,6 +206,7 @@ MatrixD refLookAtMatrix;
 MatrixD refMatrix;
 
 Vector3D LockTargetPosition = Vector3D.Zero;
+bool LockTargetAiming = false;
 Vector3D LockTargetVelocity = Vector3D.Zero;
 Vector3D radarHighThreatPosition = Vector3D.Zero;
 List<Vector3D> LTPs = new List<Vector3D>();
@@ -257,6 +282,16 @@ if ((updateType & UpdateType.Update1) !=0)
 List<IMyTerminalBlock> welderList;
 switch (arguments)
 {
+case ("CONTROL"):
+attackMode=false;
+flyByOn=false;
+dockingOn=false;
+resetThrusters();
+isApproach=false;
+PlayActionList(connectors, "OnOff_On");
+PlayActionList(landingGears, "OnOff_On");
+SetGyroOverride(false);
+break;
 case ("FLYBY"):
 if (sonCode == null) break;
 attackMode=false;
@@ -505,14 +540,6 @@ if (t > lastMotherSignalTime + 120) {
 ParseSensor();
 }
 
-
-if (motherCode != null) {
-//sendSignal();
-}
-if (sonCode != null) {
-if(notDocked()) MaintainSpeed();
-}
-
 if (gcTargetPanel != null) {
 if (!LockTargetPosition.Equals( Vector3D.Zero)) {
 gcTargetPanel.WritePublicTitle("[T:" + LockTargetPosition.X + ":" + LockTargetPosition.Y + ":" + LockTargetPosition.Z + ":"
@@ -558,6 +585,10 @@ PlayActionList(spotlights, "OnOff_Off");
 }
 }
 
+if (sonCode != null) {
+if(notDocked()) MaintainSpeed();
+}
+
 // turning
 if (flyByOn || dockingOn ) {
 setRulerOnOff(false);
@@ -593,6 +624,8 @@ isHold = true;
 resetThrusters();
 }
 
+// CODING
+if(ng.Length() > 0.001 && !LockTargetAiming) {
 var forward = msc.WorldMatrix.Forward;
 var left = msc.WorldMatrix.Left;
 var diff = diffGravity(left, ng, forward);
@@ -613,6 +646,8 @@ SetGyroYaw((msc.RotationIndicator.Y) * 30);
 }
 
 SetGyroOverride(true);
+}
+
 bool sma = LockTargetPosition!=Vector3D.Zero && isSM;
 if ((!suc&&!floatModeOn) || isDown || isLaunch || sma){
 Vector3D needSpeed = (holdPosition - MePosition) * 0.1f - MeVelocity; 
@@ -635,7 +670,8 @@ maintainSpeedToMe = mstm - nowSpeedToMe;
 }else if (isLaunch){
 maintainSpeedToMe = new Vector3D(0,90,0);
 }else if (sma){
-maintainSpeedToMe = Vector3D.TransformNormal(LockTargetVelocity, refLookAtMatrix);
+maintainSpeedToMe = Vector3D.TransformNormal(LockTargetVelocity, refLookAtMatrix) - nowSpeedToMe;
+maintainSpeedToMe += inputVec * 10;
 }
 forwardMoveIndicator=0;//auto balance
 DimSpeedAll(maintainSpeedToMe, refLookAtMatrix);
@@ -713,7 +749,7 @@ lastSpeedY = m2m.Y;
 }
 }
 
-if(!(flyByOn||dockingOn)){
+if(!(flyByOn||dockingOn||isSM)){
 // auto forward
 if(Math.Abs(inputVec.Z) < 0.1 && aeroSpeedLevel>0 ){
 ft = (float)MathHelper.Clamp(((-10*aeroSpeedLevel) - mySpeedToMe.Z) * 0.1, -10, 10);
@@ -854,10 +890,10 @@ if(isUnderControl) {
 
 if(inputVec.Z>0.1) {
 aeroSLp(false);
-}
-
-if(inputVec.Z<-0.1) {
+} else if(inputVec.Z<-0.1) {
 aeroSLp(true);
+} else {
+aeroSLz();
 }
 
 if (inputVec.Length()<0.01&&MeVelocity.Length()>10){
@@ -928,7 +964,9 @@ cfgTarget.Load();
 string tmpS = "";
 cfgTarget.Get("Position", ref tmpS);
 Vector3D.TryParse(tmpS, out LockTargetPosition);
-
+if(LockTargetPosition==Vector3D.Zero) isSM=false;
+cfgTarget.Get("Aiming", ref tmpS);
+LockTargetAiming = tmpS == "True";
 // if fcs have target launch missile immediatly
 if(LockTargetPosition!=Vector3D.Zero && flyByOn ) fireMissile();
 
@@ -1974,29 +2012,12 @@ for (int i = 0; i < decThrusters.Count; i++) {
 maxAllFd += ((IMyThrust)decThrusters[i]).MaxEffectiveThrust;
 }
 
-// 宇宙模式，Z轴 已经飞出去 推重比 正负 都加 子网格喷口
-if (naturalGravityLength < 0.01 && dimIdx == 2
-&& flyByOn && !isApproach) {
-for (int i = 0; i < offGridThrust.Count; i++) {
-var mt = ((IMyThrust)offGridThrust[i]).MaxEffectiveThrust;
-maxAllFi += mt ;
-maxAllFd += mt ;
-}
-}
+
 twRate[dimIdx*2] = maxAllFi / shipMass;
 twRate[dimIdx*2 + 1] = maxAllFd / shipMass;
-//if (dimIdx == 1 ) {
-// 由于可动喷会带多余向上的分量，为平衡，因此向下估算用推重比降低
-//twRate[dimIdx*2 + 1] = twRate[dimIdx*2 + 1] * 0.8;
-//}
 
 float maxAllF=0;
 if (needF > 0) {
-//if(false&&Math.Abs(forwardMoveIndicator) < tcrtLimit && dimIdx == 1 && naturalGravityLength>0.01) {
-//for (int i = 0; i < offGridThrust.Count; i++) {
-//maxAllFi += ((IMyThrust)offGridThrust[i]).MaxEffectiveThrust;
-//}
-//}
 maxAllF = maxAllFi;
 }else {
 maxAllF = maxAllFd;
@@ -2006,7 +2027,7 @@ if (maxAllF == 0)percent = 0;
 else percent = (float) needF / maxAllF;
 dr+="\nPer: " + percent+" "+(incThrusters.Count+decThrusters.Count);
 float zF = 0F;
-if (dampenersOn) zF = 0.000001F;
+ zF = 0.000001F;
 
 if (percent == 0) {
 for (int i = 0; i < incThrusters.Count; i++) {
@@ -2018,23 +2039,6 @@ for (int i = 0; i < decThrusters.Count; i++) {
 } else if (percent > 0) {
 for (int i = 0; i < incThrusters.Count; i++) {
 ((IMyThrust)incThrusters[i]).ThrustOverridePercentage = percent;
-}
-if(false&&Math.Abs(forwardMoveIndicator) < tcrtLimit && dimIdx == 1){
-if (naturalGravityLength>0.01) {
-var naturalGravityNormal = Vector3D.Normalize(naturalGravity);
-for (int i = 0; i < offGridThrust.Count; i++) {
-var t = ((IMyThrust)offGridThrust[i]);
-var dot = t.WorldMatrix.Forward.Dot(naturalGravityNormal);
-if (dot > 0.9)
-t.ThrustOverridePercentage = percent;
-else
-t.ThrustOverridePercentage = 0;
-}
-} else {
-for (int i = 0; i < offGridThrust.Count; i++) {
-((IMyThrust)offGridThrust[i]).ThrustOverridePercentage = zF;
-}
-}
 }
 for (int i = 0; i < decThrusters.Count; i++) {
 ((IMyThrust)decThrusters[i]).ThrustOverridePercentage = zF;
@@ -2065,7 +2069,7 @@ return src;
 
 Vector3D calcSpeedToMeAndAvoid(Vector3D maintainSpeed) {
 Vector3D myPosition = MePosition;
-Vector3D needSpeedToMe = Vector3D.TransformNormal(maintainSpeed - Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
+Vector3D needSpeedToMe = Vector3D.TransformNormal(maintainSpeed - MeVelocity, refLookAtMatrix);
 Vector3D tmp = needSpeedToMe;
 Vector3D apDiff;
 double rate = 0.1;
@@ -2108,8 +2112,10 @@ return needSpeedToMe;
 
 void MaintainSpeed() {
 RefreshMaintainSpeed();
-if (maintainSpeed == Vector3D.Zero) return;
+if (!flyByOn && !dockingOn) return;
+if(shipMatrix == MatrixD.Zero) return;
 maintainSpeedToMeAA = calcSpeedToMeAndAvoid(maintainSpeed);
+inputVec_RT=maintainSpeedToMeAA*1;//CODING
 
 // 计算转向
 isTurning = false;
@@ -2301,12 +2307,11 @@ backwardThrustersIfHead = downThrusters;
 if (legMode == 3) {
 return "";
 }
-
 DimSpeed(maintainSpeedToMe.X, rightThrusters, leftThrusters, ref thrusterPercentX, nowSpeedToMe.X, lastSpeedX, "LEFT".Equals(dockingApproach)||"RIGHT".Equals(dockingApproach), nrl,0);
 lastSpeedX = nowSpeedToMe.X;
 dr = DimSpeed(maintainSpeedToMe.Y, upThrustersIfHead, downThrustersIfHead, ref thrusterPercentY, nowSpeedToMe.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
 lastSpeedY = nowSpeedToMe.Y;
-dr=DimSpeed(maintainSpeedToMe.Z, backwardThrustersIfHead, forwardThrustersIfHead, ref thrusterPercentZ, nowSpeedToMe.Z, lastSpeedZ, "FORWARD".Equals(dockingApproach)||"BACKWARD".Equals(dockingApproach), nbf,2);
+DimSpeed(maintainSpeedToMe.Z, backwardThrustersIfHead, forwardThrustersIfHead, ref thrusterPercentZ, nowSpeedToMe.Z, lastSpeedZ, "FORWARD".Equals(dockingApproach)||"BACKWARD".Equals(dockingApproach), nbf,2);
 lastSpeedZ = nowSpeedToMe.Z;
 return dr;
 }
@@ -2478,7 +2483,6 @@ break;
 if(args.Count() < 19) return;
 
 lastMotherSignalTime = t;
-debugInfo = "Ship Location";
 shipMatrix = new MatrixD(Convert.ToDouble(args[0]),Convert.ToDouble(args[1]),Convert.ToDouble(args[2]),Convert.ToDouble(args[3]),
 Convert.ToDouble(args[4]),Convert.ToDouble(args[5]),Convert.ToDouble(args[6]),Convert.ToDouble(args[7]),
 Convert.ToDouble(args[8]),Convert.ToDouble(args[9]),Convert.ToDouble(args[10]),Convert.ToDouble(args[11]),
@@ -2573,7 +2577,6 @@ Vector3D myPosition = MePosition;
 Vector3D myToShipPosition = MePosition - shipPosition;
 myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
 distanceInfo=displayVector3D(myToShipPosition);
-debugInfo = "Refresh";
 targetPosition = calcApproach(myToShipPosition, shipPosition, ref isApproach);
 
 if (flyByOn) {
@@ -2910,7 +2913,8 @@ refreshTime = 0;
 if (!isSetup)
 return;
 
-if (timeCurrentCycle >= timeMaxCycle) //CODING
+//if (timeCurrentCycle >= timeMaxCycle) 
+if (true) 
 {
 try
 {
@@ -2935,6 +2939,17 @@ inputVec_RT.Z = MathHelper.Clamp( ft, -1, 1);
 }
 }
 }
+
+if(Math.Abs(inputVec_RT.Z)>0.2) {
+if(inputVec_RT.Z>0){
+inputVec_RT.Z-=0.2;
+}else{
+inputVec_RT.Z+=0.2;
+}
+} else {
+inputVec_RT.Z=0;
+}
+
 if(notDocked()) {
 // CODING TN
 Vector3D needA = inputVec_RT * 10.0; // 1G
@@ -3093,11 +3108,9 @@ if(percent < 0) percent = 0;
 if(percent>0){
 t.ThrustOverridePercentage = percent;
 } else {
-if(dampenersOn) {
-t.ThrustOverridePercentage = 0.0001f;
-} else {
-t.ThrustOverridePercentage = 0f;
-}
+
+t.ThrustOverridePercentage = 0.000001f;
+
 }
 t.Enabled = true;
 }

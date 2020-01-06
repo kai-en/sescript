@@ -859,6 +859,7 @@ void EchoTarget(){
 	Vector3D posmove = Vector3D.TransformNormal(MyTarget.AccurateLockPositionToTarget, MyTarget.Orientation);
 	Vector3D TargetPosition = MyTarget.Position + posmove;
 	info += "Position=" + TargetPosition + br;
+	info += "Aiming=" + (NeedAimMode > 0) + br;
 	//info += "Position=" + MyTarget.Position + br;
 	info += "Velocity=" + MyTarget.Velocity + br;
 	info += "Acceleration=" + MyTarget.Acceleration + br;

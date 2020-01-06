@@ -6,7 +6,7 @@ double APID_P = 10;
 double APID_D = 1.0;
 
 //double MISSILE_MASS = 3398.8;
-double MISSILE_MASS = 5276.4;
+double MISSILE_MASS = 5400.4;
 //double MISSILE_MASS = 1661.4;
 //double MISSILE_MASS = 1407.4;
 double LaunchDist = 150;
