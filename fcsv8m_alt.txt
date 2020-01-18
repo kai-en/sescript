@@ -371,8 +371,13 @@ void ShipScan(){
 		foreach(var t in MyShip.AutoWeapons) {
 			if (t.HasTarget) {
 				targetEntity = t.GetTargetedEntity();
-				Vector3D.TryParse(targetEntity.Position.ToString(), out targetPosition);
-				tHas = true;
+                                                Vector3D tmpPosition = Vector3D.Zero;
+				Vector3D.TryParse(targetEntity.Position.ToString(), out tmpPosition);
+                                                Vector3D tmpDir = Vector3D.Normalize(tmpPosition - MyShip.Cockpit.GetPosition());
+                                                if (Vector3D.Dot(tmpDir, MyShip.Cockpit.WorldMatrix.Forward) > 0.6) {
+                                                	targetPosition = tmpPosition;
+					tHas = true;
+                                                }
 			}
 		}
 		if(useTurretAsAimer&&MyShip.homingTurret!=null&&MyShip.homingTurret.IsUnderControl)  {
@@ -690,6 +695,7 @@ void ShipNavigation(string arguments){
 
 // 执行自动开火
 void ShipAutoFire(){
+	if (MyShip.Cockpit.IsUnderControl && NeedWeaponMode == 1) return;
 	if(NeedAutoFire && NeedAimMode == 1 && MyTargetList.Count>0){
 		Target MyTarget = MyTargetList[selectedTarget];
 		if(Vector3D.Distance(MyShip.Position, MyTarget.Position) <= AutoFireDistance){
