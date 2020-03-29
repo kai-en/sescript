@@ -3297,6 +3297,11 @@ List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(blocks, x => x.CustomName.Contains(rotorLeftName));
 if(blocks.Count > 0)
 rotorLeft = sortByRelativePosition(blocks,"X",true);
+// Coding
+var tmp = getBlockByName("Rotor Leg 2L");
+if (tmp != null) rotorLeft.Add(new List<IMyTerminalBlock>(){tmp});
+tmp = getBlockByName("Rotor Leg 1L");
+if (tmp != null) rotorLeft.Add(new List<IMyTerminalBlock>(){tmp});
 }
 if(rotorLeft.Count == 0)
 {
@@ -3308,7 +3313,11 @@ if(rotorRight.Count == 0)
 List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(blocks, x => x.CustomName.Contains(rotorRightName));
 if(blocks.Count > 0)
-rotorRight = sortByRelativePosition(blocks,"X",false);;
+rotorRight = sortByRelativePosition(blocks,"X",false);
+var tmp = getBlockByName("Rotor Leg 2R");
+if (tmp != null) rotorRight.Add(new List<IMyTerminalBlock>(){tmp});
+tmp = getBlockByName("Rotor Leg 1R");
+if (tmp != null) rotorRight.Add(new List<IMyTerminalBlock>(){tmp});
 }
 if(rotorRight.Count == 0)
 {

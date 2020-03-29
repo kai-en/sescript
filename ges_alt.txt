@@ -44,7 +44,7 @@ double MouseMoveRatio = 3; //¿ªÆô×ËÌ¬¿ØÖÆºó£¬³ÌĞò»á½Ó¹ÜÍÓÂİÒÇ²¢Ê¹ÓÃÔ½¼¶¿ØÖÆ¡£Ëü»
 double AttitudeControlRatio = 1; //¿ªÆô×ËÌ¬¿ØÖÆºó£¬µ±ÖØÁ¦·¢ÉúÆ÷Ê¹·É´¬²úÉúÆ«º½£¬³ÌĞò»á×Ô¶¯¼ÆËã·É´¬½ÇËÙ¶È²¢·´À¡¸øÍÓÂİÒÇĞŞ¸´Õâ¸öÆ«º½¡£Õâ¸öÏµÊı¿ØÖÆ»Ö¸´×ËÌ¬µÄÁ¦¶È£¬ÏµÊıÔ½´óÁ¦¶ÈÔ½´ó¡£     
 double MaxWorldSpeed = 100; //ÔÚµ±Ç°ÊÀ½çÖĞÄãµÄ´¬Ö»µÄ×î´óËÙ¶È£¬¼´ÊÀ½çÏŞËÙ¡£ÓÃÓÚ¼ÆËã×ÔÖ÷¹ßĞÔÒÖÖÆµÄÒ»¸ö²Î¿¼ÒòËØ     
 double MaxWorldAngularSpeed = 180; //ÔÚµ±Ç°ÊÀ½çÖĞÄãµÄ´¬Ö»×î´ó½ÇËÙ¶È£¬Ä¬ÈÏµÄÇé¿öÏÂ´ó´¬ÊÇ180£¬Ğ¡´¬ÊÇ360     
-bool InertiaAccordingThrust = false; //ÊÇ·ñĞèÒªÒÀ¾İÍÆ½øÆ÷³öÁ¦½øĞĞ¹ßĞÔÒÖÖÆ¼ÆËã£¬false±íÊ¾¹ßĞÔÒÖÖÆ×ÔÖ÷¼ÆËã£¬true±íÊ¾½öÊ¹ÓÃÍÆ½øÆ÷µÄ³öÁ¦½øĞĞ¹ßĞÔÒÖÖÆ¼ÆËã  
+bool InertiaAccordingThrust = true; //ÊÇ·ñĞèÒªÒÀ¾İÍÆ½øÆ÷³öÁ¦½øĞĞ¹ßĞÔÒÖÖÆ¼ÆËã£¬false±íÊ¾¹ßĞÔÒÖÖÆ×ÔÖ÷¼ÆËã£¬true±íÊ¾½öÊ¹ÓÃÍÆ½øÆ÷µÄ³öÁ¦½øĞĞ¹ßĞÔÒÖÖÆ¼ÆËã  
 int type=1;
 
 // ÂİĞıÔË¶¯²¿·Ö  
@@ -285,13 +285,13 @@ void Main(string arguments)
 	  meMaxG = 0;
 	break;
 	case "MESTANDUP":
-	    GyrosMe[0][0].SetValue("Yaw", 10f);
-	    GyrosMe[1][0].SetValue("Yaw", -10f);
+	    GyrosMe[0][0].SetValue("Yaw", 30f);
+	    GyrosMe[1][0].SetValue("Yaw", -30f);
 	  meMaxG = 0;
 	break;
 	case "MEHOLDUP":
-	    GyrosMe[0][0].SetValue("Yaw", 4f);
-	    GyrosMe[1][0].SetValue("Yaw", -4f);
+	    GyrosMe[0][0].SetValue("Yaw", 10f);
+	    GyrosMe[1][0].SetValue("Yaw", -10f);
 	  meMaxG = 0;
 	break;
 	}     
