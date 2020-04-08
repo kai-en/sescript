@@ -51,7 +51,7 @@
 
 // =============== 基础设置 =============
 //再次强调，每个转子炮台的所有零件必须在同一个编组中，并且这个编组中必须有一个名字包含 AimBlockKey关键字的方块用于瞄准。多个转子炮台的方块应该各自放在自己的编组，不允许冲突。
-const string FCSComputerNameTag = "Programmable block fcsoc"; //FCS编程块名字，用于读取其中目标，非必须。
+const string FCSComputerNameTag = "Programmable block fcs"; //FCS编程块名字，用于读取其中目标，非必须。
 const string AimBlockKey = "FCS#R"; //瞄准块名字关键字，可以写在名字中，只要包含这个关键字即可。
 const string LCDNameTag = "FCSR_LCD"; //LCD名字，用来显示各个目标和炮台信息，非必须，也可以是多个。
 const string RotorNagtiveTag = "[-]"; //转子负转标签。当转子名字里完全包含这个标签的时候，它会被强制认为是反向控制的转子。用来解决某些特殊结构的转子问题
@@ -60,7 +60,7 @@ string CockpitNameTag = "Reference";
 
 // ============== 战斗设置 ==============
 const double AttackDistance = 910; //默认武器的自动开火距离
-static bool OnlyAttackUpPlane = true; //自动选择目标时是否只选择转子基座炮塔的上半球面里的目标（当目标低于该炮塔时不选择这个目标）
+static bool OnlyAttackUpPlane = false; //自动选择目标时是否只选择转子基座炮塔的上半球面里的目标（当目标低于该炮塔时不选择这个目标）
 
 // ============== 进阶开火机制 ============
 //程序会自动检测原版武器并在有目标时触发武器开火。同时你也可以自己使用定时块来触发开火。你需要在需要触发自定义开火的转子基座炮台上加入一个或多个定时块，必须放进这个炮台的编组。
@@ -202,7 +202,8 @@ void Main(string arguments)
 		}
 	}else{
 		foreach(RotorBase R in FCSR){
-			R.Attention(1, mode);
+                                    if (isOnOff) R.Attention(1, mode);
+                                    else R.Attention(1, 99);
 			Echo("debugInfo " + R.isRocket + " " + R.debugInfo);
 		}
 	}
@@ -402,6 +403,8 @@ public class RotorBase
 	public double horiD;
 	public double vert;
 	public double vertD;
+	public double offX = 0;
+	public double offY = 0;
 	static float pp=20F,pi=1F,pd=0F, pim=0.1F;
 	public PIDController pidX = new PIDController(pp, pi, pd,pim,-pim,12);
 	public PIDController pidY = new PIDController(pp, pi, pd,pim,-pim,12);
@@ -425,34 +428,47 @@ public class RotorBase
 		cfg.Get("vertD", ref vertD);
 		cfg.Get("hori", ref hori);
 		cfg.Get("horiD", ref horiD);
+		cfg.Get("offX", ref offX);
+		cfg.Get("offY", ref offY);
 		
 		//获得转子
 		foreach(IMyTerminalBlock block in blocks_temp){
 			if(block is IMyMotorStator){
 				int NagtiveRotor = 1;
 				if(block.CustomName.Contains(RotorNagtiveTag)){NagtiveRotor = -1;}
-				Base6Directions.Direction rotor_Up = block.WorldMatrix.GetClosestDirection(AimBlock.WorldMatrix.Up);
-				Base6Directions.Direction rotor_Right = block.WorldMatrix.GetClosestDirection(AimBlock.WorldMatrix.Right);
-				switch(rotor_Up){
-					case Base6Directions.Direction.Up:
-						RotorXs.Add(block as IMyMotorStator);
+				var dot = Vector3D.Dot(AimBlock.WorldMatrix.Left, block.WorldMatrix.Up);
+				if (Math.Abs(dot)>0.9) {
+					RotorYs.Add(block as IMyMotorStator);
+					if (dot > 0) RotorYField.Add(1*NagtiveRotor);
+					else RotorYField.Add(-1*NagtiveRotor);
+				} else {
+					RotorXs.Add(block as IMyMotorStator);
+					if (Vector3D.Dot(AimBlock.WorldMatrix.Up, block.WorldMatrix.Up)>0)
 						RotorXField.Add(1*NagtiveRotor);
-					break;
-					case Base6Directions.Direction.Down:
-						RotorXs.Add(block as IMyMotorStator);
-						RotorXField.Add(-1*NagtiveRotor);
-					break;
+					else RotorXField.Add(-1*NagtiveRotor);
 				}
-				switch(rotor_Right){
-					case Base6Directions.Direction.Up:
-						RotorYs.Add(block as IMyMotorStator);
-						RotorYField.Add(-1*NagtiveRotor);
-					break;
-					case Base6Directions.Direction.Down:
-						RotorYs.Add(block as IMyMotorStator);
-						RotorYField.Add(1*NagtiveRotor);
-					break;
-				}
+				// Base6Directions.Direction rotor_Up = block.WorldMatrix.GetClosestDirection(AimBlock.WorldMatrix.Up);
+				// Base6Directions.Direction rotor_Right = block.WorldMatrix.GetClosestDirection(AimBlock.WorldMatrix.Right);
+				// switch(rotor_Up){
+				// 	case Base6Directions.Direction.Up:
+				// 		RotorXs.Add(block as IMyMotorStator);
+				// 		RotorXField.Add(1*NagtiveRotor);
+				// 	break;
+				// 	case Base6Directions.Direction.Down:
+				// 		RotorXs.Add(block as IMyMotorStator);
+				// 		RotorXField.Add(-1*NagtiveRotor);
+				// 	break;
+				// }
+				// switch(rotor_Right){
+				// 	case Base6Directions.Direction.Up:
+				// 		RotorYs.Add(block as IMyMotorStator);
+				// 		RotorYField.Add(-1*NagtiveRotor);
+				// 	break;
+				// 	case Base6Directions.Direction.Down:
+				// 		RotorYs.Add(block as IMyMotorStator);
+				// 		RotorYField.Add(1*NagtiveRotor);
+				// 	break;
+				// }
 			}
 		}
 		if(RotorXs.Count < 1 || RotorYs.Count < 1) {ErrorReport = "Rotors Not Complete!"; return;}
@@ -589,6 +605,20 @@ public class RotorBase
 			}
 
 		break;
+                        default:
+			for(int i = 0; i < this.RotorXs.Count; i ++){
+			            var a = this.RotorXs[i].Angle - (float)(offX*Math.PI);
+				if (a > Math.PI) a = a - MathHelper.TwoPi;
+				if (a < -Math.PI) a = a + MathHelper.TwoPi;
+				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
+			}
+			for(int i = 0; i < this.RotorYs.Count; i ++){
+				var a = this.RotorYs[i].Angle - (float)(offY*Math.PI);
+				if (a > Math.PI) a = a - MathHelper.TwoPi;
+				if (a < -Math.PI) a = a + MathHelper.TwoPi;
+				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
+			}
+                        break;
 		}
 		// switch(ATMode){
 		// 	case 1: //自由模式，关闭所有转子运动
