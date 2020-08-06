@@ -20,6 +20,9 @@ List<IMyTerminalBlock> gcLight2 = new List<IMyTerminalBlock>();
 List<List<IMyTerminalBlock>> missileDoorSort = null;
 List<List<IMyTerminalBlock>> missileLightSort = null;
 
+List<List<IMyTerminalBlock>> outsideLightSort = null;
+string outsideLightGroupName = "Light-Out-G";
+
 string gcSuperLaserName = "Super-Laser-G";
 List<IMyTerminalBlock> superLaser = new List<IMyTerminalBlock>();
 
@@ -290,6 +293,9 @@ void init() {
   findByGroup(missileLightGroupName, tmpList);
   missileLightSort = sortByPosition(tmpList, "Z", true);
 
+  findByGroup(outsideLightGroupName, tmpList);
+  outsideLightSort = sortByPosition(tmpList, "Z", true);
+
   inited = true; 
 }
  
@@ -479,6 +485,11 @@ public void Main(string argument, UpdateType updateSource)
   {
     addSeq(missileDoorSort, "Open", 20);
     addSeq(missileLightSort, "OnOff_Off", 20);
+  }
+  break;
+  case "OUTSIDELIGHT":
+  {
+    addSeq(outsideLightSort, "OnOff", 30);  
   }
   break;
   default:

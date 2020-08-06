@@ -526,10 +526,12 @@ void SystemControl()
 		}
 
 		if (RCSThrusters.Count>0) {
-		    var lv = -Cockpit.RotationIndicator.Y * (float)MouseMoveRatio;
-		    var uv = Cockpit.RotationIndicator.X * (float)MouseMoveRatio;
+		    debugInfo = "rcs count " + RCSThrusters[0].Count + "" ;
+                            var cx = Cockpit.GetShipVelocities().AngularVelocity.X;
+		    var cy = Cockpit.GetShipVelocities().AngularVelocity.Y;
+		    var lv = (float)(-Cockpit.RotationIndicator.Y - cx * 10f) ;
+		    var uv = (float)(Cockpit.RotationIndicator.X - cy * 10f);
 
-		    debugInfo = "rcs count " + RCSThrusters[0].Count + "";
 		    if (lv >= 0) {
 		       setThrust(RCSThrusters[1], lv);
 		       setThrust(RCSThrusters[0], 0);
@@ -1206,7 +1208,7 @@ public static double DEF_BIG_GRID_P = 15.71;
 public static double DEF_BIG_GRID_I = 0;
 public static double DEF_BIG_GRID_D = 7.05;
 
-double integral;
+public double integral;
 double lastInput;
 
 double gain_p;

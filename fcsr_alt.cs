@@ -1,3 +1,5 @@
+static bool isOnOff = true; //ÊÇ·ñ¿ª»ú
+static bool OnlyAttackUpPlane = true; //×Ô¶¯Ñ¡ÔñÄ¿±êÊ±ÊÇ·ñÖ»Ñ¡Ôñ×ª×Ó»ù×ùÅÚËşµÄÉÏ°ëÇòÃæÀïµÄÄ¿±ê£¨µ±Ä¿±êµÍÓÚ¸ÃÅÚËşÊ±²»Ñ¡ÔñÕâ¸öÄ¿±ê£©
 /*
  ======= [ MEA ] È«×Ô¶¯×ª×Ó»ù×ùÅÚÌ¨¿ØÖÆ³ÌĞò FCS-R v1.3 by MEAÈºÖ÷ QQÈº530683714 =======
  ¡¾½éÉÜ¡¿
@@ -60,7 +62,6 @@ string CockpitNameTag = "Reference";
 
 // ============== Õ½¶·ÉèÖÃ ==============
 const double AttackDistance = 910; //Ä¬ÈÏÎäÆ÷µÄ×Ô¶¯¿ª»ğ¾àÀë
-static bool OnlyAttackUpPlane = false; //×Ô¶¯Ñ¡ÔñÄ¿±êÊ±ÊÇ·ñÖ»Ñ¡Ôñ×ª×Ó»ù×ùÅÚËşµÄÉÏ°ëÇòÃæÀïµÄÄ¿±ê£¨µ±Ä¿±êµÍÓÚ¸ÃÅÚËşÊ±²»Ñ¡ÔñÕâ¸öÄ¿±ê£©
 
 // ============== ½ø½×¿ª»ğ»úÖÆ ============
 //³ÌĞò»á×Ô¶¯¼ì²âÔ­°æÎäÆ÷²¢ÔÚÓĞÄ¿±êÊ±´¥·¢ÎäÆ÷¿ª»ğ¡£Í¬Ê±ÄãÒ²¿ÉÒÔ×Ô¼ºÊ¹ÓÃ¶¨Ê±¿éÀ´´¥·¢¿ª»ğ¡£ÄãĞèÒªÔÚĞèÒª´¥·¢×Ô¶¨Òå¿ª»ğµÄ×ª×Ó»ù×ùÅÚÌ¨ÉÏ¼ÓÈëÒ»¸ö»ò¶à¸ö¶¨Ê±¿é£¬±ØĞë·Å½øÕâ¸öÅÚÌ¨µÄ±à×é¡£
@@ -101,14 +102,14 @@ bool DebugMode = false; //µ÷ÊÔÄ£Ê½¿ª¹Ø£¬ÉèÎªtrue¿ªÆô£¬false¹Ø±Õ¡£¿ªÆôµ÷ÊÔºó³ÌĞò²
 bool init;
 static int t;
 static Random R_D = new Random();
-static bool isOnOff = true; //ÊÇ·ñ¿ª»ú
 static bool isFireWhenAimOK = true; //ÊÇ·ñµ±ÅÚÌ¨Ãé×¼ÁËÔ¤Ãéµã²Å¿ª»ğ£¬ÊÇ·ñÃé×¼µÄÅĞ¶¨ÓÉ¡¾Ãé×¼¿ØÖÆÏµÍ³ÉèÖÃ¡¿ÖĞµÄAimRatio¾ö¶¨¡£¿ªÆôÕâ¸öÑ¡Ïî¿ÉÒÔ½ÚÊ¡×Óµ¯£¬Ò²ÄÜÈÃÒ»²¿·ÖÓÉÓÚ½Ç¶ÈÏŞÖÆÎŞ·¨Ãé×¼µ½Ä¿±êµÄÅÚÌ¨²»»áÀË·Ñ×Óµ¯¿ª»ğ¡£
 static int AttentionMode = 2; //´ıÃüÄ£Ê½£¬1 ×ÔÓÉ 2Ö¸ÏòX×ª×ÓÇ°·½ 3Ëæ»úÄ£Ê½
 List<RotorBase> FCSR = new List<RotorBase>(); //ÅÚÌ¨¼¯ºÏ
-List<Target> TargetList = new List<Target>(); //Ä¿±ê¼¯ºÏ
+static List<Target> TargetList = new List<Target>(); //Ä¿±ê¼¯ºÏ
+//static List<Target> LastTargetList = new List<Target>(); //Ä¿±ê¼¯ºÏ
 static Vector3D PBPosition;
 
-IMyShipController Cockpit;
+static IMyShipController Cockpit;
 string HeadNameTag = "VF_HEAD";
 IMyShipController Head;
 static bool isAeroDynamic = false;
@@ -116,7 +117,7 @@ static float aeroTRM = 0f;// transport rotor margin 0.2
 static float aeroFM = 0f;// front margin 0.05
 static int aeroACS = -180;
 static int aeroAMP = 0;
-string debugInfo = "";
+static string debugInfo = "";
 
 Program()
 {
@@ -129,6 +130,8 @@ void Main(string arguments)
 	if(arguments == "Debug"){DebugMode = true;}
 	if(arguments == "FireMode"){isFireWhenAimOK = !isFireWhenAimOK;}
 	if(arguments == "OnOff"){isOnOff = !isOnOff;}
+	if(arguments == "On"){isOnOff = true;}
+	if(arguments == "Off"){isOnOff = false;}
 	if(arguments == "Attention"){
 		AttentionMode += 1;
 		if(AttentionMode > 3){AttentionMode = 1;}
@@ -146,7 +149,6 @@ void Main(string arguments)
 	//»ñÈ¡FCSÄ¿±ê
 	Target FCS_T = new Target();
 	FCS_T.GetTarget(GridTerminalSystem.GetBlockWithName(FCSComputerNameTag) as IMyProgrammableBlock);
-            debugInfo = ""+FCS_T.EntityId + "\n";
 	if(FCS_T.EntityId != 0){
                         FCS_T.isFCS=true;
 		TargetList.Add(FCS_T);
@@ -159,6 +161,7 @@ void Main(string arguments)
 			TargetList.Add(ATWP_T);
 		}
 	}
+	//LastTargetList = TargetList;
 
 	//Ö¸ÁîÃ¿¸öÅÚÌ¨Ñ¡Ôñ×î½üµÄÄ¿±ê
 	int mode = 0; // no aero
@@ -184,27 +187,24 @@ void Main(string arguments)
 	}
 	}
 
-            debugInfo += "tc " + TargetList.Count + "\n";
+            debugInfo = "";
 	if(isOnOff && mode != 1){
 		foreach(RotorBase R in FCSR){
 			R.UpdateMotionInfo();//¸üĞÂÔË¶¯ĞÅÏ¢
 			if(TargetList.Count > 0){
-                                            debugInfo += "act " + true + "\n";
 				R.AttackCloestTarget(TargetList);
+                                                debugInfo += R.debugInfo + "\n";
 			}
 			else{
 				R.Attention(AttentionMode, mode);//¹éÎ»
 			}
 			R.CheckPlayerControl();//¼ì²âÍæ¼Ò¿ØÖÆ
 			R.ShowLCD();//LCDÏÔÊ¾×´Ì¬ĞÅÏ¢
-			Echo("debugInfo " + R.isRocket + " " + R.debugInfo);
-			
 		}
 	}else{
 		foreach(RotorBase R in FCSR){
                                     if (isOnOff) R.Attention(1, mode);
                                     else R.Attention(1, 99);
-			Echo("debugInfo " + R.isRocket + " " + R.debugInfo);
 		}
 	}
 	
@@ -353,14 +353,33 @@ this.TimeStamp = t;
 	{
 		MyDetectedEntityInfo thisEntity = autoWeapon.GetTargetedEntity();
 		if(!thisEntity.IsEmpty()){
+			// Target lt = new Target();
+			// foreach ( Target ti in LastTargetList ) {
+			// 	if (ti.EntityId == thisEntity.EntityId) {
+			// 		lt = ti;
+			// 		break;
+			// 	}
+			// }
+			// coding
 			this.Name = thisEntity.Name;
 			this.EntityId = thisEntity.EntityId;
 			this.Diameter = Vector3D.Distance(thisEntity.BoundingBox.Max, thisEntity.BoundingBox.Min);
-			Vector3D.TryParse(thisEntity.Position.ToString(), out this.Position);
-			Vector3D.TryParse(thisEntity.Velocity.ToString(), out this.Velocity);
+                                    this.Position = thisEntity.Position;
+			//Vector3D.TryParse(thisEntity.Position.ToString(), out this.Position);
+			//if (t == lt.TimeStamp) {
+			//	this.Velocity = lt.Velocity;
+			//} else {
+			//	this.Velocity = (this.Position - lt.Position) / ((t - lt.TimeStamp)/60D);
+			//}
+			// Vector3D.TryParse(thisEntity.Velocity.ToString(), out this.Velocity);
+                                    this.Velocity = thisEntity.Velocity;
 			this.TimeStamp = t;
 		}
 	}
+                string displayVector3D(Vector3D tar) {
+                       return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
+                }
+
 	
 	public void Clear()
 	{
@@ -405,6 +424,8 @@ public class RotorBase
 	public double vertD;
 	public double offX = 0;
 	public double offY = 0;
+	public double ra=0;
+	public double raD=1;
 	static float pp=20F,pi=1F,pd=0F, pim=0.1F;
 	public PIDController pidX = new PIDController(pp, pi, pd,pim,-pim,12);
 	public PIDController pidY = new PIDController(pp, pi, pd,pim,-pim,12);
@@ -430,8 +451,31 @@ public class RotorBase
 		cfg.Get("horiD", ref horiD);
 		cfg.Get("offX", ref offX);
 		cfg.Get("offY", ref offY);
+		cfg.Get("ra", ref ra);
+		cfg.Get("raD", ref raD);
 		
 		//»ñµÃ×ª×Ó
+		bool haveHinge = false;
+		foreach(IMyTerminalBlock b in blocks_temp) {
+			if (b.CustomName.Contains("Hinge")) {
+				haveHinge = true;
+			}
+		}
+		if (haveHinge) {
+			foreach(IMyTerminalBlock block in blocks_temp) {
+				int NagtiveRotor = 1;
+				if (!(block is IMyMotorStator)) continue;
+				if (block.CustomName.Contains("Hinge")) {
+					RotorYs.Add(block as IMyMotorStator);
+					RotorYField.Add(1*NagtiveRotor);
+				} else {
+					RotorXs.Add(block as IMyMotorStator);
+					if (Vector3D.Dot(AimBlock.WorldMatrix.Up, block.WorldMatrix.Up)>0)
+						RotorXField.Add(1*NagtiveRotor);
+					else RotorXField.Add(-1*NagtiveRotor);
+				}
+			}
+		} else {
 		foreach(IMyTerminalBlock block in blocks_temp){
 			if(block is IMyMotorStator){
 				int NagtiveRotor = 1;
@@ -447,29 +491,8 @@ public class RotorBase
 						RotorXField.Add(1*NagtiveRotor);
 					else RotorXField.Add(-1*NagtiveRotor);
 				}
-				// Base6Directions.Direction rotor_Up = block.WorldMatrix.GetClosestDirection(AimBlock.WorldMatrix.Up);
-				// Base6Directions.Direction rotor_Right = block.WorldMatrix.GetClosestDirection(AimBlock.WorldMatrix.Right);
-				// switch(rotor_Up){
-				// 	case Base6Directions.Direction.Up:
-				// 		RotorXs.Add(block as IMyMotorStator);
-				// 		RotorXField.Add(1*NagtiveRotor);
-				// 	break;
-				// 	case Base6Directions.Direction.Down:
-				// 		RotorXs.Add(block as IMyMotorStator);
-				// 		RotorXField.Add(-1*NagtiveRotor);
-				// 	break;
-				// }
-				// switch(rotor_Right){
-				// 	case Base6Directions.Direction.Up:
-				// 		RotorYs.Add(block as IMyMotorStator);
-				// 		RotorYField.Add(-1*NagtiveRotor);
-				// 	break;
-				// 	case Base6Directions.Direction.Down:
-				// 		RotorYs.Add(block as IMyMotorStator);
-				// 		RotorYField.Add(1*NagtiveRotor);
-				// 	break;
-				// }
 			}
+		}
 		}
 		if(RotorXs.Count < 1 || RotorYs.Count < 1) {ErrorReport = "Rotors Not Complete!"; return;}
 		
@@ -519,7 +542,6 @@ public class RotorBase
 	public void Attention(int ATMode, int aeroMode)
 	{
 		if (this.Weapons.Count == 0 && this.AimBlock is IMyShipController && (this.AimBlock as IMyShipController).IsUnderControl) return;
-		this.debugInfo = "aeromode " + aeroMode;
 		// Vector3D aimPoint = new Vector3D();
 		// MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.RotorXs[0].WorldMatrix.Forward, this.RotorXs[0].WorldMatrix.Up);
 		float xt = 0F, yt=0F;
@@ -670,7 +692,6 @@ public class RotorBase
 	       if ( t > Math.PI) {
 	       	  t = Math.Abs(t - MathHelper.TwoPi);
 	       }
-	       debugInfo += t + "\n";
 	       return t;
 	}
 	
@@ -679,7 +700,6 @@ public class RotorBase
 	{
 
                 if (this.Weapons.Count == 0 && this.AimBlock is IMyShipController && !((this.AimBlock as IMyShipController).IsUnderControl)) {
-                this.debugInfo = "FCS lock\n";
                    Target FCS_T = null;
                    foreach(var t in targetList) {
                        if (t.isFCS) FCS_T = t;
@@ -688,7 +708,6 @@ public class RotorBase
                       this.Attention(1,0);
                       return;
                    }
-                   this.debugInfo = "AimAtTarget" +displayVector3D(FCS_T.Position)+ "\n";
                    this.AimAtTarget(FCS_T.Position);
                    //CODING
                    return;
@@ -698,24 +717,33 @@ public class RotorBase
 		Target MyAttackTarget = new Target();
 		for(int i = 0; i < targetList.Count; i ++){
 			double distance = Vector3D.Distance(targetList[i].Position, this.Position);
-			if(targetList[i].EntityId != 0 && distance <= currentDis){
+double dot = 1;
+// a b k filter direction use ra and raD
+if (Cockpit != null && raD != 1) {
+Vector3D mid = Cockpit.WorldMatrix.Right * Math.Sin(this.ra) + Cockpit.WorldMatrix.Forward * Math.Cos(this.ra);
+Vector3D tar = Vector3D.Normalize(targetList[i].Position - this.Position);
+this.debugInfo = "\n dirYN: " + (Vector3D.Dot(mid, tar) < this.raD);
+dot = Vector3D.Dot(mid, tar);
+if ( dot < this.raD) continue;
+}
+double compose = distance / 900 + (1- dot);
+			if(targetList[i].EntityId != 0 && compose <= currentDis){
 				if(OnlyAttackUpPlane){
 					MatrixD RotortXLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.RotorXs[0].WorldMatrix.Forward, this.RotorXs[0].WorldMatrix.Up);
 					Vector3D TargetPositionToRotorX = Vector3D.TransformNormal(targetList[i].Position - this.RotorXs[0].GetPosition(), RotortXLookAtMatrix);
 					if(TargetPositionToRotorX.Y >= 0){
 						MyAttackTarget = targetList[i];
-						currentDis = distance;
+						currentDis = compose;
 					}
 				}
 				else{
 					MyAttackTarget = targetList[i];
-					currentDis = distance;
+					currentDis = compose;
 				}
 			}
 		}
 		
 		if(MyAttackTarget.EntityId != 0){
-			debugInfo = "";
 			bool isAimedOK = this.AimAtTarget(MyAttackTarget, false);
 			bool sensorActive = false;
 			foreach(IMySensorBlock sensor in this.Sensors){
@@ -741,7 +769,6 @@ public class RotorBase
 					ry = true;
 				}
 			}
-			debugInfo += ";";
 			sensorActive = sensorActive || (rx&&ry);
 			MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.AimBlock.WorldMatrix.Forward, this.AimBlock.WorldMatrix.Up);
 			Vector3D TargetPositionToMe = Vector3D.TransformNormal(MyAttackTarget.Position - this.Position, refLookAtMatrix);
@@ -833,7 +860,6 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		Vector3D TargetPositionToMe = Vector3D.Normalize(Vector3D.TransformNormal(HitPoint - this.AimBlock.GetPosition(), refLookAtMatrix));
 		Vector3D aimDir = CalcAim(this.Position, thisV, Position, Velocity, bs, ba, bm);
 		var aimDirToMe = Vector3D.TransformNormal(aimDir,  refLookAtMatrix);
-		debugInfo += Vector3D.Dot(aimDirToMe, TargetPositionToMe) + "\n";
 		//´¢´æ²ÉÑùµã
 		if(Aim_PID_Data.Count < Aim_PID_T){
 			for(int i = 0; i < Aim_PID_T; i ++){
@@ -851,17 +877,18 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		}
 		
 		//¼ÆËãÊä³ö
-		double YawValue = Aim_PID_P*(TargetPositionToMe.X + (1/Aim_PID_I)*X_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].X - Aim_PID_Data[0].X)/Aim_PID_T);
+		double aa=0, ea=0;
+		Vector3D.GetAzimuthAndElevation(TargetPositionToMe, out aa, out ea);
+//		double YawValue = Aim_PID_P*(TargetPositionToMe.X + (1/Aim_PID_I)*X_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].X - Aim_PID_Data[0].X)/Aim_PID_T);
+		double YawValue = Aim_PID_P*(modAngle(aa) + (1/Aim_PID_I)*X_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].X - Aim_PID_Data[0].X)/Aim_PID_T);
 
-		//double aa=0, ea=0;
-		//Vector3D.GetAzimuthAndElevation(TargetPositionToMe, out aa, out ea);
 
-		double PitchValue = Aim_PID_P*(TargetPositionToMe.Y + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
+//		double PitchValue = Aim_PID_P*(TargetPositionToMe.Y + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
+		double PitchValue = Aim_PID_P*(modAngle(ea) + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
 
 		bool isCeaseZoon = angleDeltaAbs(this.RotorXs[0].Angle, hori*Math.PI) < horiD*Math.PI;
 		if (isCeaseZoon && isAeroDynamic) {
 		PitchValue = this.RotorYs[0].Angle; //CeaseElevator
-		debugInfo += this.RotorYs[0].Angle + " Cease\n";
 		}
 
 
@@ -1164,4 +1191,15 @@ var accTime = (bm - bs) / ba;
 return Vector3D.Zero;
 }
 
+}
+
+static double modAngle (double a) {
+var r = a;
+if ( r > Math.PI) {
+r = r - MathHelper.TwoPi;
+}
+if ( r < -Math.PI) {
+r = r + MathHelper.TwoPi;
+}
+return r;
 }

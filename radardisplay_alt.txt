@@ -223,7 +223,6 @@ void callDcsSendAvoid() {
 	if (k == Me.CubeGrid.EntityId) return false;
 	return true;
     }).ToList();
-    debugInfo = "Avoid list: " + s.Count;
     s.Sort((l,r)=>
         (int)((MePosition - r.Value.Position).Length() -
 	(MePosition - l.Value.Position).Length())
@@ -542,7 +541,14 @@ class RadarSurface
         var transformedDirection = Vector3D.TransformNormal(position - worldMatrix.Translation, Matrix.Transpose(worldMatrix)); 
         float xOffset = (float)(transformedDirection.X / Range); 
         float yOffset = (float)(transformedDirection.Z / Range); 
-        float zOffset = (float)(transformedDirection.Y / Range); 
+        float zOffset = (float)(transformedDirection.Y / Range);
+        debugInfo = "";
+        
+        // CODING
+        // log len
+        xOffset = (float) getLogLen(transformedDirection.X);
+        yOffset = (float) getLogLen(transformedDirection.Z);
+        zOffset = (float) getLogLen(transformedDirection.Y);
  
         string spriteName = ""; 
         _spriteMap.TryGetValue(relation, out spriteName); 
@@ -644,7 +650,7 @@ class RadarSurface
         MySprite sprite; 
         float textSize = scale * HUD_TEXT_SIZE; 
         Vector2 halfScreenSize = viewportSize * 0.5f; 
-        sprite = MySprite.CreateText($"WMI Radar System" + debugInfo, FONT, _textColor, textSize, TextAlignment.CENTER); 
+        sprite = MySprite.CreateText($"WMI Radar System", FONT, _textColor, textSize, TextAlignment.CENTER); 
         sprite.Position = screenCenter + new Vector2(0, -halfScreenSize.Y); 
         frame.Add(sprite); 
  
@@ -691,7 +697,8 @@ class RadarSurface
  
         // Range markers 
         float textSize = RANGE_TEXT_SIZE * scale; 
-        sprite = MySprite.CreateText($"    {Range * 0.5f:0}", "Debug", _textColor, textSize, TextAlignment.LEFT); 
+        // sprite = MySprite.CreateText($"    {Range * 0.5f:0}", "Debug", _textColor, textSize, TextAlignment.LEFT);
+        sprite = MySprite.CreateText($"    {800f:0}", "Debug", _textColor, textSize, TextAlignment.LEFT);
         sprite.Position = screenCenter + new Vector2(radarPlaneSize.X * -0.25f, 0); 
         frame.Add(sprite); 
  
@@ -1754,4 +1761,19 @@ targetDataDict[tmpL] = new TargetData(tmpP, TargetRelation.Enemy, MAX_REBROADCAS
 } 
 
 
+}
+
+static double getLogLen(double len) {
+// rangeOverride
+debugInfo += "\n" + Math.Round(len, 2);
+var r = (float)((sigmoid(len / 728) - 0.5) * 2); // 728 make 800 = 0.5
+if (r>1) r = 1;
+if (r<-1) r = -1;
+debugInfo += " " + r;
+return r;
+}
+
+// (/ 1.0 (+ 1.0 (exp (/ 800 -728.0))))
+static double sigmoid(double x) {
+return 1.0 / (1.0 + Math.Exp(-x));
 }

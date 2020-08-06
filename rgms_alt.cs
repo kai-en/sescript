@@ -11,6 +11,7 @@ double MISSILE_MASS = 5400.4;
 //double MISSILE_MASS = 1407.4;
 double LaunchDist = 150;
 int dropTime = 0;
+bool isClearDown=false;
 	    
 string debugInfo = "";
 
@@ -158,7 +159,7 @@ string debugInfo = "";
 
                 //Collects RC Unit 
                 List<IMyTerminalBlock> TempCollection3 = new List<IMyTerminalBlock>();
-                GridTerminalSystem.GetBlocksOfType<IMyShipController>(TempCollection3);
+                GridTerminalSystem.GetBlocksOfType<IMyShipController>(TempCollection3, b => b.CustomName.Contains("Reference"));
                 if (TempCollection3.Count > 0)
                 {RC = TempCollection3[0] as IMyShipController;}
 
@@ -244,7 +245,7 @@ Echo(debugInfo);
 
                     //Runs Standard System Guidance
                     if (ThisMissile.IS_CLEAR == true)
-                    { STD_GUIDANCE(ThisMissile); }
+                    { }
 
                     //Fires Straight (NO OVERRIDES)
                     else if (ThisMissile.IS_CLEAR == false)
@@ -252,6 +253,7 @@ Echo(debugInfo);
                         if ((ThisMissile.GYRO.GetPosition() - Me.GetPosition()).Length() > ThisShipSize)
                         { ThisMissile.IS_CLEAR = true; }
                     }
+                    STD_GUIDANCE(ThisMissile, ThisMissile.IS_CLEAR); 
 
                     //Disposes If Out Of Range Or Destroyed (misses a beat on one missile)
                     bool Isgyroout = ThisMissile.GYRO.CubeGrid.GetCubeBlock(ThisMissile.GYRO.Position) == null;
@@ -294,13 +296,12 @@ Echo(debugInfo);
                 MISSILE ThisMissile = MISSILES[MISSILES.Count - 1];
                 var MERGE_A = ThisMissile.MERGE;
                 (MERGE_A as IMyShipMergeBlock).Enabled = false;
-                yield return true;
-                yield return true;
+                //yield return true;
+                //yield return true;
                 yield return true;
                 yield return true;
                 yield return true; //Safety Tick
 
-	    if(Me.CubeGrid.GridSizeEnum == MyCubeSize.Large) dropTime = 0;
 	    for (int i = 0; i < dropTime; i++) {
 	    	yield return true;
 	    }
@@ -316,7 +317,7 @@ Echo(debugInfo);
             /*=================================================                           
              RdavNav             
              ---------------------------------------     */
-            void STD_GUIDANCE(MISSILE This_Missile)
+            void STD_GUIDANCE(MISSILE This_Missile, bool isClear)
             {
 
                 //Targeting Module
@@ -391,6 +392,14 @@ Echo(debugInfo);
 	        This_Missile.TargetVelocity = targetPanelVelocity;
                     This_Missile.TargetVelocityPanel = targetPanelVelocity;
 	    }
+                if(isClear == false) {
+                    TargetPosition = RC.GetPosition() + RC.WorldMatrix.Up* 100000D;
+                    if (isClearDown)
+                    TargetPosition = RC.GetPosition() + RC.WorldMatrix.Down* 100000D;
+                    TargetAcc = Vector3D.Zero;
+                    This_Missile.TargetVelocity = RC.GetShipVelocities().LinearVelocity;
+                    This_Missile.TargetVelocityPanel = This_Missile.TargetVelocity;
+                }
 
                 //Uses RdavNav Navigation APN Guidance System
                 //-----------------------------------------------
@@ -470,10 +479,11 @@ if(true) {
 double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust * This_Missile.THRUSTERS.Count / MISSILE_MASS;
 
 // 1 求不需要的速度
-debugInfo = "TR: " + targetRange.Length() + "\n";
+//debugInfo = "TR: " + targetRange.Length() + "\n";
 Vector3D tarN = Vector3D.Normalize(targetRange);
+//debugInfo += "TV: " + targetV.Length() + "\n";
 Vector3D rv = Vector3D.Reject(targetV, tarN);
-debugInfo += "RV: " + rv.Length() + "\n";
+//debugInfo += "RV: " + rv.Length() + "\n";
 //Vector3D ra = Vector3D.Reject(TargetAcc, tarN);
 
 // 2 换算不需要的加速度 平行制导率
@@ -548,17 +558,17 @@ var missileLookAt = MatrixD.CreateLookAt(new Vector3D(), This_Missile.GYRO.World
 var amToMe = Vector3D.TransformNormal(am, missileLookAt);
 var rr = Vector3D.Normalize(Vector3D.Reject(This_Missile.GYRO.WorldMatrix.Up, Vector3D.Normalize(RC.GetNaturalGravity())));
 var rangle = 1 - Vector3D.Dot(rr, tarN);
-debugInfo += "RA: " + rangle + "\n";
+//debugInfo += "RA: " + rangle + "\n";
 
-debugInfo += "amToMe: " + displayVector3D(amToMe) + "\n";
-debugInfo += This_Missile.nearest + "\n";
+//debugInfo += "amToMe: " + displayVector3D(amToMe) + "\n";
+//debugInfo += This_Missile.nearest + "\n";
 
 
 // CODING
 }
 
                 double Yaw; double Pitch;
-                GyroTurn6(am, APID_P, APID_D, This_Missile.THRUSTERS[0], This_Missile.GYRO as IMyGyro, This_Missile.PREV_Yaw, This_Missile.PREV_Pitch, out Pitch, out Yaw, ref This_Missile);
+                GyroTurn6(am, APID_P, APID_D, This_Missile.THRUSTERS[0], This_Missile.GYRO as IMyGyro, This_Missile.PREV_Yaw, This_Missile.PREV_Pitch, out Pitch, out Yaw, ref This_Missile, isClear);
 
                 //Updates For Next Tick Round
                 This_Missile.TARGET_PREV_POS = TargetPosition;
@@ -611,7 +621,10 @@ debugInfo += This_Missile.nearest + "\n";
 	    GYROS = GYROS.OrderBy(g=>{
 	    var rcmt = RC.WorldMatrix;
 	    var tranmt = MatrixD.CreateLookAt(new Vector3D(), rcmt.Forward, rcmt.Up);
-	    return Vector3D.TransformNormal(g.GetPosition()-RC.GetPosition(), tranmt).Z;
+                var dis = Vector3D.TransformNormal(g.GetPosition()-RC.GetPosition(), tranmt);
+                var x = -Math.Round(Math.Abs(dis.X),1);
+                var z = -Math.Round(Math.Abs(dis.Z),1);
+	    return (x * 1000 + z) * 100 + dis.X;
 	    }).ToList();
                 foreach (var Key_Gyro in GYROS)
                 {
@@ -1013,7 +1026,7 @@ debugInfo += This_Missile.nearest + "\n";
             ---------------------------------------                            
             function will: A Variant of PD damped gyroturn used for missiles
             //----------==--------=------------=-----------=---------------=------------=-----=-----*/
-            void GyroTurn6(Vector3D TARGETVECTOR, double GAIN, double DAMPINGGAIN,IMyTerminalBlock REF, IMyGyro GYRO, double YawPrev, double PitchPrev, out double NewPitch, out double NewYaw, ref MISSILE missile)
+            void GyroTurn6(Vector3D TARGETVECTOR, double GAIN, double DAMPINGGAIN,IMyTerminalBlock REF, IMyGyro GYRO, double YawPrev, double PitchPrev, out double NewPitch, out double NewYaw, ref MISSILE missile, bool isClear)
             {
                 //Pre Setting Factors
                 NewYaw = 0;
@@ -1064,7 +1077,7 @@ debugInfo += This_Missile.nearest + "\n";
 	    // a b K
 	    // assume the gyro is in front of the missile, use Yaw to make the missile fit gravity
 	    var ng = RC.GetNaturalGravity();
-	    if (ng.Length() > 0.01) {
+	    if (ng.Length() > 0.01 && isClear) {
 	       MatrixD gyroMat = GYRO.WorldMatrix;
 	       var diff = diffGravity(gyroMat.Left, ng, gyroMat.Up);
 	       GYRO.Yaw =(float) missile.pidR.Filter(-diff,2);

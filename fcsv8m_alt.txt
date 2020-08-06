@@ -64,6 +64,8 @@ IMySoundBlock fcsSound = null;
 List<IMyTerminalBlock> fcsLightList = new List<IMyTerminalBlock>();
 List<IMyTerminalBlock> lockBlockList = new List<IMyTerminalBlock>();
 List<IMyTerminalBlock> searchBlockList = new List<IMyTerminalBlock>();
+IMyRemoteControl remoteBlock = null;
+Vector3D piratePosition = Vector3D.Zero;
 
 // --------- 搜索参数设置 ------------
 double SearchDistance = 5000;//常规搜索距离
@@ -188,7 +190,7 @@ break;
 }
 }
 
-string displayVector3D(Vector3D tar) {
+static string displayVector3D(Vector3D tar) {
 return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
 }
 
@@ -388,7 +390,12 @@ void ShipScan(){
 		pulseT = t;
 		tPulse = true;
 		}
-		} else if (rotorLidarList.Count > 0) {
+		}
+                        else if (remoteBlock != null && remoteBlock.GetNearestPlayer(out piratePosition) && isInRange(piratePosition)) {
+                        tHas = true;
+                        targetPosition = piratePosition;
+                        }
+                        else if (rotorLidarList.Count > 0) {
                         direction = rotorLidarList[0].WorldMatrix.Forward;
                         targetPosition = rotorLidarList[0].GetPosition() + direction * SearchDistance;
 		tHas = true;
@@ -499,9 +506,11 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 		int i = 0;
 		foreach(Target MyTarget in MyTargetList.ToList()){
 		MyDetectedEntityInfo TrackTarget = MyShip.TrackTarget(MyTarget, i++);
-		if(!TrackTarget.IsEmpty() && TrackTarget.EntityId == MyTarget.EntityId
+		if(!TrackTarget.IsEmpty()
+                        // && TrackTarget.EntityId == MyTarget.EntityId
 		// add by kaien
 		&& (TrackTarget.Position - MyShip.Cockpit.GetPosition()).Length() < SearchDistance
+		&& JudgeTargetRelationship(TrackTarget)
 		){
 			MyTarget.UpdateMotionInfo(TrackTarget);
 			// add by kaien TOTEST
@@ -543,10 +552,10 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 
 // 脉冲搜索并转入锁定
 void ShipPulseScan(){
-Vector3D CenterPoint = MyShip.Cockpit.GetPosition() + MyShip.Cockpit.WorldMatrix.Forward*PulseDistance;
+Vector3D CenterPoint = MyShip.Cockpit.GetPosition() + MyShip.Cockpit.WorldMatrix.Forward*SearchDistance;
 	foreach(IMyCameraBlock c in MyShip.Cameras){
 		if(c.IsActive){
-			CenterPoint = c.GetPosition() + c.WorldMatrix.Forward*PulseDistance;
+			CenterPoint = c.GetPosition() + c.WorldMatrix.Forward*SearchDistance;
 		}
 	}
 ShipPulseScan(CenterPoint);
@@ -585,20 +594,15 @@ void ShipLock(){
 			if(c.IsActive){
 				double distance = Vector3D.Distance(c.GetPosition(), MyTargetList[selectedTarget].Position) + MyTargetList[selectedTarget].Diameter + 100;
 				MyDetectedEntityInfo target = c.Raycast(distance,0,0);
-                                debugInfo="lock"+"\n";
 				if(!target.IsEmpty()){
-                                debugInfo+="found"+"\n";
 					Vector3D HitPoint = new Vector3D();
 					Vector3D.TryParse(target.HitPosition.ToString(), out HitPoint);
 					MatrixD TargetMainMatrix = target.Orientation;   
 					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
 					MyTargetList[selectedTarget].AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - target.Position, TargetLookAtMatrix);
-                                        debugInfo+=MyTargetList[selectedTarget].AccurateLockPositionToTarget.Length()+"\n";
-                                        debugInfo+=selectedTarget+"\n";
 					//NeedAimMode = 1;
 				}
 				else{
-                                debugInfo="Clear\n";
 					MyTargetList[selectedTarget].AccurateLockPositionToTarget = new Vector3D();
 				}
 			}
@@ -615,7 +619,7 @@ void ShipAim(){
 		
 		Vector3D TargetPosition = MyTarget.Position;
 		if(IsAimDeviation){
-			Vector3D dev_move = Vector3D.TransformNormal(MyShip.TrackDeviationToTarget, MyTarget.Orientation);
+			Vector3D dev_move = Vector3D.TransformNormal(MyTarget.trackOffset, MyTarget.Orientation);
 			TargetPosition = TargetPosition + dev_move;
 		}
 		
@@ -695,14 +699,14 @@ void ShipNavigation(string arguments){
 
 // 执行自动开火
 void ShipAutoFire(){
-	if (MyShip.Cockpit.IsUnderControl && NeedWeaponMode == 1) return;
+	if (MyShip.Cockpit.IsUnderControl && NeedWeaponMode == 2) return;
 	if(NeedAutoFire && NeedAimMode == 1 && MyTargetList.Count>0){
 		Target MyTarget = MyTargetList[selectedTarget];
 		if(Vector3D.Distance(MyShip.Position, MyTarget.Position) <= AutoFireDistance){
 			MyShip.WeaponsShoot();
 		}
 		// add by kaien
-		if (NeedWeaponMode == 1) {
+		if (NeedWeaponMode == 2) {
 			PlayAction(FireTimer2,"TriggerNow");
 		}
 	}
@@ -1089,7 +1093,10 @@ void GetBlocks(){
 	GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock> (tmpList, b => b.CustomName.Contains(lockNameTag));
 	lockBlockList.AddRange(tmpList);	
 	GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock> (tmpList, b => b.CustomName.Contains(searchNameTag));
-	searchBlockList.AddRange(tmpList);	
+	searchBlockList.AddRange(tmpList);
+
+            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl> (tmpList);
+            if (tmpList.Count>0) remoteBlock = (IMyRemoteControl)tmpList[0];
 }
 
 // ==== 飞船类 ====
@@ -1359,21 +1366,23 @@ public class Ship
 	}
 
 	public bool isNear(MyDetectedEntityInfo ft, Target t) {
-	       var ftD = Vector3D.Distance(ft.BoundingBox.Max, ft.BoundingBox.Min)/2;
-	       var maxD = ftD > t.Diameter ? ftD : t.Diameter;
-	       return (ft.Position - t.Position).Length() < maxD * 5;
+                   return true;
+//	       var ftD = Vector3D.Distance(ft.BoundingBox.Max, ft.BoundingBox.Min)/2;
+//	       var maxD = ftD > t.Diameter ? ftD : t.Diameter;
+//	       return (ft.Position - t.Position).Length() < maxD * 5;
 	}
 	
 	//追踪目标
 	private int TT_Now_i;
-	public Vector3D TrackDeviationToTarget; //基于目标坐标系的偏移量，用来修正中心锁定的问题
+	//public Vector3D TrackDeviationToTarget; //基于目标坐标系的偏移量，用来修正中心锁定的问题
 	public MyDetectedEntityInfo TrackTarget(Target Tgt, int idx){
 		
 		MyDetectedEntityInfo FoundTarget = new MyDetectedEntityInfo();
 		
-		Vector3D posmove = Vector3D.TransformNormal(this.TrackDeviationToTarget, Tgt.Orientation);
+		Vector3D posmove = Vector3D.TransformNormal(Tgt.trackOffset, Tgt.Orientation);
+                        Vector3D buff = Vector3D.Normalize(Tgt.Position + posmove - this.Position) * 10;
 		
-		Vector3D lidarHitPoint = Tgt.Position + posmove + (t - Tgt.TimeStamp)*Tgt.Velocity/60; //这个碰撞点算法是最正确的
+		Vector3D lidarHitPoint = Tgt.Position + posmove + (t - Tgt.TimeStamp)*Tgt.Velocity/60 + buff; //这个碰撞点算法是最正确的
 		
 		List<IMyCameraBlock> RightAngleCameras = GetCanScanCameras(this.Cameras, lidarHitPoint);//获取方向正确的摄像头数量
 		// a b k multi-mode
@@ -1403,7 +1412,9 @@ public class Ship
 				FoundTarget = RightAngleCameras[TT_Now_i].Raycast(lidarHitPoint);
 				TT_Now_i += 1;
 				if(TT_Now_i >= RightAngleCameras.Count){TT_Now_i=0;}
-				if(!FoundTarget.IsEmpty() && FoundTarget.EntityId == Tgt.EntityId){
+				if(!FoundTarget.IsEmpty()
+                                                   // && FoundTarget.EntityId == Tgt.EntityId
+                                                   ){
 					return FoundTarget;
 				}
 			}
@@ -1426,7 +1437,9 @@ public class Ship
 						FoundTarget = RightAngleCameras[TT_Now_i].Raycast(lidarHitPoint);
 						TT_Now_i += 1;
 						if(TT_Now_i >= RightAngleCameras.Count){TT_Now_i=0;}
-						if(!FoundTarget.IsEmpty() && FoundTarget.EntityId == Tgt.EntityId){
+						if(!FoundTarget.IsEmpty()
+                                                                          //&& FoundTarget.EntityId == Tgt.EntityId
+                                                                          ){
 							return FoundTarget;
 						}
 					}
@@ -1438,20 +1451,26 @@ public class Ship
 			if(ScanSpeed >= 1 || t%Math.Ceiling(1/ScanSpeed)==0){
 				int LostTick = t - Tgt.TimeStamp;
 				double S_Radius = Tgt.Diameter*1.5; //搜索半径为目标直径1.5倍
-				double S_Interval = Tgt.Diameter/5; //搜索间隙是目标直径的1/5
-				Vector3D CenterPoint = Tgt.Position + Tgt.Velocity*LostTick/60 + Vector3D.Normalize(Tgt.Position - this.Position)*Tgt.Diameter/2;
+                                                if (S_Radius < 10) S_Radius = 10; 
+				double S_Interval = S_Radius/10D; //搜索间隙是目标直径的1/10
+				Vector3D CenterPoint = lidarHitPoint;
+                                                //Tgt.Position + Tgt.Velocity*LostTick/60 + Vector3D.Normalize(Tgt.Position - this.Position)*Tgt.Diameter/2;
 				List<Vector3D> Points = new List<Vector3D>();
 				Points.Add(CenterPoint);
 				
 				//这里计算出与飞船和目标连线垂直，且互相垂直的两个向量，用作x和y方向遍历
 				Vector3D Vertical_X = CaculateVerticalVector((CenterPoint - this.Position), CenterPoint);
 				Vector3D Vertical_Y = Vector3D.Normalize(Vector3D.Cross((CenterPoint - this.Position), Vertical_X));
-				for(double x = 0; x < S_Radius; x += S_Interval){
-					for(double y = 0; y < S_Radius; y += S_Interval){
+				for(double x = 0; x < S_Radius/2; x += S_Interval){
+					for(double y = 0; y < S_Radius/2; y += S_Interval){
 						Points.Add(CenterPoint + Vertical_X*x + Vertical_Y*y);
 						Points.Add(CenterPoint + Vertical_X*(-x) + Vertical_Y*y);
 						Points.Add(CenterPoint + Vertical_X*x + Vertical_Y*(-y));
 						Points.Add(CenterPoint + Vertical_X*(-x) + Vertical_Y*(-y));
+						Points.Add(CenterPoint + Vertical_X*(S_Radius-x) + Vertical_Y*(S_Radius-y));
+						Points.Add(CenterPoint + Vertical_X*(-S_Radius+x) + Vertical_Y*(S_Radius-y));
+						Points.Add(CenterPoint + Vertical_X*(S_Radius-x) + Vertical_Y*(-S_Radius+y));
+						Points.Add(CenterPoint + Vertical_X*(-S_Radius+x) + Vertical_Y*(-S_Radius+y));
 					}
 				}
 				
@@ -1459,10 +1478,6 @@ public class Ship
 				if(!FoundTarget.IsEmpty() && isNear(FoundTarget, Tgt)){
 					MatrixD TargetMainMatrix = FoundTarget.Orientation;   
 					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
-					Vector3D hitpoint = new Vector3D();
-					Vector3D.TryParse(FoundTarget.HitPosition.ToString(), out hitpoint);
-					hitpoint = hitpoint + Vector3D.Normalize(hitpoint - this.Position)*2;
-					this.TrackDeviationToTarget = Vector3D.TransformNormal(hitpoint - FoundTarget.Position, TargetLookAtMatrix);
 					return FoundTarget;
 				}
 			}
@@ -1719,12 +1734,13 @@ public class Target
 	public int TimeStamp;
 	public MyDetectedEntityType Type;
 	public Vector3D Position;
-	public Vector3D Velocity;
+	public Vector3D Velocity = Vector3D.Zero;
 	public Vector3D Acceleration;
 	public Vector3D HitPosition;
 	public MatrixD Orientation;
 	public Vector3D AccurateLockPositionToTarget;
-	
+        public Vector3D trackOffset = Vector3D.Zero;
+
 	public Target(){
 		this.EntityId = 0;
 		this.TimeStamp = t;
@@ -1742,14 +1758,30 @@ public class Target
 	}
 	public void UpdateMotionInfo(MyDetectedEntityInfo NewInfo){
 		this.Diameter = Vector3D.Distance(NewInfo.BoundingBox.Max, NewInfo.BoundingBox.Min)/2;
+		Vector3D position = NewInfo.Position;
+		// Vector3D v = this.Velocity;
+		// if (this.Position != Vector3D.Zero && t - this.TimeStamp != 0) {
+		// 	v = (position - this.Position) / ((t - this.TimeStamp)/60D);
+		// }
+		// debugInfo = displayVector3D(v);
 		Vector3D.TryParse(NewInfo.Position.ToString(), out this.Position);
 		Vector3D.TryParse(NewInfo.HitPosition.ToString(), out this.HitPosition);
 		Vector3D velocity = new Vector3D();
-		Vector3D.TryParse(NewInfo.Velocity.ToString(), out velocity);
+		// Vector3D.TryParse(NewInfo.Velocity.ToString(), out velocity); // something wrong, can't be used
+		// velocity = v;
+                        velocity = NewInfo.Velocity;
 		this.Acceleration = (velocity - this.Velocity)*60/(t - this.TimeStamp > 0 ? t - this.TimeStamp : 1);
 		this.Velocity = velocity;
 		this.Orientation = NewInfo.Orientation;
 		this.TimeStamp = t;
+                        this.EntityId = NewInfo.EntityId;
+                        Vector3D hitpoint = new Vector3D();
+                        Vector3D.TryParse(NewInfo.HitPosition.ToString(), out hitpoint);
+                        //hitpoint = hitpoint + Vector3D.Normalize(hitpoint - this.Position)*2;
+                        MatrixD TargetMainMatrix = NewInfo.Orientation;   
+                        MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
+
+                        this.trackOffset = Vector3D.TransformNormal(hitpoint - NewInfo.Position, TargetLookAtMatrix);
 	}
 }
 
@@ -1958,3 +1990,14 @@ void SetBlocksValueColor(List<IMyTerminalBlock> blocks, String name, Color v) {
 			b.ApplyAction(o?"OnOff_On":"OnOff_Off");
 		}
 	}
+
+bool isInRange(Vector3D target) {
+debugInfo = displayVector3D(target);
+Vector3D myPosition = MyShip.Cockpit.GetPosition();
+Vector3D targetVector = target - myPosition;
+if ((targetVector).Length() > SearchDistance) return false;
+Vector3D tvn = Vector3D.Normalize(targetVector);
+if (Vector3D.Dot(tvn, MyShip.Cockpit.WorldMatrix.Up) < 0) return false;
+if (Vector3D.Dot(tvn, MyShip.Cockpit.WorldMatrix.Forward) < 0) return false;
+return true;
+}
