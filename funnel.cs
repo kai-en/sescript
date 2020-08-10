@@ -68,6 +68,8 @@ Random rnd = new Random();
                 public int hingeIdx = -1;
                 public long lastSupStart = -7200;
                 public long lastTimeStamp = 0;
+                public long lastInRangeStart = 0;
+                public bool allowAttack = true;
                 // public const int maxHis = 200;
                 // public double[] hisVelocity = new double[maxHis];
                 // public int hisIdx = 0;
@@ -210,6 +212,14 @@ Echo(debugInfo);
                 //Runs Guidance Block (foreach missile)
                 //---------------------------------------
                 debugInfo = "";
+                var panelInfo = gcTargetPanel.GetPublicTitle();
+	    var tokens = panelInfo.Split(':');
+	    Vector3D targetPanelPosition = Vector3D.Zero;
+	    Vector3D targetPanelVelocity = Vector3D.Zero;
+	    if (panelInfo.StartsWith("[T:") && tokens.Length >= 7) {
+	       targetPanelPosition = new Vector3D(Convert.ToDouble(tokens[1]),Convert.ToDouble(tokens[2]),Convert.ToDouble(tokens[3]));
+	       targetPanelVelocity = new Vector3D(Convert.ToDouble(tokens[4]),Convert.ToDouble(tokens[5]),Convert.ToDouble(tokens[6]));
+	    }
                 for (int i = 0; i < FUNNELS.Count; i++)
                 {
                     var ThisFunnel = FUNNELS[i];
@@ -220,7 +230,7 @@ Echo(debugInfo);
                         if ((ThisFunnel.GYRO.GetPosition() - Me.GetPosition()).Length() > ThisShipSize)
                         { ThisFunnel.IS_CLEAR = true; }
                     }
-                    STD_GUIDANCE(ThisFunnel, ThisFunnel.IS_CLEAR, i); 
+                    STD_GUIDANCE(ThisFunnel, ThisFunnel.IS_CLEAR, i, targetPanelPosition, targetPanelVelocity); 
 
                     //Disposes If Out Of Range Or Destroyed 
                     bool Isgyroout = ThisFunnel.GYRO.CubeGrid.GetCubeBlock(ThisFunnel.GYRO.Position) == null;
@@ -280,8 +290,14 @@ Echo(debugInfo);
             {
 
                 //Finds Blocks (performs 1 gts)
-                List<IMyTerminalBlock> GYROS = new List<IMyTerminalBlock>();
-                GridTerminalSystem.GetBlocksOfType<IMyGyro>(GYROS, b => b.CustomName.Contains(FTag));
+                List<IMyTerminalBlock> GYROS_temp = new List<IMyTerminalBlock>();
+                GridTerminalSystem.GetBlocksOfType<IMyGyro>(GYROS_temp, b => b.CustomName.Contains(FTag));
+                List<IMyTerminalBlock> GYROS = GYROS_temp.Where(g => {
+                  foreach(var f in FUNNELS) {
+                    if (g.CubeGrid == f.GYRO.CubeGrid) return false;
+                  }
+                  return true;
+                }).ToList();
                 List<IMyTerminalBlock> TURRETS = new List<IMyTerminalBlock>();
                 GridTerminalSystem.GetBlocksOfType<IMyLargeTurretBase>(TURRETS, b => b.CustomName.Contains(FTag));
                 List<IMyThrust> THRUSTERS = new List<IMyThrust>();
@@ -383,6 +399,21 @@ Echo(debugInfo);
 		}
                         NEW_FUNNEL.POWER = TempPower[0];
                         NEW_FUNNEL.MERGE = TempMerges[0];
+
+                        // check subgrid
+                        if (NEW_FUNNEL.GYRO.CubeGrid != Me.CubeGrid) {
+                        NEW_FUNNEL.runningMode = CM_SUP;
+                        NEW_FUNNEL.IS_CLEAR = true;
+                        double nearest = 99999;
+                        for (int i = 0; i < hingeList.Count; i++) {
+                        double d = (hingeList[i].GetPosition() - NEW_FUNNEL.GYRO.GetPosition()).Length();
+                        if (d < nearest) {
+                        NEW_FUNNEL.hingeIdx = i;
+                        nearest = d;
+                        }
+                        }
+                        }
+
                         FUNNELS.Add(NEW_FUNNEL);
                         Lstrundata = "Launched Funnel:" + FUNNELS.Count;
                         return true;
@@ -421,6 +452,20 @@ Echo(debugInfo);
             {
                 Echo(INT + "");
                 FUNNEL ThisFunnel = FUNNELS[INT];
+                //Adds Additional Mass & Sets Accel (ovverrides If Possible)
+                double number;
+                if (double.TryParse(ThisFunnel.GYRO.CustomData, out number))
+                { double.TryParse(ThisFunnel.GYRO.CustomData, out ThisFunnel.MissileMass); }
+                else ThisFunnel.MissileMass = F_MASS;
+                ThisFunnel.MissileAccel = ThisFunnel.MissileThrust / ThisFunnel.MissileMass;
+
+                //Sets Grid Type
+                ThisFunnel.IsLargeGrid = ThisFunnel.GYRO.CubeGrid.GridSizeEnum == MyCubeSize.Large;
+                ThisFunnel.FuseDistance = ThisFunnel.IsLargeGrid ? 16 : 7;
+
+	    PlayActionList(ThisFunnel.SPOTLIST, "OnOff_On");
+
+                if(ThisFunnel.runningMode != CM_STD) return;
                 ThisFunnel.MissileThrust = 0;
                 
                 //Preps Battery For Launch
@@ -497,44 +542,32 @@ Echo(debugInfo);
 
                 //-----------------------------------------------------
 
-                //Adds Additional Mass & Sets Accel (ovverrides If Possible)
-                double number;
-                if (double.TryParse(ThisFunnel.GYRO.CustomData, out number))
-                { double.TryParse(ThisFunnel.GYRO.CustomData, out ThisFunnel.MissileMass); }
-                else ThisFunnel.MissileMass = F_MASS;
-                ThisFunnel.MissileAccel = ThisFunnel.MissileThrust / ThisFunnel.MissileMass;
-
-                //Sets Grid Type
-                ThisFunnel.IsLargeGrid = ThisFunnel.GYRO.CubeGrid.GridSizeEnum == MyCubeSize.Large;
-                ThisFunnel.FuseDistance = ThisFunnel.IsLargeGrid ? 16 : 7;
-
-	    PlayActionList(ThisFunnel.SPOTLIST, "OnOff_On");
             }
             #endregion
 
 
             //Standard Guidance Routine
             #region Guidance #RFC#
-            void STD_GUIDANCE(FUNNEL ThisFunnel, bool isClear, int idx)
+            void STD_GUIDANCE(FUNNEL ThisFunnel, bool isClear, int idx, Vector3D targetPanelPosition, Vector3D targetPanelVelocity)
             {
                 var ENEMY_POS = new Vector3D();
 	    // a b K
-	    bool targetPanelHasTarget = false;
-	    var panelInfo = gcTargetPanel.GetPublicTitle();
-	    var tokens = panelInfo.Split(':');
-	    Vector3D targetPanelPosition = Vector3D.Zero;
-	    Vector3D targetPanelVelocity = Vector3D.Zero;
-	    if (panelInfo.StartsWith("[T:") && tokens.Length >= 7) {
-	       targetPanelPosition = new Vector3D(Convert.ToDouble(tokens[1]),Convert.ToDouble(tokens[2]),Convert.ToDouble(tokens[3]));
-	       targetPanelVelocity = new Vector3D(Convert.ToDouble(tokens[4]),Convert.ToDouble(tokens[5]),Convert.ToDouble(tokens[6]));
-	       targetPanelHasTarget = true;
-	    }
+	    bool targetPanelHasTarget = targetPanelPosition != Vector3D.Zero;
+	    // var panelInfo = gcTargetPanel.GetPublicTitle();
+	    // var tokens = panelInfo.Split(':');
+	    // Vector3D targetPanelPosition = Vector3D.Zero;
+	    // Vector3D targetPanelVelocity = Vector3D.Zero;
+	    // if (panelInfo.StartsWith("[T:") && tokens.Length >= 7) {
+	    //    targetPanelPosition = new Vector3D(Convert.ToDouble(tokens[1]),Convert.ToDouble(tokens[2]),Convert.ToDouble(tokens[3]));
+	    //    targetPanelVelocity = new Vector3D(Convert.ToDouble(tokens[4]),Convert.ToDouble(tokens[5]),Convert.ToDouble(tokens[6]));
+	    //    targetPanelHasTarget = true;
+	    // }
 
                 // setup by mode
 	    bool usePanel = false;
                 if(targetPanelHasTarget && ThisFunnel.runningMode == CM_ATK){
 	        ENEMY_POS = targetPanelPosition;
-                    if (ThisFunnel.atkOffsetStart == 0 || timestamp - ThisFunnel.atkOffsetStart > 300) {
+                    if (timestamp - ThisFunnel.atkOffsetStart > 1200) {
                     // reset atkOffset
 	        Vector3D dir = ENEMY_POS - RC.GetPosition();
 	        dir = Vector3D.Normalize(dir);
@@ -557,12 +590,16 @@ Echo(debugInfo);
                     if (back < 0) back -= 200;
                     else back += 200;
                     double upL = rnd.Next(1, 800) - 400;
+                    Vector3D offsetV = Vector3D.Zero;
                     if (ng.Length() > 0.05 || upL > 0) {
                       upL = Math.Abs(upL) + 200;
+                      offsetV = Vector3D.Normalize(offsetMD.Up * upL *4 + offsetMD.Right*right + offsetMD.Backward*back) * 400;
                     } else {
                       upL -= 200;
+                      offsetV = Vector3D.Normalize(offsetMD.Up * upL + offsetMD.Right*right + offsetMD.Backward*back) * 400;
                     }
-                    ThisFunnel.atkOffset = offsetMD.Right * right + offsetMD.Backward * back + offsetMD.Up * upL;
+                    ThisFunnel.atkOffset = offsetV;
+                    ThisFunnel.atkOffsetStart = timestamp;
                     }
 	        usePanel = true;
 	        ENEMY_POS = ENEMY_POS + ThisFunnel.atkOffset;
@@ -590,22 +627,22 @@ Echo(debugInfo);
                     ENEMY_POS = RC.GetPosition() + dir*70;
                     ThisFunnel.TargetVelocity = RC.GetShipVelocities().LinearVelocity;
                     bool canRunNext = (ENEMY_POS - ThisFunnel.MIS_PREV_POS).Length() < 2 && (ThisFunnel.TargetVelocity - ThisFunnel.lastVelocity).Length()<1;
-                    debugInfo += "\nidx can runnext: " + idx + " " + canRunNext + "\n"; 
-                    debugInfo += "\nidx now hinge: " + ThisFunnel.hingeIdx + "\n"; 
+//                    debugInfo += "\nidx can runnext: " + idx + " " + canRunNext + "\n"; 
+//                    debugInfo += "\nidx now hinge: " + ThisFunnel.hingeIdx + "\n"; 
                     if (ThisFunnel.runningMode == CM_STD) {
                          if (commandMode == CM_ATK) ThisFunnel.runningMode = CM_ATK;
                          else if (commandMode == CM_SUP && canRunNext) {
                            List<IMyMotorStator> hingeCanUse = new List<IMyMotorStator>();
                            int usedIdx = -1;
                            double length = 99999;
-                           debugInfo += "\ntryget: " + idx + "\n";
+//                           debugInfo += "\ntryget: " + idx + "\n";
                            for(int i = 0; i < hingeList.Count; i++) {
                                bool used = false;
                                foreach(var f in FUNNELS) {
                                    if (f.hingeIdx == i) used = true;
                                }
                                if (used) continue;
-                               debugInfo += "\nidx can use: " + idx + " " + i + "\n"; 
+//                               debugInfo += "\nidx can use: " + idx + " " + i + "\n"; 
                                var l = (hingeList[i].GetPosition() - ThisFunnel.GYRO.GetPosition()).Length();
                                if (l < length) {
                                    length = l;
@@ -623,7 +660,7 @@ Echo(debugInfo);
                          }
                     }
                 } else if (ThisFunnel.runningMode == CM_SUP) {
-                  debugInfo += "\nsuping: " + idx + " " + ThisFunnel.hingeIdx;
+//                  debugInfo += "\nsuping: " + idx + " " + ThisFunnel.hingeIdx;
                   // 对应hinge是否已连接, 可连接, 未连接
                   var hinge = hingeList[ThisFunnel.hingeIdx];
                   var sb = hinge.IsAttached;
@@ -632,6 +669,7 @@ Echo(debugInfo);
                   }
                   if (sb && commandMode == CM_STD) {
                   hinge.ApplyAction("Detach");
+                  //debugInfoF += "\ntc: " + idx + " " + ThisFunnel.THRUSTERS.Count + "\n";
                     foreach (var t in ThisFunnel.THRUSTERS) {
                     t.ApplyAction("OnOff_On");
                     }
@@ -773,10 +811,13 @@ Echo(debugInfo);
                 { LOS_Delta = LOS_New - LOS_Old; LOS_Rate = LOS_Delta.Length() / Global_Timestep; }
 
 // 4 推力 / 质量 = 可以提供的加速度的长度 sdl
-
 double sdl = ThisFunnel.THRUSTERS[0].MaxEffectiveThrust * ThisFunnel.THRUSTERS.Count / ThisFunnel.MissileMass;
+//debugInfo += "\nsdl: " + sdl + "\n";
+//debugInfo += "\nat: " + ThisFunnel.THRUSTERS[0].MaxEffectiveThrust * ThisFunnel.THRUSTERS.Count + "\n";
+//debugInfo += "\nmass: " + ThisFunnel.MissileMass + "\n";
+
 // 1 求不需要的速度
-//debugInfo += "\ntr: " + targetRange.Length() + "\n";
+debugInfo += "\ntr: " + targetRange.Length() + "\n";
 Vector3D tarN = Vector3D.Normalize(targetRange);
 Vector3D graN = Vector3D.Normalize(ng);
 double sdlg = sdl;
@@ -859,9 +900,10 @@ double rdl = rd.Length();
 
 // 8 总加速度
 Vector3D sd = rd;
-
+//debugInfo += "\nrd: " + rd.Length() + "\n";
 double percent = rd.Length() / sdl;
 if (percent > 1) percent = 1;
+//debugInfo += "\np1: " + percent + "\n";
 
 // 9 总加速度方向
 Vector3D nam = ThisFunnel.GYRO.WorldMatrix.Up;// 要求gyro 头前
@@ -886,9 +928,23 @@ if (tad < TA_L) percent = 0; // 转向中, 不能喷
 else percent *= tad*tad; // 有影响
 
 //debugInfo += "\nperc: " + percent + "\n";
+//debugInfo += "\ntad: " + tad + "\n";
 
 // 攻击模式
-if (ThisFunnel.runningMode == CM_ATK && targetRange.Length() < 800) {
+var trr = targetPanelPosition - MissilePosition;
+if (ThisFunnel.runningMode == CM_ATK && trr.Length() < 800 && ThisFunnel.lastInRangeStart == 0) {
+ThisFunnel.lastInRangeStart = timestamp;
+}
+if (ThisFunnel.lastInRangeStart != 0 && timestamp > ThisFunnel.lastInRangeStart + 300) {
+ThisFunnel.allowAttack = true;
+}
+
+if (ThisFunnel.runningMode == CM_ATK && trr.Length() > 800) {
+ThisFunnel.allowAttack = false;
+ThisFunnel.lastInRangeStart = 0;
+}
+
+if (ThisFunnel.runningMode == CM_ATK && trr.Length() < 800 && ThisFunnel.allowAttack) {
 // 预瞄
 Vector3D HitPosition = HitPointCaculate(MissilePosition, MissileVelocity, Vector3D.Zero, targetPanelPosition, ThisFunnel.TargetVelocity, Vector3D.Zero, Weapon_1_BulletInitialSpeed,Weapon_1_BulletAcceleration,Weapon_1_BulletMaxSpeed);
 Vector3D hr = HitPosition - MissilePosition;

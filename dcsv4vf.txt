@@ -3,9 +3,9 @@ Kaien's drone control system V4
 ?id=1406061291
 
 last update:
-v5.0.0 20190507
+v5.1.0 20200807
 -----------------
-vf walk mode
+funnel adapt
 
 ...
 
@@ -248,7 +248,7 @@ int msBuildStart = 0;
 int msBuildInterval = 20 * 60;
 bool autoFireMissile = false;
 bool ignoreTag(string n) {
-return n.Contains("#A#") || n.Contains("#B#");
+return n.Contains("#A#") || n.Contains("#B#") || n.Contains("RCS");
 }
 
 // sm mode
@@ -3271,7 +3271,7 @@ return false;
 
 if (!ignoreThrustersOnConnectors)
 {
-GridTerminalSystem.GetBlocksOfType(offGridThrust, block => block.CubeGrid != referenceList[0].CubeGrid && !block.CustomName.ToLower().Contains(ignoredThrustNameTag.ToLower()));
+GridTerminalSystem.GetBlocksOfType(offGridThrust, block => block.CubeGrid != referenceList[0].CubeGrid && !ignoreTag(block.CustomName));
 }
 else
 {
@@ -3284,11 +3284,10 @@ foreach (IMyShipConnector thisConnector in connectors)
 connectorGrids.Add(thisConnector.CubeGrid);
 }
 
-GridTerminalSystem.GetBlocksOfType(offGridThrust, block => (block.CubeGrid != referenceList[0].CubeGrid && !connectorGrids.Contains(block.CubeGrid) && !block.CustomName.ToLower().Contains(ignoredThrustNameTag.ToLower()))
+GridTerminalSystem.GetBlocksOfType(offGridThrust, block => (block.CubeGrid != referenceList[0].CubeGrid && !connectorGrids.Contains(block.CubeGrid) &&  !ignoreTag(block.CustomName))
 ||
 (block.CubeGrid == Me.CubeGrid && block.CustomName.Contains("Hydrogen")
 )
-
 );
 }
 
