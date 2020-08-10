@@ -15,21 +15,12 @@ CockpitNameTag=R_FORWARD
 DCSLCDNameTag=DCS_LCD
 fighterFcsName=Programmable block fcs
 LCDNameTag=Text panel fcs
-flyByDistance=0
+dockingList=0,0,-250;0,50.5,-16.14;0,-3.78,-15.6;0,-14.89,-16.14
 upMode=true
 flyByOffsetDirection=LEFT
-flyByForwardDistance=250
-flyByUpDistance=0
 dockingForward=FORWARD
 dockingUp=UP
-dockingLeftDistance=0
-dockingUpDistance=-33.5
-dockingForwardDistance=61.5
 dockingApproach=DOWN
-dockingApproachDistance=40
-dockingApproachDistanceLeft=0
-dockingApproachDistanceUp=-53.5
-dockingApproachDistanceForward=61.5
 soundBlockNameTag=Sound Block fcs
 shipLength=30
 commandAllTic = 100
@@ -309,7 +300,7 @@ attackMode=false;
 flyByOn=false;
 dockingOn=false;
 resetThrusters();
-isApproach=false;
+approachIdx = 0;
 PlayActionList(connectors, "OnOff_On");
 PlayActionList(landingGears, "OnOff_On");
 SetGyroOverride(false);
@@ -320,6 +311,7 @@ attackMode=false;
 flyByOn = !flyByOn;
 if (flyByOn) {
 dockingOn=false;
+resetApproachIdx();
 setDampenersOverride(Cockpit, false);
 PlayActionList(thrusters, "OnOff_On");
 setAhhOn(false);
@@ -328,7 +320,7 @@ PlayActionList(landingGears, "OnOff_Off");
 }
 if (!flyByOn) {
 resetThrusters();
-isApproach=false;
+resetApproachIdx();
 PlayActionList(connectors, "OnOff_On");
 PlayActionList(landingGears, "OnOff_On");
 SetGyroOverride(false);
@@ -413,95 +405,6 @@ break;
 case "ATTACK":
 if (flyByOn) {
 attackMode = !attackMode;
-}
-break;
-case "RPW":
-{
-double l,u,f;
-string h,t;
-l = u = f = 0;
-h = t = "";
-recordNp(out l,out u,out f,out h,out t);
-switch(t) {
-case("UP"):
-if (Math.Abs(l)>20) {
-cfg.Set("flyByOffsetDirection", "LEFT");
-cfg.Set("flyByDistance",""+l);
-cfg.Set("flyByForwardDistance", ""+f);
-cfg.Set("flyByUpDistance", ""+u);
-} else if (h=="BACKWORD") {
-cfg.Set("flyByOffsetDirection", "BACKWARD");
-cfg.Set("flyByDistance",""+(-f));
-cfg.Set("flyByUpDistance", ""+u);
-} else {
-cfg.Set("flyByDistance",""+u);
-cfg.Set("flyByOffsetDirection", "UP");
-cfg.Set("flyByForwardDistance", ""+f);
-}
-break;
-case("DOWN"):
-cfg.Set("flyByDistance",""+(-u));
-cfg.Set("flyByOffsetDirection", "DOWN");
-cfg.Set("flyByForwardDistance", ""+f);
-break;
-case("LEFT"):
-cfg.Set("flyByDistance",""+l);
-cfg.Set("flyByOffsetDirection", "LEFT");
-cfg.Set("flyByForwardDistance", ""+f);
-cfg.Set("flyByUpDistance", ""+u);
-break;
-case("RIGHT"):
-cfg.Set("flyByDistance",""+(-l));
-cfg.Set("flyByOffsetDirection", "RIGHT");
-cfg.Set("flyByForwardDistance", ""+f);
-cfg.Set("flyByUpDistance", ""+u);
-break;
-}
-cfg.Save();
-}
-break;
-case "RPP":
-{
-double l,u,f;
-string h,t;
-l = u = f = 0;
-h = t = "";
-recordNp(out l,out u,out f,out h,out t);
-cfg.Set("dockingApproachDistanceLeft",""+l);
-cfg.Set("dockingApproachDistanceUp",""+u);
-cfg.Set("dockingApproachDistanceForward",""+f);
-cfg.Save();
-}
-break;
-case "RPD":
-{
-double l,u,f;
-string h,t;
-l = u = f = 0;
-h = t = "";
-recordNp(out l,out u,out f,out h,out t);
-if (connectors.Count>0){
-Base6Directions.Direction cUp = connectors[0].WorldMatrix.GetClosestDirection(Cockpit.WorldMatrix.Up);
-switch (cUp)
-{
-case Base6Directions.Direction.Forward:
-u += -4;
-break;
-case Base6Directions.Direction.Backward:
-u += 4;
-break;
-default:
-f += 4;
-break;
-}
-}
-
-cfg.Set("dockingForward",h);
-cfg.Set("dockingUp",t);
-cfg.Set("dockingLeftDistance",""+l);
-cfg.Set("dockingUpDistance",""+u);
-cfg.Set("dockingForwardDistance",""+f);
-cfg.Save();
 }
 break;
 case "FLOAT":
@@ -1292,7 +1195,7 @@ void ShowLCD()
 string br = "\n";
 
 string info = "";
-info += (rulerOn?"Turning":"") + "  Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (isApproach ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + br;
+info += (rulerOn?"Turning":"") + "  Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (approachIdx > 0 ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + br;
 info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") + (t - lastSendingTime<120 && t%60<30 ?"=>":"") + (t - lastReceivingTime<120 && t%60<30?"<=":"") + br;
 info += "Speed level: " + aeroSpeedLevel + " AHH: " + ahhOn + " " + Math.Round(ahh,1) + '\n';
 info += " Missile-Auto: " + autoFireMissile + br;
@@ -1302,9 +1205,11 @@ info += " Target: " + gcTargetPanel.GetPublicTitle() + "\n";
 }
 
 info += " Relative Position: (l u f h t)\n";
-info += " Wing: " + op2npd(flyByOffsetDirection, upMode, flyByDistance, flyByUpDistance, flyByForwardDistance) + "\n";
-info += " Prepare: " + r2(dockingApproachDistanceLeft) + " # " + r2(dockingApproachDistanceUp) + " # " + r2(dockingApproachDistanceForward) + " # " + dd(dockingForward) + " # " + dd(dockingUp) + "\n";
-info += " Dock: " + r2(dockingLeftDistance) + " # " + r2(dockingUpDistance) + " # " + r2(dockingForwardDistance) + " # " + dd(dockingForward) + " # " + dd(dockingUp) + "\n";
+if (dockingList.Count > 0)
+info += " Wing: " + op2npd(flyByOffsetDirection, upMode, displayVector3D(dockingList[0])) + "\n";
+info += " Prepare: " + dockingForward + " " + dd(dockingUp) + " " + displayVector3D(dockingList[approachIdx]) + "\n";
+if (dockingList.Count > 1)
+info += " Dock: " + dockingForward + " " + dd(dockingUp) + " " + displayVector3D(dockingList[dockingList.Count - 1]) + "\n";
 
 info += debugInfo + br;
 
@@ -1313,7 +1218,7 @@ for(int i = 0; i < LCD.Count; i ++)
 IMyTextSurface lcd = LCD[i] as IMyTextSurface;
 lcd.WriteText(info);
 if(flyByOn || dockingOn) {
-if(isApproach) lcd.FontColor = new Color(76,255,0);
+if(approachIdx > 0) lcd.FontColor = new Color(76,255,0);
 else lcd.FontColor = new Color(255,76,0);
 } else {
 lcd.FontColor = new Color(0,76,255);
@@ -1383,28 +1288,11 @@ break;
 }
 }
 
-string op2npd(string dir, bool isUp, double d, double u, double f) {
+string op2npd(string dir, bool isUp, string p) {
 string r="";
-switch(dir) {
-case("FORWARD"):
-r = "0" + " # " + r2(u) + " # " + r2(d) + " # " + "f" + " # " + "u";
-break;
-case("BACKWARD"):
-r = "0" + " # " + r2(u) + " # " + r2(-d) + " # " + (isUp?"f":"b") + " # " + "u";
-break;
-case("UP"):
-r = "0" + " # " + r2(d) + " # " + r2(f) + " # " + "f" + " # " + "u";
-break;
-case("DOWN"):
-r = "0" + " # " + r2(-d) + " # " + r2(f) + " # " + "f" + " # " + (isUp?"u":"d");
-break;
-case("LEFT"):
-r = r2(d) + " # " + r2(u) + " # " + r2(f) + " # " + "f" + " # " + (isUp?"u":"l");
-break;
-case("RIGHT"):
-r = r2(-d) + " # " + r2(u) + " # " + r2(f) + " # " + "f" + " # " + (isUp?"u":"r");
-break;
-}
+r += dir + " ";
+r += isUp ? "U" : "D";
+r += " " + p;
 return r;
 }
 
@@ -1472,7 +1360,7 @@ GridTerminalSystem.GetBlocksOfType<IMyLandingGear>(blocks);
 FilterSameGrid(Me.CubeGrid, ref blocks);
 landingGears = blocks;
 if (ptdSeparatedStart == 0 && !TestNotConnected(connectors) && !isBase) {
-isApproach=true;
+approachIdx=dockingList.Count - 1;
 PlayActionList(connectors, "Unlock");
 return;
 }
@@ -1500,7 +1388,7 @@ PlayActionList(connectors, "Lock");
 if (ptdSeparatedStart > 0 && t > ptdSeparatedStart + 182 && t < ptdSeparatedStart + 200) {
 PlayActionList(connectors, "Unlock");
 flyByOn = true;
-isApproach = true;
+approachIdx = dockingList.Count - 1;
 }
 
 if (ptdSeparatedStart == 0 || t < ptdSeparatedStart + 200) {
@@ -1511,7 +1399,7 @@ return;
 
 if ((!notDocked() || dockable()) && !isBase){
 dockingOn=true;
-isApproach = true;
+approachIdx = dockingList.Count - 1;
 }
 Cockpit = getBlockByName(CockpitNameTag) as IMyShipController;
 if(Cockpit == null)
@@ -1823,22 +1711,30 @@ string flyByOffsetDirection="LEFT";
 double flyByDistance=100;
 String motherCode=null;
 String sonCode="RADAR";
-double flyByForwardDistance=0;
-double flyByUpDistance=0;
 bool upMode=false;
-double dockingForwardDistance=-100;
-double dockingLeftDistance=0;
-double dockingUpDistance=-100;
 string dockingForward="FORWARD";
 string dockingUp="UP";
 bool dockingOn=false;
 string dockingApproach="DOWN";
-double dockingApproachDistance=50;
-double dockingApproachDistanceLeft=50;
-double dockingApproachDistanceUp=50;
-double dockingApproachDistanceForward=50;
+List<Vector3D> dockingList = new List<Vector3D>();
 float dtp=0F;
-bool isApproach=false;
+//bool isApproach=false;
+int approachIdx = 0;
+void resetApproachIdx() {
+approachIdx = 0;
+if (shipMatrix == MatrixD.Zero) return;
+MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
+Vector3D myToShip = Vector3D.TransformNormal(MePosition - shipPosition, shipLookAtMatrix);
+double n = 99999;
+for(int i = 0; i < dockingList.Count; i++) {
+var v = dockingList[i];
+var l = (myToShip - v).Length();
+if ( l < n) {
+approachIdx = i;
+n = l;
+}
+}
+}
 string commandCache=null;
 int commandStart=0;
 int commandWaitTic=10;
@@ -2105,10 +2001,8 @@ cfg.Get("CockpitNameTag", ref CockpitNameTag);
 cfg.Get("fighterFcsName", ref fighterFcsName);
 cfg.Get("LCDNameTag", ref LCDNameTag);
 cfg.Get("DCSLCDNameTag", ref DCSLCDNameTag);
-cfg.Get("flyByForwardDistance", ref flyByForwardDistance);
 cfg.Get("soundBlockNameTag", ref soundBlockNameTag);
 cfg.Get("upMode", ref upMode);
-cfg.Get("flyByUpDistance", ref flyByUpDistance);
 cfg.Get("homingTurretName", ref homingTurretName);
 cfg.Get("useTurretAsAimer", ref useTurretAsAimer);
 cfg.Get("ScanRange", ref ScanRange);
@@ -2131,16 +2025,21 @@ cfg.Get("susMode", ref susMode);
 cfg.Get("legMode", ref legMode);
 // new para here
 
-cfg.Get("dockingForwardDistance", ref dockingForwardDistance);
-cfg.Get("dockingLeftDistance", ref dockingLeftDistance);
-cfg.Get("dockingUpDistance", ref dockingUpDistance);
-cfg.Get("dockingForward", ref dockingForward);
-cfg.Get("dockingUp", ref dockingUp);
-cfg.Get("dockingApproach", ref dockingApproach);
-cfg.Get("dockingApproachDistance", ref dockingApproachDistance);
-cfg.Get("dockingApproachDistanceLeft", ref dockingApproachDistanceLeft);
-cfg.Get("dockingApproachDistanceUp", ref dockingApproachDistanceUp);
-cfg.Get("dockingApproachDistanceForward", ref dockingApproachDistanceForward);
+string tmps = "";
+cfg.Get("dockingList", ref tmps);
+string[] ps = tmps.Split(';');
+foreach (var s in ps) {
+string[] ss = s.Split(',');
+if (ss.Length < 3) continue;
+Vector3D v;
+try{
+v = new Vector3D(Convert.ToDouble(ss[0]),Convert.ToDouble(ss[1]),Convert.ToDouble(ss[2]));
+} catch {
+continue;
+}
+dockingList.Add(v);
+}
+
 cfg.Get("shipWidth", ref shipWidth);
 cfg.Get("shipHeight", ref shipHeight);
 cfg.Get("shipLength", ref shipLength);
@@ -2211,7 +2110,7 @@ string dr = "";
 
 // limit t when take off, prevent burn floor
 var tlimit = 1d;
-if (flyByOn && isApproach ) {
+if (flyByOn && approachIdx > 0 ) {
 if (speed > tlimit) speed = tlimit;
 if (speed < - tlimit) speed = -tlimit;
 }
@@ -2299,7 +2198,7 @@ Vector3D tmp = needSpeedToMe;
 Vector3D apDiff;
 double rate = 0.1;
 
-if (flyByOn && !isApproach) {
+if (flyByOn && approachIdx == 0) {
 long nKey = 0;
 double nDis = 0;
 int count = 0;
@@ -2389,7 +2288,7 @@ SetGyroOverride(true);
 } else
 {
 Vector3D t2m = targetPosition - MePosition;
-if (!isApproach) {
+if (approachIdx == 0) {
 var sd = shipDirectionToMe;
 if (needFlyByAim) {
 Vector3D flyByAimPositionToMe = Vector3D.Normalize(Vector3D.TransformNormal(flyByAimPosition - MePosition, refLookAtMatrix));
@@ -2448,7 +2347,7 @@ SetGyroOverride(true);
 }
 
 
-if(((flyByOn && isApproach) || dockingOn) && notDocked()) {
+if(((flyByOn && approachIdx > 0) || dockingOn) && notDocked()) {
 shipDirectionToMe = new Vector3D(0,0,0);
 switch(dockingForward) {
 case "LEFT":
@@ -2565,6 +2464,7 @@ return true;
 
 void startFlyBy() {
 dockingOn=false;
+resetApproachIdx();
 attackMode=false;
 setDampenersOverride(Cockpit, false);
 PlayActionList(thrusters, "OnOff_On");
@@ -2590,6 +2490,7 @@ offGridThrust[i].Enabled=true;
 PlayActionList(connectors, "OnOff_On");
 PlayActionList(landingGears, "OnOff_On");
 flyByOn = false;
+resetApproachIdx();
 callComputer(fighterFcs, "ALLOFF");
 dockingOn = true;
 }
@@ -2798,38 +2699,17 @@ Vector3D myPosition = MePosition;
 Vector3D myToShipPosition = MePosition - shipPosition;
 myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
 distanceInfo=displayVector3D(myToShipPosition);
-targetPosition = calcApproach(myToShipPosition, shipPosition, ref isApproach);
+targetPosition = calcApproach(myToShipPosition, shipPosition, ref approachIdx);
 
-if (flyByOn) {
-if (!isApproach) {
+// if (flyByOn) {
+// if (approachIdx == 0 && dockingList.Count > 0) {
+// var v = dockingList[0];
+// targetPosition = shipPosition + shipMatrix.Right * v.X + shipMatrix.Up * v.Y + shipMatrix.Backward * v.Z;
+// targetPosition = shipPosition + Vector3D.TransformNormal(v, shipMatrix);
+// }
+// }
 
-switch(flyByOffsetDirection) {
-case "LEFT":
-targetPosition = shipPosition + shipMatrix.Left * flyByDistance + shipMatrix.Forward * flyByForwardDistance + shipMatrix.Up * flyByUpDistance;
-break;
-case "RIGHT":
-targetPosition = shipPosition + shipMatrix.Right * flyByDistance + shipMatrix.Forward * flyByForwardDistance + shipMatrix.Up * flyByUpDistance;
-break;
-case "UP":
-targetPosition = shipPosition + shipMatrix.Up * flyByDistance + shipMatrix.Forward * flyByForwardDistance + shipMatrix.Up * flyByUpDistance;
-break;
-case "DOWN":
-targetPosition = shipPosition + shipMatrix.Down * flyByDistance + shipMatrix.Forward * flyByForwardDistance + shipMatrix.Up * flyByUpDistance;
-break;
-case "FORWARD":
-targetPosition = shipPosition + shipMatrix.Forward * flyByDistance + shipMatrix.Up * flyByUpDistance;
-break;
-case "BACKWARD":
-targetPosition = shipPosition + shipMatrix.Backward * flyByDistance + shipMatrix.Up * flyByUpDistance;
-break;
-}
-
-}
-}
-
-if (dockingOn) {
-if (isApproach) {
-targetPosition = shipPosition + shipMatrix.Forward * dockingForwardDistance + shipMatrix.Left * dockingLeftDistance + shipMatrix.Up * dockingUpDistance;
+if (dockingOn && approachIdx == dockingList.Count - 1) {
 // to maintain some speed when docking, modify the target position deeper.
 double diffStop = 0.1d;
 switch(dockingApproach) {
@@ -2853,7 +2733,6 @@ targetPosition -= shipMatrix.Backward * diffStop;
 break;
 }
 }
-}
 
 if (attackMode) {
 targetPosition = flyByAttackPosition;
@@ -2865,7 +2744,7 @@ if (attackMode) {
 shipSpeed = flyByAimSpeed;
 }
 
-bool isClose = Math.Abs(myToShipPosition.X) < shipWidth && Math.Abs(myToShipPosition.Y) < shipHeight && Math.Abs(myToShipPosition.Z) < shipLength && (!isApproach);
+bool isClose = Math.Abs(myToShipPosition.X) < shipWidth && Math.Abs(myToShipPosition.Y) < shipHeight && Math.Abs(myToShipPosition.Z) < shipLength && (approachIdx == 0);
 Vector3D shipSpeedBaseShip = Vector3D.TransformNormal(shipSpeed, shipLookAtMatrix);
 Vector3D diffPositionBaseShip =  Vector3D.TransformNormal(targetPosition - myPosition, shipLookAtMatrix);
 
@@ -2956,7 +2835,7 @@ tstmA[dimIdx] = targetSpeedDiff;
 }
 
 Vector3D aSpeed ;
-if (!dockingOn && !isApproach){
+if (!dockingOn && approachIdx == 0){
 aSpeed = new Vector3D(tstmA[0],tstmA[1],tstmA[2]);
 MatrixD refWorldMatrix = Cockpit.WorldMatrix;
 aSpeed = Vector3D.TransformNormal(aSpeed, refWorldMatrix);
@@ -2989,34 +2868,30 @@ if (speed > 0) return ret;
 else return -ret;
 }
 
-Vector3D calcApproach(Vector3D myToShipPosition, Vector3D shipPosition, ref bool isApproach) {
+Vector3D calcApproach(Vector3D myToShipPosition, Vector3D shipPosition, ref int approachIdx) {
 MatrixD refWorldMatrix = Cockpit.WorldMatrix;
 MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
 Vector3D tp = new Vector3D(0,0,0);
 float delta = 2f;
-Vector3D approachPos = shipPosition + shipMatrix.Forward * dockingApproachDistanceForward + shipMatrix.Left * dockingApproachDistanceLeft + shipMatrix.Up * dockingApproachDistanceUp;
+
+Vector3D testP = dockingList[approachIdx];
+Vector3D approachPos = shipPosition + Vector3D.TransformNormal(testP, refWorldMatrix);
 Vector3D apToShip = Vector3D.TransformNormal(approachPos - shipPosition,shipLookAtMatrix);
 
-if (flyByOn) {
-if (isApproach == false) return tp;
-if ((myToShipPosition - apToShip).Length() < delta*10) {
-isApproach = false;
-return tp;
-} else {
-return approachPos;
-}
+bool canProceed = false;
+if ((myToShipPosition - apToShip).Length() < delta || approachIdx == 0) canProceed = true;
+
+if (canProceed == false) return approachPos;
+
+if (flyByOn && approachIdx != 0) {
+approachIdx --;
 }
 
-if(dockingOn) {
-if (isApproach == true) return tp;
-if ((myToShipPosition - apToShip).Length() < delta) {
-isApproach = true;
-return tp;
-} else {
-return approachPos;
+if (dockingOn && approachIdx < dockingList.Count - 1) {
+approachIdx ++;
 }
-}
-return tp;
+
+return shipPosition + Vector3D.TransformNormal(dockingList[approachIdx], refWorldMatrix);
 }
 
 void findByGroup(string groupName, List<IMyTerminalBlock> blocks) {
@@ -3516,7 +3391,7 @@ return;
 if(notDocked()){
 Vector3D needA = needA_G;
  if (Math.Abs(needA.Y) < 0.1 && needA.Length()> 0.1) needA.Y = 0.1;
-if(isApproach) {
+if(approachIdx > 0) {
 tl = (float)Math.PI * dtp;
 } else
 if (needA.Y >= 0.1 ) // 

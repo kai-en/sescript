@@ -32,9 +32,9 @@ const int CM_SUP = 2;
 double xo=0, yo=-0.4, zo=0.5;
 static int refreshRate = 60;
 
-double Weapon_1_BulletInitialSpeed = 400; //武器1，子弹初速度，加特林机枪的默认子弹初速度是400   
+double Weapon_1_BulletInitialSpeed = 300; //武器1，子弹初速度，加特林机枪的默认子弹初速度是400   
 double Weapon_1_BulletAcceleration = 0; //武器1，子弹加速度，加特林机枪默认子弹加速度是0   
-double Weapon_1_BulletMaxSpeed = 400; //武器1，子弹最大速度，加特林机枪默认最大速度是400   
+double Weapon_1_BulletMaxSpeed = 300; //武器1，子弹最大速度，加特林机枪默认最大速度是400   
 
 // global var
 long timestamp = 0;
