@@ -2601,7 +2601,6 @@ break;
 default:
 break;
 }
-
 if(args.Count() < 19) return;
 
 lastMotherSignalTime = t;
@@ -2621,6 +2620,7 @@ flyByAimPosition = shipPosition;
 flyByAimSpeed = Vector3D.Zero;
 needFlyByAim = true;
 }
+
 if (args.Count() >= 25) {
 flyByAimPosition = new Vector3D(Convert.ToDouble(args[19]),Convert.ToDouble(args[20]),Convert.ToDouble(args[21]));
 flyByAimSpeed = new Vector3D(Convert.ToDouble(args[22]),Convert.ToDouble(args[23]),Convert.ToDouble(args[24]));

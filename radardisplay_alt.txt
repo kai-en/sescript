@@ -265,7 +265,11 @@ refWorldMatrix.M21+","+refWorldMatrix.M22+","+refWorldMatrix.M23+","+refWorldMat
 refWorldMatrix.M31+","+refWorldMatrix.M32+","+refWorldMatrix.M33+","+refWorldMatrix.M34+","+
 currentPos.X+","+currentPos.Y+","+currentPos.Z+","+refWorldMatrix.M44+","+
 speed.X+","+speed.Y+","+speed.Z;
-List<KeyValuePair<long, TargetData>> enemyList = targetDataDict.Where(i => i.Value.Relation == TargetRelation.Enemy && i.Value.Code == SON_CODE).ToList();
+List<KeyValuePair<long, TargetData>> enemyList = targetDataDict.Where(i => i.Value.Relation == TargetRelation.Enemy).ToList();
+enemyList.Sort((l, r) => 
+        (int)((MePosition - r.Value.Position).Length() -
+	(MePosition - l.Value.Position).Length())
+);
 // CODING
 if (enemyList.Count > 0) {
 var k = enemyList[0].Key;
@@ -336,7 +340,7 @@ void NetworkTargets()
 	var rd = MatrixD.CreateFromDir(reference.WorldMatrix.Forward, newUp);
 	refWorldMatrix = rd;
 	}
-        var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)TargetRelation.Friendly, Me.CubeGrid.EntityId, reference.GetPosition(), 0, encodeMessage(MOTHER_CODE, refWorldMatrix, reference.GetShipVelocities().LinearVelocity, 0));
+        var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)TargetRelation.Friendly, Me.CubeGrid.EntityId, reference.GetPosition(), 0, encodeMessage(MOTHER_CODE, refWorldMatrix, reference.GetShipVelocities().LinearVelocity, (t%50000/50000f) * MathHelper.TwoPi));
         IGC.SendBroadcastMessage(IGC_TAG, myTuple); 
     } 
  
@@ -542,7 +546,6 @@ class RadarSurface
         float xOffset = (float)(transformedDirection.X / Range); 
         float yOffset = (float)(transformedDirection.Z / Range); 
         float zOffset = (float)(transformedDirection.Y / Range);
-        debugInfo = "";
         
         // CODING
         // log len
@@ -1765,11 +1768,9 @@ targetDataDict[tmpL] = new TargetData(tmpP, TargetRelation.Enemy, MAX_REBROADCAS
 
 static double getLogLen(double len) {
 // rangeOverride
-debugInfo += "\n" + Math.Round(len, 2);
 var r = (float)((sigmoid(len / 728) - 0.5) * 2); // 728 make 800 = 0.5
 if (r>1) r = 1;
 if (r<-1) r = -1;
-debugInfo += " " + r;
 return r;
 }
 
