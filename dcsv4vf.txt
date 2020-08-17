@@ -31,18 +31,18 @@ ScanRange=3000
 custom data sample for mother ship
 
 CockpitNameTag=Flight Seat 3
+dockingList=0,0,-250;0,50.5,-16.14;0,-3.78,-15.6;0,-14.89,-16.14
 DCSLCDNameTag=DCS_LCD
 fighterFcsName=Programmable block fcsoc
 LCDNameTag=LCD Panel fcs
 homingTurretName=R_FORWARD_OC
 useTurretAsAimer=true
-ScanRange=15000
 liFcsSearchGroupName=Li-fcs-search-G
 liFcsLockGroupName=Li-fcs-lock-G
 macAV=0.005
 isBase=true
 maxTargetCount=1
-ScanRange=3000
+ScanRange=6000
 
 son ship commands
 

@@ -6,14 +6,15 @@ double APID_P = 10;
 double APID_D = 1.0;
 
 //double MISSILE_MASS = 3398.8;
-double MISSILE_MASS = 5400.4;
-//double MISSILE_MASS = 1661.4;
+//double MISSILE_MASS = 5400.4;
+double MISSILE_MASS = 1989;
 //double MISSILE_MASS = 1407.4;
 double LaunchDist = 150;
 int dropTime = 0;
 bool isClearDown=false;
 	    
-string debugInfo = "";
+static string debugInfo = "";
+static long timestamp = 0;
 
 //Introduction
             #region Introduction
@@ -56,7 +57,7 @@ string debugInfo = "";
             //CHANGE MISSILE TAG HERE:
             //Changes The prefix tag that the missile uses
             //Note that the instructions will not update to this tag 
-            string MissileTag = "#A#"+rgms_no;
+            static string MissileTag = "#A#"+rgms_no;
 
             //-------------- Don't Touch Anything Beneath This Line --------------------
 
@@ -119,9 +120,86 @@ string debugInfo = "";
 	// a b K
 	IMyTextPanel gcTargetPanel = null;
 	String gcTargetPanelName="LCD Panel GC Target"+rgms_no;
+            List<IMyTextSurface> displaySurfaces = new List<IMyTextSurface>(); 
 	
             IMySoundBlock Alarm;
             IMyShipController RC;
+            class Refueler {
+              public IMyMotorStator h1;
+              public IMyMotorStator h2;
+              public IMyShipMergeBlock m;
+              public IMyGridTerminalSystem gts;
+              public int status; // 0 = standby 1 processing 2 finished
+              public long pStart = 0;
+              public Refueler(IMyMotorStator h, IMyGridTerminalSystem gts) {
+                this.h1 = h;
+                this.gts = gts;
+                List<IMyMotorStator> h2clist = new List<IMyMotorStator>();
+                gts.GetBlocksOfType<IMyMotorStator>(h2clist, h2 => h2.CustomName.Contains("MS 2") && (h2.GetPosition() - h.GetPosition()).Length() < 1.6);
+                if (h2clist.Count == 0) throw new Exception("Refueler init error");
+                this.h2 = h2clist[0];
+              }
+              
+              private void checkStart() {
+                List<IMyShipMergeBlock> mclist = new List<IMyShipMergeBlock>();
+                gts.GetBlocksOfType<IMyShipMergeBlock>(mclist, m => m.CustomName.Contains(MissileTag) && (m.GetPosition() - h1.GetPosition()).Length() < 1.6);
+                if (mclist.Count == 0) return;
+                this.m = mclist[0];
+                status = 1;
+                pStart = timestamp;
+              }
+              
+              private void doingRefuel() {
+                if (timestamp < pStart + 3 * 60) {
+                } else if (timestamp < pStart + 8 * 60) {
+                  this.h1.SetValueFloat("Velocity", (float)5);
+                } else if (timestamp < pStart + 9 * 60) {
+                  if (!this.h2.IsAttached) {
+                    this.h2.ApplyAction("Attach");
+                  }
+                } else if (timestamp < pStart + 19 * 60) {
+                  if(this.m.Enabled) {
+                    this.m.Enabled = false;
+                  }
+                } else if (timestamp < pStart + 20 * 60) {
+                  if(!this.m.Enabled) {
+                    this.m.Enabled = true;
+                  }
+                } else if (timestamp < pStart + 21 * 60) {
+                  if (this.h2.IsAttached) {
+                    this.h2.ApplyAction("Detach");
+                  }
+                } else if (timestamp < pStart + 26 * 60) {
+                  this.h1.SetValueFloat("Velocity", (float)-5);
+                } else if (timestamp < pStart + 27 * 60) {
+                  status = 2;
+                }
+              }
+              
+              private void checkFired() {
+                if ((m.GetPosition() - h1.GetPosition()).Length() > 10) {
+                  status = 0;
+                  this.m = null;
+                }
+              }
+              
+              public void process() {
+                switch(status) {
+                case(0):
+                checkStart();
+                break;
+                case(1):
+                doingRefuel();
+                break;
+                case(2):
+                checkFired();
+                break;
+                default:
+                break;
+                }
+              }
+            }
+            List<Refueler> refuelerList = new List<Refueler>();
             #endregion
 
             //Initialiser
@@ -169,6 +247,34 @@ string debugInfo = "";
 	    if (TempCollection4.Count > 0)
                 {gcTargetPanel = TempCollection4[0] as IMyTextPanel;}
 
+                List<IMyMotorStator> TempCollection5 = new List<IMyMotorStator>();
+                GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(TempCollection5, a => a.CustomName.Contains("MS 1") );
+                TempCollection5 = TempCollection5.OrderBy(g=>{
+	    var rcmt = RC.WorldMatrix;
+	    var tranmt = MatrixD.CreateLookAt(new Vector3D(), rcmt.Forward, rcmt.Up);
+                var dis = Vector3D.TransformNormal(g.GetPosition()-RC.GetPosition(), tranmt);
+                var x = -Math.Round((Math.Abs(dis.X)-1.25) * 0.2, 0);
+                var z = -Math.Round(Math.Abs(dis.Z), 1);
+	    return (x * 1000 + z) * 100 + dis.X;
+	    }).ToList();
+
+                foreach(var h in TempCollection5) {
+                  Refueler r;
+                  try {
+                  r = new Refueler(h, GridTerminalSystem);
+                  } catch {
+                  continue;
+                  }
+                  refuelerList.Add(r);
+                }
+
+                List<IMyTextSurface> tmpList =  new List<IMyTextSurface>();
+                GridTerminalSystem.GetBlocksOfType<IMyTextSurface> (tmpList, b => ((IMyTerminalBlock)b).CustomName.Contains("M_LCD"));
+                displaySurfaces.AddRange(tmpList);
+                if (RC is IMyTextSurfaceProvider) {
+                    var tmp =((IMyTextSurfaceProvider)RC).GetSurface(4);
+                    if (tmp != null) displaySurfaces.Add(tmp);
+                }
             }
             #endregion
 
@@ -176,10 +282,11 @@ string debugInfo = "";
             #region Main Method
             void Main(string argument)
             {
-
+                timestamp ++;
                 //General Layout Diagnostics
                 OP_BAR();
                 QuickEcho(MISSILES.Count, "Active (Fired) Missiles:");
+                QuickEcho(refuelerList.Count, "Refuelers:");
                 QuickEcho(Runtime.LastRunTimeMs, "Runtime:");
 Echo(debugInfo);
                 Echo("Version:  " + VERSION);
@@ -274,10 +381,102 @@ Echo(debugInfo);
                         LaunchStateMachine = null;
                     }
                 }
+
+                foreach(var r in refuelerList) {
+                  r.process();
+                }
+                drawMissile();
+            }
+            #endregion
+
+Color backColor = new Color(0, 0, 0, 255); 
+Color borderColor = new Color(178, 255, 255, 255);
+Color fullColor = new Color(127, 255, 183, 255);
+Color unfullColor = new Color(255, 255, 183, 255); 
+            void drawMissile() {
+                 foreach(var surface in displaySurfaces) {
+                         surface.ContentType = ContentType.SCRIPT; 
+        surface.Script = ""; 
+ 
+        Vector2 surfaceSize = surface.TextureSize;
+        Vector2 screenCenter = surfaceSize * 0.5f; 
+        Vector2 viewportSize = surface.SurfaceSize; 
+
+        using (var frame = surface.DrawFrame()) 
+        {
+	List<String> sts = new List<String>();
+	surface.GetSprites(sts);
+            MySprite sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", color: backColor); 
+            sprite.Position = screenCenter; 
+            frame.Add(sprite); 
+
+            var count = refuelerList.Count;
+            if (count == 0) return;
+            float persize = 0;
+            float persizeH = surfaceSize.Y * 0.7f;
+            if (count < 4) {
+              persize = 0.25f * surfaceSize.X;
+            } else if (count < 8) {
+              persize = (1f / count) * surfaceSize.X;
+            } else {
+              persize = 0.125f * surfaceSize.X;
             }
 
+            for (int i = 0; i < count; i++) {
+	Vector2 borderSize = new Vector2 (persize, persizeH);
 
-            #endregion
+	sprite = new MySprite(SpriteType.TEXTURE, "SquareHollow", size: borderSize, color: borderColor);
+	sprite.Position = new Vector2(i*persize + persize*0.5f, surfaceSize.Y*0.5f);
+	frame.Add(sprite); 
+            }
+
+            for (int i = 0; i < count; i++) {
+              var refueler = refuelerList[i];
+              var status = refueler.status;
+              if (status == 0) continue;
+              
+	Vector2 borderSize = new Vector2 (persize * 0.33f, persizeH * 0.7f);
+
+	sprite = new MySprite(SpriteType.TEXTURE, "SquareHollow", size: borderSize, color: borderColor);
+	sprite.Position = new Vector2(i*persize + persize*0.5f, persizeH*0.65f + (surfaceSize.Y-persizeH) * 0.5f);
+	frame.Add(sprite);
+            borderSize = new Vector2 (persize * 0.33f, persizeH * 0.3f);
+	sprite = new MySprite(SpriteType.TEXTURE, "Triangle", size: borderSize, color: borderColor);
+	sprite.Position = new Vector2(i*persize + persize*0.5f, persizeH*0.15f + (surfaceSize.Y-persizeH) * 0.5f);
+	frame.Add(sprite);
+            borderSize = new Vector2 (persize , persizeH * 0.35f);
+	sprite = new MySprite(SpriteType.TEXTURE, "Triangle", size: borderSize, color: borderColor);
+	sprite.Position = new Vector2(i*persize + persize*0.5f, persizeH*0.475f + (surfaceSize.Y-persizeH) * 0.5f);
+	frame.Add(sprite);
+            borderSize = new Vector2 (persize , persizeH * 0.35f);
+	sprite = new MySprite(SpriteType.TEXTURE, "Triangle", size: borderSize, color: borderColor);
+	sprite.Position = new Vector2(i*persize + persize*0.5f, persizeH*0.825f + (surfaceSize.Y-persizeH) * 0.5f);
+	frame.Add(sprite);
+            var fuelSize = new Vector2 (persize * 0.33f - 2, persizeH * 0.7f - 2);
+	sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", size: fuelSize, color: backColor);
+	sprite.Position = new Vector2(i*persize + persize*0.5f, persizeH*0.65f + (surfaceSize.Y-persizeH) * 0.5f);
+	frame.Add(sprite);
+
+            float persent = 0;
+            Color fColor = unfullColor;
+            if (status == 2) {
+            persent = 1f;
+            fColor = fullColor;
+            } else if (status == 1) {
+              float t = (float) (timestamp - refueler.pStart);
+              persent = t/(27 * 60);
+            }
+            var fSize = new Vector2 (persize * 0.33f - 2, (persizeH * 0.7f - 2) * persent);
+	sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", size: fSize, color: fColor);
+	sprite.Position = new Vector2(i*persize + persize*0.5f, persizeH*0.65f + (surfaceSize.Y-persizeH) * 0.5f
+               + fuelSize.Y * (1 - persent) * 0.5f
+            );
+	frame.Add(sprite);            
+            }
+
+        }
+                 }
+            }
 
             //SubMethod State Machine For Launching Missiles
             #region MissileLaunchHandler
@@ -605,7 +804,14 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                 List<IMyThrust> THRUSTERS = new List<IMyThrust>();
                 GridTerminalSystem.GetBlocksOfType<IMyThrust>(THRUSTERS, b => b.CustomName.Contains(MissileTag));
                 List<IMyTerminalBlock> MERGES = new List<IMyTerminalBlock>();
-                GridTerminalSystem.GetBlocksOfType<IMyShipMergeBlock>(MERGES, b => b.CustomName.Contains(MissileTag));
+                GridTerminalSystem.GetBlocksOfType<IMyShipMergeBlock>(MERGES, b => {
+                if (!b.CustomName.Contains(MissileTag)) return false;
+                foreach(var r in refuelerList) {
+                  if(r.status != 2) continue;
+                  if (r.m == b) return true;
+                }
+                return false;
+                });
                 List<IMyTerminalBlock> BATTERIES = new List<IMyTerminalBlock>();
                 GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(BATTERIES, b => b.CustomName.Contains(MissileTag) && (b is IMyBatteryBlock || b is IMyReactor));
                 List<IMyTerminalBlock> WARHEADS = new List<IMyTerminalBlock>();
@@ -643,7 +849,7 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                     TempPower.Sort((x, y) => (x.GetPosition() - Key_Gyro.GetPosition()).LengthSquared().CompareTo((y.GetPosition() - Key_Gyro.GetPosition()).LengthSquared()));
 
                     //Sorts And Selects Merges
-                    List<IMyTerminalBlock> TempMerges = MERGES.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
+                    List<IMyTerminalBlock> TempMerges = MERGES.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < 1.05);
                     TempMerges.Sort((x, y) => (compareXY(x, y, Key_Gyro)));
 
                     //Sorts And Selects Thrusters
@@ -1171,3 +1377,6 @@ public void Reset()
 integral = lastInput = 0;
 }
 }
+
+// (sqrt (+ 0.25 1 1 ))
+// (sqrt 0.5)

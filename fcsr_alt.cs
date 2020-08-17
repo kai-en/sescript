@@ -879,12 +879,12 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		//º∆À„ ‰≥ˆ
 		double aa=0, ea=0;
 		Vector3D.GetAzimuthAndElevation(TargetPositionToMe, out aa, out ea);
-//		double YawValue = Aim_PID_P*(TargetPositionToMe.X + (1/Aim_PID_I)*X_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].X - Aim_PID_Data[0].X)/Aim_PID_T);
-		double YawValue = Aim_PID_P*(modAngle(aa) + (1/Aim_PID_I)*X_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].X - Aim_PID_Data[0].X)/Aim_PID_T);
+		double YawValue = Aim_PID_P*(TargetPositionToMe.X + (1/Aim_PID_I)*X_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].X - Aim_PID_Data[0].X)/Aim_PID_T);
+//		double YawValue = Aim_PID_P*(modAngle(aa) + (1/Aim_PID_I)*X_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].X - Aim_PID_Data[0].X)/Aim_PID_T);
 
 
-//		double PitchValue = Aim_PID_P*(TargetPositionToMe.Y + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
-		double PitchValue = Aim_PID_P*(modAngle(ea) + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
+		double PitchValue = Aim_PID_P*(TargetPositionToMe.Y + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
+//		double PitchValue = Aim_PID_P*(modAngle(ea) + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
 
 		bool isCeaseZoon = angleDeltaAbs(this.RotorXs[0].Angle, hori*Math.PI) < horiD*Math.PI;
 		if (isCeaseZoon && isAeroDynamic) {
