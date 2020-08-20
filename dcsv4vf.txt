@@ -1725,6 +1725,7 @@ approachIdx = 0;
 if (shipMatrix == MatrixD.Zero) return;
 MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
 Vector3D myToShip = Vector3D.TransformNormal(MePosition - shipPosition, shipLookAtMatrix);
+if (myToShip.Length() > 500) return;
 double n = 99999;
 for(int i = 0; i < dockingList.Count; i++) {
 var v = dockingList[i];
@@ -1734,6 +1735,7 @@ approachIdx = i;
 n = l;
 }
 }
+if (approachIdx == dockingList.Count -1 && dockingList.Count > 1) approachIdx--;
 }
 string commandCache=null;
 int commandStart=0;
@@ -2023,6 +2025,9 @@ cfg.Get("angleWhenDown", ref angleWhenDown);
 cfg.Get("maxTargetCount", ref maxTargetCount);
 cfg.Get("susMode", ref susMode);
 cfg.Get("legMode", ref legMode);
+cfg.Get("dockingForward", ref dockingForward);
+cfg.Get("dockingUp", ref dockingUp);
+
 // new para here
 
 string tmps = "";
@@ -2875,11 +2880,10 @@ Vector3D tp = new Vector3D(0,0,0);
 float delta = 2f;
 
 Vector3D testP = dockingList[approachIdx];
-Vector3D approachPos = shipPosition + Vector3D.TransformNormal(testP, refWorldMatrix);
-Vector3D apToShip = Vector3D.TransformNormal(approachPos - shipPosition,shipLookAtMatrix);
+Vector3D approachPos = shipPosition + Vector3D.TransformNormal(testP, shipMatrix);
 
 bool canProceed = false;
-if ((myToShipPosition - apToShip).Length() < delta || approachIdx == 0) canProceed = true;
+if ((myToShipPosition - testP).Length() < delta || approachIdx == 0) canProceed = true;
 
 if (canProceed == false) return approachPos;
 
@@ -2891,7 +2895,7 @@ if (dockingOn && approachIdx < dockingList.Count - 1) {
 approachIdx ++;
 }
 
-return shipPosition + Vector3D.TransformNormal(dockingList[approachIdx], refWorldMatrix);
+return shipPosition + Vector3D.TransformNormal(dockingList[approachIdx], shipMatrix);
 }
 
 void findByGroup(string groupName, List<IMyTerminalBlock> blocks) {

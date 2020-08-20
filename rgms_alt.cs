@@ -150,28 +150,28 @@ static long timestamp = 0;
               }
               
               private void doingRefuel() {
-                if (timestamp < pStart + 3 * 60) {
-                } else if (timestamp < pStart + 8 * 60) {
+                if (timestamp < pStart + 23 * 60) {
+                } else if (timestamp < pStart + 28 * 60) {
                   this.h1.SetValueFloat("Velocity", (float)5);
-                } else if (timestamp < pStart + 9 * 60) {
+                } else if (timestamp < pStart + 29 * 60) {
                   if (!this.h2.IsAttached) {
                     this.h2.ApplyAction("Attach");
                   }
-                } else if (timestamp < pStart + 19 * 60) {
+                } else if (timestamp < pStart + 39 * 60) {
                   if(this.m.Enabled) {
                     this.m.Enabled = false;
                   }
-                } else if (timestamp < pStart + 20 * 60) {
+                } else if (timestamp < pStart + 40 * 60) {
                   if(!this.m.Enabled) {
                     this.m.Enabled = true;
                   }
-                } else if (timestamp < pStart + 21 * 60) {
+                } else if (timestamp < pStart + 41 * 60) {
                   if (this.h2.IsAttached) {
                     this.h2.ApplyAction("Detach");
                   }
-                } else if (timestamp < pStart + 26 * 60) {
+                } else if (timestamp < pStart + 46 * 60) {
                   this.h1.SetValueFloat("Velocity", (float)-5);
-                } else if (timestamp < pStart + 27 * 60) {
+                } else if (timestamp < pStart + 47 * 60) {
                   status = 2;
                 }
               }
@@ -464,7 +464,7 @@ Color unfullColor = new Color(255, 255, 183, 255);
             fColor = fullColor;
             } else if (status == 1) {
               float t = (float) (timestamp - refueler.pStart);
-              persent = t/(27 * 60);
+              persent = t/(47 * 60);
             }
             var fSize = new Vector2 (persize * 0.33f - 2, (persizeH * 0.7f - 2) * persent);
 	sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", size: fSize, color: fColor);

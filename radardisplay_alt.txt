@@ -542,16 +542,20 @@ class RadarSurface
  
     public void AddContact(Vector3D position, MatrixD worldMatrix, Color iconColor, Color elevationLineColor, Relation relation) 
     { 
-        var transformedDirection = Vector3D.TransformNormal(position - worldMatrix.Translation, Matrix.Transpose(worldMatrix)); 
-        float xOffset = (float)(transformedDirection.X / Range); 
-        float yOffset = (float)(transformedDirection.Z / Range); 
-        float zOffset = (float)(transformedDirection.Y / Range);
+        var transformedDirection = Vector3D.TransformNormal(position - worldMatrix.Translation, Matrix.Transpose(worldMatrix));
+        transformedDirection = transformedDirection;
+        var newlen = getLogLen(transformedDirection.Length());
+        var r = newlen / transformedDirection.Length();
+        transformedDirection *= r;
+        float xOffset = (float)(transformedDirection.X); 
+        float yOffset = (float)(transformedDirection.Z); 
+        float zOffset = (float)(transformedDirection.Y);
         
         // CODING
         // log len
-        xOffset = (float) getLogLen(transformedDirection.X);
-        yOffset = (float) getLogLen(transformedDirection.Z);
-        zOffset = (float) getLogLen(transformedDirection.Y);
+        //xOffset = (float) getLogLen(transformedDirection.X);
+        //yOffset = (float) getLogLen(transformedDirection.Z);
+        //zOffset = (float) getLogLen(transformedDirection.Y);
  
         string spriteName = ""; 
         _spriteMap.TryGetValue(relation, out spriteName); 

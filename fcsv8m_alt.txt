@@ -66,6 +66,7 @@ List<IMyTerminalBlock> lockBlockList = new List<IMyTerminalBlock>();
 List<IMyTerminalBlock> searchBlockList = new List<IMyTerminalBlock>();
 IMyRemoteControl remoteBlock = null;
 Vector3D piratePosition = Vector3D.Zero;
+static Vector3D asteroidPosition = Vector3D.Zero;
 
 // --------- 搜索参数设置 ------------
 double SearchDistance = 5000;//常规搜索距离
@@ -783,8 +784,10 @@ void ShowInfoLCD(){
 	info += " Cameras Energy(Forward): " + CamerasEnergy + br;
 	if(MyTarget.EntityId == 0)   
 	{   
-		info += "--------------------- Ship Info ---------------------" + br;   
-		info += " Location" + br;   
+		info += "--------------------- Ship Info ---------------------" + br;
+                        string al = "";
+                        if (asteroidPosition != Vector3D.Zero) al = "as: " + Math.Round((asteroidPosition - MyShip.Cockpit.GetPosition()).Length(),0);
+		info += " Location " + al + br;   
 		info += " X: " + Math.Round(MyShip.Cockpit.GetPosition().X,2) + br;   
 		info += " Y: " + Math.Round(MyShip.Cockpit.GetPosition().Y,2) + br;   
 		info += " Z: " + Math.Round(MyShip.Cockpit.GetPosition().Z,2) + br ;   
@@ -1288,6 +1291,7 @@ public class Ship
 				SP_Now_i += 1;
 			}   
 		}
+                        if (FoundTarget.Type == MyDetectedEntityType.Asteroid) asteroidPosition = FoundTarget.Position;
 		if (FoundTarget.EntityId != 0 && JudgeTargetRelationship(FoundTarget))
 		return FoundTarget;
 		else
@@ -1478,6 +1482,7 @@ public class Ship
 				if(!FoundTarget.IsEmpty() && isNear(FoundTarget, Tgt)){
 					MatrixD TargetMainMatrix = FoundTarget.Orientation;   
 					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
+                                        Tgt.trackOffset = Vector3D.Zero;
 					return FoundTarget;
 				}
 			}
@@ -1781,7 +1786,7 @@ public class Target
                         MatrixD TargetMainMatrix = NewInfo.Orientation;   
                         MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
 
-                        this.trackOffset = Vector3D.TransformNormal(hitpoint - NewInfo.Position, TargetLookAtMatrix);
+                        if (trackOffset == Vector3D.Zero) this.trackOffset = Vector3D.TransformNormal(hitpoint - NewInfo.Position, TargetLookAtMatrix);
 	}
 }
 
