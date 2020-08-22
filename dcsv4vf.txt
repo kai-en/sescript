@@ -2363,11 +2363,11 @@ shipDirectionToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Right
 break;
 case "UP":
 shipDirectionToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Up, refLookAtMatrix));
-dtp=-0.5F;
+//dtp=-0.5F;
 break;
 case "DOWN":
 shipDirectionToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Down, refLookAtMatrix));
-dtp=0.5F;
+//dtp=0.5F;
 break;
 case "FORWARD":
 shipDirectionToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Forward, refLookAtMatrix));
@@ -3395,9 +3395,9 @@ return;
 if(notDocked()){
 Vector3D needA = needA_G;
  if (Math.Abs(needA.Y) < 0.1 && needA.Length()> 0.1) needA.Y = 0.1;
-if(approachIdx > 0) {
-tl = (float)Math.PI * dtp;
-} else
+// if(approachIdx > 0) {
+// tl = (float)Math.PI * dtp;
+// } else
 if (needA.Y >= 0.1 ) // 
 {
 //tl = (float)Math.Atan2(needZAvg.Filter(needA.Z), needYAvg.Filter(needA.Y));

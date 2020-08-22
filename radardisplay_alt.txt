@@ -83,7 +83,7 @@ const string INI_FRIENDLY_ELEVATION = "Friendly elevation";
 const string INI_SECTION_TEXT_SURF_PROVIDER = "Radar - Text Surface Config"; 
 const string INI_TEXT_SURFACE_TEMPLATE = "Show on screen {0}"; 
  
-const int MAX_REBROADCAST_INGEST_COUNT = 6; 
+const int MAX_REBROADCAST_INGEST_COUNT = 2; 
 
 string MOTHER_CODE = "2ndUsagi1";
 static string debugInfo = "";
@@ -106,7 +106,7 @@ IMyBroadcastListener broadcastListener;
 float rangeOverride = 1000; 
 bool useRangeOverride = false;
 bool startWhenCompiled = true;
-bool networkTargets = true; 
+bool networkTargets = false; 
 bool broadcastIFF = true; 
  
 Color backColor = new Color(0, 0, 0, 255); 
@@ -344,18 +344,20 @@ void NetworkTargets()
         IGC.SendBroadcastMessage(IGC_TAG, myTuple); 
     } 
  
-    if (networkTargets) 
-    { 
+    // if (networkTargets) 
+    // { 
         foreach (var kvp in targetDataDict) 
         { 
             var targetData = kvp.Value; 
             if (targetData.IngestCount > MAX_REBROADCAST_INGEST_COUNT) 
                 continue; 
- 
+
+            if (!networkTargets && targetData.Relation == TargetRelation.Friendly) continue;
+
             var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)targetData.Relation, kvp.Key, targetData.Position, targetData.IngestCount, encodeMessage(targetData.Code, new MatrixD(), targetData.Velocity, 0)); 
             IGC.SendBroadcastMessage(IGC_TAG, myTuple); 
         } 
-    } 
+    //} 
 } 
  
 void GetTurretTargets() 
