@@ -214,7 +214,7 @@ void Main(string arguments)
 	EchoShip();
 	
 	//更新飞船状态信息和停止动作
-	MyShip.MotionInit();
+	//MyShip.MotionInit();
 	MyShip.UpdateMotionInfo();
 	
 	//接受指令

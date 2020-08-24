@@ -266,6 +266,9 @@ double ahh = 0;
 bool susMode = false;
 int lastNoHighSpeed = 0;
 
+// input
+static double INPUT_RATE = 5;
+
 Program()
 {
 //Runtime.UpdateFrequency = UpdateFrequency.Update1;
@@ -502,6 +505,7 @@ ShowLCD();
 NavigationInfoUpdata(false);
 if (inputVec != null)inputVec_RT = inputVec;
 else inputVec_RT = Vector3D.Zero;
+inputVec_RT *= INPUT_RATE;
 if(notDocked()) {
 if ( dockingOn && dockable() ) {
 PlayActionList(landingGears, "Lock");
@@ -679,7 +683,7 @@ SetBlocksValueColor(lcdBackList, "BackgroundColor", new Color(1,1,1));
 }
 }
 // coding
-if (ahhOn && !isDown && !isLaunch) {
+if (ahhOn && !isDown && !isLaunch && dampenersOn) {
 double h = 0;
 bool getted = msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h);
 if (getted) {
@@ -695,7 +699,7 @@ lastSpeedY = m2m.Y;
 }
 }
 
-if(!(flyByOn||dockingOn||isSM)){
+if(!(flyByOn||dockingOn||isSM) && dampenersOn){
 // auto forward
 if(Math.Abs(inputVec.Z) < 0.1 && aeroSpeedLevel>0 ){
 ft = (float)MathHelper.Clamp(((-10*aeroSpeedLevel) - mySpeedToMe.Z) * 0.1, -10, 10);
@@ -1333,6 +1337,14 @@ blocks[i].SetValue(name, v);
 }
 
 // utils
+Vector3D trimSpeed(Vector3D s) {
+double max = 100;
+if (s.Length() > max) {
+return max * Vector3D.Normalize(s);
+}
+return s;
+}
+
 IMyTerminalBlock getBlockByName(string name, bool sameGrid = true, bool sameName = false) {
 List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.SearchBlocksOfName(name, blocks);
@@ -2013,7 +2025,8 @@ cfg.Get("liFcsLockGroupName", ref liFcsLockGroupName);
 cfg.Get("maxAV", ref maxAV);
 cfg.Get("commandWaitTic", ref commandWaitTic);
 cfg.Get("commandAllTic", ref commandAllTic);
-cfg.Get("isBig", ref isBig);
+//cfg.Get("isBig", ref isBig);
+isBig = Me.CubeGrid.GridSizeEnum == MyCubeSize.Large;
 cfg.Get("isDummy", ref isDummy);
 cfg.Get("isBase", ref isBase);
 cfg.Get("isME", ref isME);
@@ -2228,8 +2241,9 @@ bool getted = Cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out eleva
 if (getted) {
 var naturalGravityNormal = Vector3D.Normalize(naturalGravity);
 apDiff = naturalGravityNormal * elevation;
-if (apDiff.Length() < 50) {
-Vector3D avoidSpeedToMe = Vector3D.TransformNormal(apDiff * rate * ((50-apDiff.Length())/apDiff.Length()), refLookAtMatrix);
+if (apDiff.Length() < 5000) {
+Vector3D avoidSpeedToMe = Vector3D.TransformNormal(naturalGravityNormal * (500 - elevation) * rate, refLookAtMatrix);
+avoidSpeedToMe = trimSpeed(avoidSpeedToMe);
 needSpeedToMe -= avoidSpeedToMe;
 }
 }
@@ -2244,7 +2258,7 @@ RefreshMaintainSpeed();
 if (!flyByOn && !dockingOn) return;
 if(shipMatrix == MatrixD.Zero) return;
 maintainSpeedToMeAA = calcSpeedToMeAndAvoid(maintainSpeed);
-inputVec_RT=maintainSpeedToMeAA*1;//
+inputVec_RT=maintainSpeedToMeAA*0.1;//
 
 // 计算转向
 isTurning = false;
@@ -2300,7 +2314,7 @@ Vector3D flyByAimPositionToMe = Vector3D.Normalize(Vector3D.TransformNormal(flyB
 sd = flyByAimPositionToMe;
 } else if (t2m.Length() > 500 && t - lastNoHighSpeed > 600){
 t2m = Vector3D.Normalize(t2m);
-// 高差速指向
+
 Vector3D d;
 if (maintainSpeedToMeAA.Length() > 50) {
 d = Vector3D.Normalize(maintainSpeedToMeAA);
@@ -2333,16 +2347,11 @@ var left = Cockpit.WorldMatrix.Left;
 var diff = diffGravity(left, naturalGravity, forward);
 
 // use roll to get side speed in gravity
-var sideRoll = maintainSpeedToMeAA.X * 0.01f; // radio
-if (sideRoll > 0.5f) sideRoll = 0.5f;
-if (sideRoll < -0.5f) sideRoll = -0.5f;
-if (Math.Abs(sideRoll) < 0.05f) sideRoll = 0;
-diff += sideRoll;
- if (Math.Abs(diff) > 0.0001f) { // death zone
+var sideRoll = maintainSpeedToMeAA.X * 0.001f; // radio
+if (sideRoll > 0.05f) sideRoll = 0.05f;
+if (sideRoll < -0.05f) sideRoll = -0.05f;
+if(!isBig) diff += sideRoll;
 sr = -1*diff*60;
- } else {
-sr = -AimRatio*30*shipRollToMe.X;
-}
 } else {
 sr = -AimRatio*30*shipRollToMe.X;
 }
@@ -2626,6 +2635,8 @@ flyByAimSpeed = Vector3D.Zero;
 needFlyByAim = true;
 }
 
+if (!flyByOn) return;
+
 if (args.Count() >= 25) {
 flyByAimPosition = new Vector3D(Convert.ToDouble(args[19]),Convert.ToDouble(args[20]),Convert.ToDouble(args[21]));
 flyByAimSpeed = new Vector3D(Convert.ToDouble(args[22]),Convert.ToDouble(args[23]),Convert.ToDouble(args[24]));
@@ -2818,7 +2829,7 @@ tw = tw * 0.8;
 
 double diffTime = Math.Abs(dimSpeedDiff / tw);
 double decMinDis = dimSpeedDiff * diffTime * 0.5;
-float slideRatio = 1f;
+float slideRatio = 10f;
 double targetSpeedDiff=0;
 double nearRange = 500;
 if (Math.Abs(dimDiff) < nearRange || isTurning) {
@@ -2832,7 +2843,11 @@ if (Math.Abs(dimSpeed) > dimSpeedLimit) {
 // 最高dimSpeedLimit接近
 targetSpeedDiff = 0;
 }
-}else if (Math.Abs(dimDiff) < Math.Abs(decMinDis) + nearRange){
+}
+else if (Math.Abs(dimDiff) > Math.Abs(decMinDis) * slideRatio * 0.2 + nearRange) {
+targetSpeedDiff = 0;
+}
+else if (Math.Abs(dimDiff) > nearRange){
 // 单向距离不够减速，进入减速周期, 全力减速
 targetSpeedDiff = -dimSpeedDiff * 10;
 }
@@ -2842,6 +2857,7 @@ tstmA[dimIdx] = targetSpeedDiff;
 Vector3D aSpeed ;
 if (!dockingOn && approachIdx == 0){
 aSpeed = new Vector3D(tstmA[0],tstmA[1],tstmA[2]);
+aSpeed = trimSpeed(aSpeed);
 MatrixD refWorldMatrix = Cockpit.WorldMatrix;
 aSpeed = Vector3D.TransformNormal(aSpeed, refWorldMatrix);
 maintainSpeed = MeVelocity + aSpeed;
@@ -3048,7 +3064,7 @@ needA += mstmn;
 }
 
 var ngtome = Vector3D.TransformNormal(naturalGravity, refLookAtMatrix);
-needA -= ngtome;
+if ((flyByOn || dockingOn) || dampenersOn) needA -= ngtome;
 
 var desiredDirectionVec = Vector3D.TransformNormal(needA, msc.WorldMatrix);
 
@@ -3091,9 +3107,9 @@ foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-if (scale > maxThrustDotProduct)
+if (scale > 0)
 {
-thrustMax += thisThrust.MaxEffectiveThrust;
+thrustMax += thisThrust.MaxEffectiveThrust * scale;
 }
 
 }
@@ -3103,7 +3119,7 @@ foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-if (scale > maxThrustDotProduct)
+if (scale > 0)
 {
 SetThrusterOverride(thisThrust, (float)percent * scale);
 }else {
@@ -3402,6 +3418,10 @@ if (needA.Y >= 0.1 ) //
 {
 //tl = (float)Math.Atan2(needZAvg.Filter(needA.Z), needYAvg.Filter(needA.Y));
 tl = (float)Math.Atan2(needA.Z, needA.Y);
+} else if (needA.Z > 0) {
+tl = 0.5f*(float)Math.PI;
+} else if (needA.Z < 0) {
+tl = -0.5f*(float)Math.PI;
 }
 tl = MathHelper.Clamp(tl, -0.5f*(float)Math.PI, 0.5f*(float)Math.PI);
 
