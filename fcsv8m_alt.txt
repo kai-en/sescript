@@ -251,6 +251,13 @@ void Main(string arguments)
 		case("CircleTarget"):
 		selectedTarget  = (selectedTarget + 1) % MyTargetList.Count;
 		break;
+		case("Asteroid"):
+		asteroidPosition = Vector3D.Zero;
+		MyShip.ScanPoint(MyShip.Cockpit.GetPosition() + MyShip.Cockpit.WorldMatrix.Forward * 45000, true);
+		break;
+		case("AsteroidClear"):
+		asteroidPosition = Vector3D.Zero;
+		break;
 	}
 	if(arguments.StartsWith("Go:") || arguments.StartsWith("GPS:")){
 		ShipNavigation(arguments);
@@ -882,6 +889,7 @@ void EchoTarget(){
 	info += "[\\FCS_TargetInfo]" + br; //这里的第一个\是转义符号，实际输出的只有一个\符号
 	info += "radarHighThreatPosition=" + radarHighThreatPosition + br;
 	info += "TargetCount="+MyTargetList.Count + br;
+	info += "Asteroid="+asteroidPosition + br;
 	for(int i = 0; i < MyTargetList.Count; i++) {
 	Target ct = MyTargetList[i];
 	info += "EntityId"+i+"="+ct.EntityId+br;
@@ -1257,7 +1265,7 @@ public class Ship
 	// ----- 指令类方法 -----
 	// 持续搜索座标
 	private int SP_Now_i;
-	public MyDetectedEntityInfo ScanPoint(Vector3D Point){
+	public MyDetectedEntityInfo ScanPoint(Vector3D Point, bool force = false){
 		MyDetectedEntityInfo FoundTarget = new MyDetectedEntityInfo();
 		
 		List<IMyCameraBlock> RightAngleCameras = GetCanScanCameras(this.Cameras, Point);
@@ -1282,7 +1290,7 @@ public class Ship
 		}   
 		else
 		{
-			if(t%Math.Round(1/ScanSpeed,0)==0)
+			if(t%Math.Round(1/ScanSpeed,0)==0 || force)
 			{ 
 				FoundTarget = RightAngleCameras[SP_Now_i].Raycast(Point);
 				// add by kaien
@@ -1997,7 +2005,6 @@ void SetBlocksValueColor(List<IMyTerminalBlock> blocks, String name, Color v) {
 	}
 
 bool isInRange(Vector3D target) {
-debugInfo = displayVector3D(target);
 Vector3D myPosition = MyShip.Cockpit.GetPosition();
 Vector3D targetVector = target - myPosition;
 if ((targetVector).Length() > SearchDistance) return false;

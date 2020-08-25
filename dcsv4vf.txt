@@ -201,6 +201,8 @@ Vector3D LockTargetPosition = Vector3D.Zero;
 bool LockTargetAiming = false;
 Vector3D LockTargetVelocity = Vector3D.Zero;
 Vector3D radarHighThreatPosition = Vector3D.Zero;
+Vector3D asteroidPosition = Vector3D.Zero;
+bool avoidOn = false;
 List<Vector3D> LTPs = new List<Vector3D>();
 List<Vector3D> LTVs = new List<Vector3D>();
 
@@ -298,6 +300,9 @@ if ((updateType & UpdateType.Update1) !=0)
 List<IMyTerminalBlock> welderList;
 switch (arguments)
 {
+case ("AVOID"):
+avoidOn = !avoidOn;
+break;
 case ("CONTROL"):
 attackMode=false;
 flyByOn=false;
@@ -506,6 +511,12 @@ NavigationInfoUpdata(false);
 if (inputVec != null)inputVec_RT = inputVec;
 else inputVec_RT = Vector3D.Zero;
 inputVec_RT *= INPUT_RATE;
+
+if (!(flyByOn || dockingOn) && avoidOn) {
+Vector3D avoidSpeed = calcSpeedToMeAndAvoid(MeVelocity, true);
+inputVec_RT += avoidSpeed * 0.1;
+}
+
 if(notDocked()) {
 if ( dockingOn && dockable() ) {
 PlayActionList(landingGears, "Lock");
@@ -1104,6 +1115,9 @@ if(LockTargetPosition!=Vector3D.Zero && autoFireMissile ) fireMissile();
 cfgTarget.Get("Velocity", ref tmpS);
 Vector3D.TryParse(tmpS, out LockTargetVelocity);
 
+cfgTarget.Get("Asteroid", ref tmpS);
+Vector3D.TryParse(tmpS, out asteroidPosition);
+
 cfgTarget.Get("radarHighThreatPosition", ref tmpS);
 Vector3D.TryParse(tmpS, out radarHighThreatPosition);
 
@@ -1199,7 +1213,7 @@ void ShowLCD()
 string br = "\n";
 
 string info = "";
-info += (rulerOn?"Turning":"") + "  Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (approachIdx > 0 ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + br;
+info += (rulerOn?"Turning":"") + "  Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (approachIdx > 0 ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + (avoidOn?"Avoid":"") +br;
 info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") + (t - lastSendingTime<120 && t%60<30 ?"=>":"") + (t - lastReceivingTime<120 && t%60<30?"<=":"") + br;
 info += "Speed level: " + aeroSpeedLevel + " AHH: " + ahhOn + " " + Math.Round(ahh,1) + '\n';
 info += " Missile-Auto: " + autoFireMissile + br;
@@ -1225,7 +1239,8 @@ if(flyByOn || dockingOn) {
 if(approachIdx > 0) lcd.FontColor = new Color(76,255,0);
 else lcd.FontColor = new Color(255,76,0);
 } else {
-lcd.FontColor = new Color(0,76,255);
+if(avoidOn) lcd.FontColor = new Color(0,255,255);
+else lcd.FontColor = new Color(0,76,255);
 }
 }
 
@@ -2209,14 +2224,14 @@ return src;
 }
 }
 
-Vector3D calcSpeedToMeAndAvoid(Vector3D maintainSpeed) {
+Vector3D calcSpeedToMeAndAvoid(Vector3D maintainSpeed, bool force = false) {
 Vector3D myPosition = MePosition;
 Vector3D needSpeedToMe = Vector3D.TransformNormal(maintainSpeed - MeVelocity, refLookAtMatrix);
 Vector3D tmp = needSpeedToMe;
 Vector3D apDiff;
 double rate = 0.1;
 
-if (flyByOn && approachIdx == 0) {
+if ((flyByOn && approachIdx == 0) || force) {
 long nKey = 0;
 double nDis = 0;
 int count = 0;
@@ -2243,6 +2258,15 @@ var naturalGravityNormal = Vector3D.Normalize(naturalGravity);
 apDiff = naturalGravityNormal * elevation;
 if (apDiff.Length() < 5000) {
 Vector3D avoidSpeedToMe = Vector3D.TransformNormal(naturalGravityNormal * (500 - elevation) * rate, refLookAtMatrix);
+avoidSpeedToMe = trimSpeed(avoidSpeedToMe);
+needSpeedToMe -= avoidSpeedToMe;
+}
+}
+
+if (asteroidPosition != Vector3D.Zero) {
+apDiff = asteroidPosition - myPosition;
+if (apDiff.Length() < 2000) {
+Vector3D avoidSpeedToMe = Vector3D.TransformNormal(Vector3D.Normalize(apDiff) * 100, refLookAtMatrix);
 avoidSpeedToMe = trimSpeed(avoidSpeedToMe);
 needSpeedToMe -= avoidSpeedToMe;
 }
@@ -3107,7 +3131,7 @@ foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-if (scale > 0)
+if (scale > maxThrustDotProduct)
 {
 thrustMax += thisThrust.MaxEffectiveThrust * scale;
 }
@@ -3119,7 +3143,7 @@ foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-if (scale > 0)
+if (scale > maxThrustDotProduct)
 {
 SetThrusterOverride(thisThrust, (float)percent * scale);
 }else {
@@ -3414,13 +3438,14 @@ Vector3D needA = needA_G;
 // if(approachIdx > 0) {
 // tl = (float)Math.PI * dtp;
 // } else
+double dz = 5;
 if (needA.Y >= 0.1 ) // 
 {
 //tl = (float)Math.Atan2(needZAvg.Filter(needA.Z), needYAvg.Filter(needA.Y));
 tl = (float)Math.Atan2(needA.Z, needA.Y);
-} else if (needA.Z > 0) {
+} else if (needA.Z > dz) {
 tl = 0.5f*(float)Math.PI;
-} else if (needA.Z < 0) {
+} else if (needA.Z < -dz) {
 tl = -0.5f*(float)Math.PI;
 }
 tl = MathHelper.Clamp(tl, -0.5f*(float)Math.PI, 0.5f*(float)Math.PI);
