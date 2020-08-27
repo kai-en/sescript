@@ -162,3 +162,14 @@ B-20 魔法师 号 轰炸机
 新型高精度矢量引擎控制程序.
 FCS火控雷达系统.
 
+
+
+// 3.1 aerodynamic
+if (isAeroDynamic) {
+var vN = Vector3D.Normalize(MissileVelocity);
+var aero_a = Vector3D.Reject (This_Missile.GYRO.WorldMatrix.Up, vN);
+if (Vector3D.Dot(This_Missile.GYRO.WorldMatrix.Up, vN) > 0.7) aero_a = Vector3D.Zero;
+double aero_liftrate = 0.01;
+var lift = aero_a * MissileVelocity.Length() * aero_liftrate;
+rd -= lift;
+}

@@ -15,7 +15,9 @@ bool isClearDown=false;
 	    
 static string debugInfo = "";
 static long timestamp = 0;
-const MISSILE_BUILD_TIME = 20;
+const int MISSILE_BUILD_TIME = 20;
+bool isAeroDynamic = false;
+double aero_liftrate = 0;
 
 //Introduction
             #region Introduction
@@ -695,23 +697,34 @@ Vector3D rdo = newRv * GUILD_RATE * 60
 ;
 
 // 1.1 比例导引法 PN
-double PN_RATE = 3000;
+//double PN_RATE = 3000;
 Vector3D losD = (LOS_New - LOS_Old) * 60
 //+ ra * 0.5
 ;
 double losDl = losD.Length();
 Vector3D sideN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(MissileVelocity)));
 Vector3D graN = Vector3D.Normalize(RC.GetNaturalGravity());
-double rdol_pn = Math.Atan2(losDl, ATAN_BASE) * PN_RATE;
+//double rdol_pn = Math.Atan2(losDl, ATAN_BASE) * PN_RATE;
 //if (rdol_pn > sdl * 0.5) rdol_pn = sdl * 0.5;
-Vector3D rdo_pn = sideN * rdol_pn;
+//Vector3D rdo_pn = sideN * rdol_pn;
 
 
 // 3 加上抵抗重力所需的加速度 = 需要抵消的加速度 rd
 Vector3D rd = rdo - RC.GetNaturalGravity();
+// 3.1 aerodynamic
+if (isAeroDynamic) {
+var vN = Vector3D.Normalize(MissileVelocity);
+var aero_a = Vector3D.Reject (This_Missile.GYRO.WorldMatrix.Up, vN);
+aero_a = Vector3D.Reject(aero_a, This_Missile.GYRO.WorldMatrix.Left);
+var aero_dot = Vector3D.Dot(This_Missile.GYRO.WorldMatrix.Up, vN) ;
+if ( aero_dot > 0.7 || aero_dot < 0) aero_a = Vector3D.Zero;
+var lift = aero_a * MissileVelocity.Length() * aero_liftrate;
+rd -= lift;
+}
+
 double rdl = rd.Length();
-Vector3D rd_pn = rdo_pn - RC.GetNaturalGravity();
-double rdl_pn = rd_pn.Length();
+//Vector3D rd_pn = rdo_pn - RC.GetNaturalGravity();
+//double rdl_pn = rd_pn.Length();
 
 
 // 5 剩余加速度长度
@@ -722,10 +735,10 @@ if (sdl < rd2l) sdl = rd2l;
 // 5.2 剩余加速度长度 
 double pdl = Math.Sqrt(sdl*sdl - rd2l * rd2l);
 
-Vector3D rd2_pn = Vector3D.Reject(rd_pn, tarN);
-double rd2l_pn = rd2_pn.Length();
-if (sdl < rd2l_pn) rd2l_pn = sdl;
-double pdl_pn = Math.Sqrt(sdl*sdl - rd2l_pn * rd2l_pn);
+//Vector3D rd2_pn = Vector3D.Reject(rd_pn, tarN);
+//double rd2l_pn = rd2_pn.Length();
+//if (sdl < rd2l_pn) rd2l_pn = sdl;
+//double pdl_pn = Math.Sqrt(sdl*sdl - rd2l_pn * rd2l_pn);
 
 // 6 剩余加速度方向  = los
 //Vector3D pdN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(rd)));
@@ -733,15 +746,15 @@ double pdl_pn = Math.Sqrt(sdl*sdl - rd2l_pn * rd2l_pn);
 Vector3D pdN = LOS_New;
 
 //Vector3D pdN_pn = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(rd_pn)));
-Vector3D pdN_pn = LOS_New;
+//Vector3D pdN_pn = LOS_New;
 
 // 7 剩余加速度
 Vector3D pd = pdN * pdl;
-Vector3D pd_pn = pdN_pn * pdl_pn;
+//Vector3D pd_pn = pdN_pn * pdl_pn;
 
 // 8 总加速度
 Vector3D sd = rd2 + pd;
-Vector3D sd_pn = rd2_pn + pd_pn;
+//Vector3D sd_pn = rd2_pn + pd_pn;
 
 // 9 总加速度方向
 Vector3D nam = Vector3D.Normalize(sd);
@@ -750,7 +763,7 @@ Vector3D nam = Vector3D.Normalize(sd);
 
 if (targetRange.Length() < This_Missile.nearest)
 This_Missile.nearest = targetRange.Length();
-double pn_test = (Vector3D.Normalize(MissileVelocity) - Vector3D.Normalize(lastVelocity)).Length() / ((LOS_New - LOS_Old).Length()*60);
+//double pn_test = (Vector3D.Normalize(MissileVelocity) - Vector3D.Normalize(lastVelocity)).Length() / ((LOS_New - LOS_Old).Length()*60);
 
 am = nam;
 
@@ -807,11 +820,15 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                 List<IMyTerminalBlock> MERGES = new List<IMyTerminalBlock>();
                 GridTerminalSystem.GetBlocksOfType<IMyShipMergeBlock>(MERGES, b => {
                 if (!b.CustomName.Contains(MissileTag)) return false;
+                bool found = false;
                 foreach(var r in refuelerList) {
-                  if(r.status != 2) continue;
-                  if (r.m == b) return true;
+                  if (r.m != b) continue;
+                  found = true;
+                  if(r.status != 2) break;
+                  return true;
                 }
-                return false;
+                if (found) return false;
+                else return true;
                 });
                 List<IMyTerminalBlock> BATTERIES = new List<IMyTerminalBlock>();
                 GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(BATTERIES, b => b.CustomName.Contains(MissileTag) && (b is IMyBatteryBlock || b is IMyReactor));

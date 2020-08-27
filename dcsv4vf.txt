@@ -253,6 +253,7 @@ bool continueAhhOn = false;
 int continueAhhStart = 0;
 void setAhhOn(bool v) {
 ahhOn = v;
+if (isAeroDynamic) return;
 if (ahhOn == false) {
 continueAhhOn = false;
 continueAhhStart = 0;
@@ -1034,14 +1035,18 @@ SetThrusterListOverride(backwardThrusters, -1f);
 // ahh
 Vector3D inputVecWorld = Vector3D.TransformNormal(inputVec, msc.WorldMatrix);
 bool wantUD = false;
+double udi = 0.1, uda = 0.2;
+if (isAeroDynamic) {
+udi = 0.5; uda = 0.7;
+}
 if (naturalGravity.Length() > 0.1 && inputVec.Length() >0.1) {
-  wantUD = Math.Abs(inputVecWorld.Dot(Vector3D.Normalize(naturalGravity))) > 0.1;
+  wantUD = Math.Abs(inputVecWorld.Dot(Vector3D.Normalize(naturalGravity))) > udi;
 }
 if (!wantUD) {
 var forward = msc.WorldMatrix.Forward;
 var left = msc.WorldMatrix.Left;
 var diffZ = diffGravity(forward, naturalGravity, -left);
-if (Math.Abs(diffZ) > 0.2) wantUD = true;
+if (Math.Abs(diffZ) > uda) wantUD = true;
 }
 if (!wantUD && isUnderControl) {
 if (msc.RotationIndicator.Length() > 0.1
@@ -2349,8 +2354,10 @@ d = Vector3D.TransformNormal(t2m, refLookAtMatrix);
 sd = d;
 }
 SetGyroYaw(AimRatio*sd.X*60);
-if (isAeroDynamic && maintainSpeedToMeAA.Y > 0) {
-var dy = (float)Math.Atan2(maintainSpeedToMeAA.Y, Math.Abs(maintainSpeedToMeAA.Z));
+if (isAeroDynamic && maintainSpeedToMeAA.Y > 50) {
+var b = Math.Abs(maintainSpeedToMeAA.Z);
+if (b < 10) b = 10;
+var dy = (float)Math.Atan2(maintainSpeedToMeAA.Y, b);
 sd.Y += dy;
 }
 SetGyroPitch(AimRatio*sd.Y*20);
