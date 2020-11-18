@@ -135,6 +135,7 @@ Vector3D NavigationPosition;
 // add by kaien
 static string debugInfo="";
 static string MISSILE_TAG="#A#";
+static bool init = false;
 
 void execCommand(string arguments) {
 String[] kv = arguments.Split(':');
@@ -144,7 +145,28 @@ args = kv[1].Split(',');
 }
 Echo(kv[0]);
 switch(kv[0]) {
-//REINIT:R_FORWARD,NOT_EXIST,2000,NOT_EXIST,True
+case("INITDEFAULT"):
+if(!init) {
+CockpitNameTag = "R_FORWARD";
+LCDNameTag = "Text panel fcs"; 
+CamerasNameTag = new string[]{"", "ALL"}; 
+GyroscopesNameTag = new string[]{"", "ALL"}; 
+ThurstsNameTag = new string[]{"", "ALL"}; 
+WeaponsNameTag = new string[]{"ALL_FIX_WEAPON_G", "ALL"};
+SearchDistance = 6000;
+homingTurretName = "NOT_EXIST";
+useTurretAsAimer=true;
+maxTargetCount = 1;
+GetBlocks();
+NeedScan = true;
+NeedAimMode = 1;
+NeedAutoFire=true;
+MyTargetList = new List<Target>();
+selectedTarget = 0;
+init=true;
+}
+break;
+//REINIT:R_FORWARD,NOT_EXIST,2000,NOT_EXIST,True,1
 case ("REINIT"):
 CockpitNameTag = args[0];
 LCDNameTag = args[1]; 
@@ -163,6 +185,7 @@ maxTargetCount = val;
 }
 }
 GetBlocks();
+init=true;
 break;
 case ("ALLON"):
 NeedScan = true;
@@ -198,8 +221,11 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 
 void Main(string arguments)
 {
+	t ++;
+
 	// add by kaien
 	execCommand(arguments);
+	if ( !init && t > 300 ) execCommand("INITDEFAULT");
 
 	//初始化飞船
 	if(MyShip == null || MyShip.Cockpit == null){ 
@@ -207,8 +233,6 @@ void Main(string arguments)
 		Echo("Cockpit Not Found!");
 		GetBlocks();return;
 	}
-	
-	t ++;
 	
 	//报告飞船状态到Echo中
 	EchoShip();
@@ -1299,7 +1323,6 @@ public class Ship
 				SP_Now_i += 1;
 			}   
 		}
-                        if (FoundTarget.Type == MyDetectedEntityType.Asteroid) asteroidPosition = FoundTarget.Position;
 		if (FoundTarget.EntityId != 0 && JudgeTargetRelationship(FoundTarget))
 		return FoundTarget;
 		else
@@ -2008,8 +2031,8 @@ bool isInRange(Vector3D target) {
 Vector3D myPosition = MyShip.Cockpit.GetPosition();
 Vector3D targetVector = target - myPosition;
 if ((targetVector).Length() > SearchDistance) return false;
-Vector3D tvn = Vector3D.Normalize(targetVector);
-if (Vector3D.Dot(tvn, MyShip.Cockpit.WorldMatrix.Up) < 0) return false;
-if (Vector3D.Dot(tvn, MyShip.Cockpit.WorldMatrix.Forward) < 0) return false;
+//Vector3D tvn = Vector3D.Normalize(targetVector);
+//if (Vector3D.Dot(tvn, MyShip.Cockpit.WorldMatrix.Up) < 0) return false;
+//if (Vector3D.Dot(tvn, MyShip.Cockpit.WorldMatrix.Forward) < 0) return false;
 return true;
 }

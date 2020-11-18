@@ -19,6 +19,11 @@ const int MISSILE_BUILD_TIME = 20;
 bool isAeroDynamic = false;
 double aero_liftrate = 0;
 
+static bool autoFireMissile = false;
+static long lastAutoFire = 1000;
+static long AUTO_FIRE_INTERVAL = 600;
+static long AUTO_FIRE_MAX = 4;
+
 //Introduction
             #region Introduction
             /*Introduction
@@ -123,6 +128,11 @@ double aero_liftrate = 0;
 	// a b K
 	IMyTextPanel gcTargetPanel = null;
 	String gcTargetPanelName="LCD Panel GC Target"+rgms_no;
+	IMyTerminalBlock fcsComputer = null;
+	String fcsComputerName="fcs";
+List<Vector3D> LTPs = new List<Vector3D>();
+List<Vector3D> LTVs = new List<Vector3D>();
+
             List<IMyTextSurface> displaySurfaces = new List<IMyTextSurface>(); 
 	
             IMySoundBlock Alarm;
@@ -249,6 +259,9 @@ double aero_liftrate = 0;
                 GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(TempCollection4, a => a.CustomName.Equals(gcTargetPanelName) );
 	    if (TempCollection4.Count > 0)
                 {gcTargetPanel = TempCollection4[0] as IMyTextPanel;}
+                GridTerminalSystem.GetBlocksOfType<IMyProgrammableBlock>(TempCollection4, a => a.CustomName.Contains(fcsComputerName) );
+	    if (TempCollection4.Count > 0)
+                {fcsComputer = TempCollection4[0];}
 
                 List<IMyMotorStator> TempCollection5 = new List<IMyMotorStator>();
                 GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(TempCollection5, a => a.CustomName.Contains("MS 1") );
@@ -290,6 +303,7 @@ double aero_liftrate = 0;
                 OP_BAR();
                 QuickEcho(MISSILES.Count, "Active (Fired) Missiles:");
                 QuickEcho(refuelerList.Count, "Refuelers:");
+                QuickEcho(autoFireMissile, "Auto fire:");
                 QuickEcho(Runtime.LastRunTimeMs, "Runtime:");
 Echo(debugInfo);
                 Echo("Version:  " + VERSION);
@@ -305,7 +319,7 @@ Echo(debugInfo);
                 if (RC == null || RC.CubeGrid.GetCubeBlock(RC.Position) == null)
                 { Echo(" ~ No Ship Control Found,\nInstall Forward Facing Cockpit/RC/Flightseat And Press Recompile"); RC = null; return; }
                 if ((Turret == null || Turret.CubeGrid.GetCubeBlock(Turret.Position) == null)
-		&& gcTargetPanel == null
+		&& gcTargetPanel == null && fcsComputer == null
 		)
                 { Echo(" ~ Searching For A new Seeker\n (Guidance Turret)\n Name Of Turret Needs to be: '#A#'\nInstall Block And Press Recompile"); Turret = null; return; }
                 if (Alarm == null || Alarm.CubeGrid.GetCubeBlock(Alarm.Position) == null)
@@ -340,12 +354,18 @@ Echo(debugInfo);
 	            if (double.TryParse(args[1], out value)) {
 		    Offset = value;
 		}	           
-	       }
+	       }else if (args[0] == "SetAuto") {
+                       if (args[1] == "True") autoFireMissile = true;
+                       else autoFireMissile = false;
+                   }
 	    }
 	    else if (argument != "Fire" && argument != "")
                 {
                     Lstrundata = "Unknown/Incorrect launch argument,\ncheck spelling & caps,\nto launch argument should be just: Fire\n ";
                 }
+
+	    // autoFire
+                autoFireProcess();
 
                 //Runs Guidance Block (foreach missile)
                 //---------------------------------------
@@ -532,16 +552,25 @@ Color unfullColor = new Color(255, 255, 183, 255);
                 //Logical Determination Of Enemy Position
 	    // a b K
 	    bool targetPanelHasTarget = false;
+	    Vector3D targetPanelPosition = Vector3D.Zero;
+	    Vector3D targetPanelVelocity = Vector3D.Zero;
+
+	    if(gcTargetPanel != null) {
 	    var panelInfo = gcTargetPanel.GetPublicTitle();
 	    // [T:-3400.63210157891:-14844.4586962264:-13932.3639607262:0.002283879:0.002356248:0.001983097
 	    var tokens = panelInfo.Split(':');
-	    Vector3D targetPanelPosition = Vector3D.Zero;
-	    Vector3D targetPanelVelocity = Vector3D.Zero;
 	    if (panelInfo.StartsWith("[T:") && tokens.Length >= 7) {
 	       targetPanelPosition = new Vector3D(Convert.ToDouble(tokens[1]),Convert.ToDouble(tokens[2]),Convert.ToDouble(tokens[3]));
 	       targetPanelVelocity = new Vector3D(Convert.ToDouble(tokens[4]),Convert.ToDouble(tokens[5]),Convert.ToDouble(tokens[6]));
 	       targetPanelHasTarget = true;
 	    }
+                }
+            
+if (fcsComputer != null && targetPanelPosition == Vector3D.Zero) {
+checkFcsTarget(out targetPanelPosition, out targetPanelVelocity);
+targetPanelHasTarget = targetPanelPosition!=Vector3D.Zero;
+
+}
 
 	    bool usePanel = false;
 	    
@@ -897,7 +926,7 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                     //Checks All Key Blocks Are Present
                     bool HasTurret = TempTurrets.Count > 0;
 	        // a b K
-	        if (gcTargetPanel != null) HasTurret = true;
+	        if (gcTargetPanel != null || fcsComputer != null) HasTurret = true;
 
                     bool HasPower = TempPower.Count > 0;
                     bool HasMerge = TempMerges.Count > 0;
@@ -1398,3 +1427,180 @@ integral = lastInput = 0;
 
 // (sqrt (+ 0.25 1 1 ))
 // (sqrt 0.5)
+
+public class CustomConfiguration
+{
+public IMyTerminalBlock configBlock;
+public Dictionary<string, string> config;
+
+public CustomConfiguration(IMyTerminalBlock block)
+{
+configBlock = block;
+config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+}
+
+public void Load()
+{
+ParseCustomData(configBlock, config);
+}
+
+public void Save()
+{
+WriteCustomData(configBlock, config);
+}
+
+public string Get(string key, string defVal = null)
+{
+return config.GetValueOrDefault(key.Trim(), defVal);
+}
+
+public void Get(string key, ref string res)
+{
+string val;
+if (config.TryGetValue(key.Trim(), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref int res)
+{
+int val;
+if (int.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref float res)
+{
+float val;
+if (float.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref double res)
+{
+double val;
+if (double.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref bool res)
+{
+bool val;
+if (bool.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+public void Get(string key, ref bool? res)
+{
+bool val;
+if (bool.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Set(string key, string value)
+{
+config[key.Trim()] = value;
+}
+
+public static void ParseCustomData(IMyTerminalBlock block, Dictionary<string, string> cfg, bool clr = true)
+{
+if (clr)
+{
+cfg.Clear();
+}
+
+string[] arr = block.CustomData.Split(new char[] {'\r','\n'}, StringSplitOptions.RemoveEmptyEntries);
+for (int i = 0; i < arr.Length; i++)
+{
+string ln = arr[i];
+string va;
+
+int p = ln.IndexOf('=');
+if (p > -1)
+{
+va = ln.Substring(p + 1);
+ln = ln.Substring(0, p);
+}
+else
+{
+va = "";
+}
+cfg[ln.Trim()] = va.Trim();
+}
+}
+
+public static void WriteCustomData(IMyTerminalBlock block, Dictionary<string, string> cfg)
+{
+StringBuilder sb = new StringBuilder(cfg.Count * 100);
+foreach (KeyValuePair<string, string> va in cfg)
+{
+sb.Append(va.Key).Append('=').Append(va.Value).Append('\n');
+}
+block.CustomData = sb.ToString();
+}
+}
+
+void autoFireProcess() {
+if (!autoFireMissile) return;
+if (timestamp < lastAutoFire + AUTO_FIRE_INTERVAL) return;
+lastAutoFire = timestamp;
+if (MISSILES.Count > AUTO_FIRE_MAX) return;
+// check target from fcs only
+Vector3D targetPosition=Vector3D.Zero, targetVelocity=Vector3D.Zero;
+checkFcsTarget(out targetPosition, out targetVelocity);
+if(targetPosition == Vector3D.Zero) return;
+// fire
+                if (LaunchStateMachine == null)
+                {
+                    LaunchStateMachine = MissileLaunchHandler().GetEnumerator();
+                }
+}
+
+void checkFcsTarget(out Vector3D targetPosition, out Vector3D targetVelocity) {
+CustomConfiguration cfgTarget = new CustomConfiguration(fcsComputer);
+cfgTarget.Load();
+
+string tmpS = "";
+cfgTarget.Get("Position", ref tmpS);
+Vector3D.TryParse(tmpS, out targetPosition);
+cfgTarget.Get("Aiming", ref tmpS);
+//LockTargetAiming = tmpS == "True";
+// if fcs have target launch missile immediatly
+// if(targetPanelPosition!=Vector3D.Zero && autoFireMissile ) fireMissile();
+
+cfgTarget.Get("Velocity", ref tmpS);
+Vector3D.TryParse(tmpS, out targetVelocity);
+
+//cfgTarget.Get("Asteroid", ref tmpS);
+//Vector3D.TryParse(tmpS, out asteroidPosition);
+
+//cfgTarget.Get("radarHighThreatPosition", ref tmpS);
+//Vector3D.TryParse(tmpS, out radarHighThreatPosition);
+
+int tmpI = 0;
+cfgTarget.Get("TargetCount", ref tmpI);
+
+int targetCount = tmpI;
+LTPs.Clear();
+LTVs.Clear();
+for (int i = 0; i < targetCount; i++) {
+Vector3D tmpP, tmpV;
+cfgTarget.Get("Position"+i, ref tmpS);
+Vector3D.TryParse(tmpS, out tmpP);
+LTPs.Add(tmpP);
+cfgTarget.Get("Velocity"+i, ref tmpS);
+Vector3D.TryParse(tmpS, out tmpV);
+LTVs.Add(tmpV);
+}
+
+}

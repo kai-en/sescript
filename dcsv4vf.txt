@@ -123,6 +123,7 @@ long ptdSeparatedStart = 0;
 bool limitInnerRotor = true;
 bool isAeroDynamic=false;
 float angleWhenDown= 0F; //default 0 , vf -0.65F
+float angleWhenWalk= -0.1F; //default 0.1F
 int aeroSpeedLevel=0;
 int sl_fs = 0;
 int sl_bs = 0;
@@ -142,7 +143,7 @@ sl_fs = 0;
 }
 
 var nf = -mySpeedToMe.Z;
-if(nf<0)nf=0;
+//if(nf<0)nf=0;
 aeroSpeedLevel = (int)nf / 10;
 }
 
@@ -590,6 +591,9 @@ diff = diffGravity(forward, ng, -left);
 if(isDown && legMode == 1) {
 diff += angleWhenDown;
 }
+if(isDown && legMode == 3) {
+diff += angleWhenWalk;
+}
 if (LockTargetPosition.Equals(Vector3D.Zero) && !isSM && !tuc) {
 SetGyroPitch(diff * AimRatio * 60);
 SetGyroYaw((msc.RotationIndicator.Y) * 30);
@@ -611,7 +615,7 @@ Vector3D maintainSpeedToMe = Vector3D.TransformNormal(needSpeed, refLookAtMatrix
 
 Vector3D nowSpeedToMe = Vector3D.TransformNormal(Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
 if (isDown) {
-var ds = -2;
+var ds = -1.5;
 Vector3D mstm = Vector3D.Zero;
 if(naturalGravityLength > 0.01) {
 mstm = -1 * Vector3D.Normalize(naturalGravity) * ds;
@@ -713,7 +717,7 @@ lastSpeedY = m2m.Y;
 
 if(!(flyByOn||dockingOn||isSM) && dampenersOn){
 // auto forward
-if(Math.Abs(inputVec.Z) < 0.1 && aeroSpeedLevel>0 ){
+if(Math.Abs(inputVec.Z) < 0.1 && Math.Abs(aeroSpeedLevel)>0 ){
 ft = (float)MathHelper.Clamp(((-10*aeroSpeedLevel) - mySpeedToMe.Z) * 0.1, -10, 10);
 var needForce = (Vector3D.Dot(-naturalGravity, msc.WorldMatrix.Backward) + ft) * shipMass;
 if(ft < 0){
@@ -1443,7 +1447,7 @@ Head = getBlockByName(HeadNameTag) as IMyShipController;
 if (Head != null) {
 legMode = 1;
 }
-tryAddVftr("Hinge nose", 0, 0, -(75F/180F)*mpi, 0);
+tryAddVftr("Hinge nose", (90F/180F)*mpi, (90F/180F)*mpi, (-33F/180F)*mpi, 0);
 tryAddVftr("Rotor Arm L1", 0, (-90F/180F)*mpi, (-90F/180F)*mpi, 130);
 tryAddVftr("Rotor Arm R1", 0, (90F/180F)*mpi, (90F/180F)*mpi, 130);
 tryAddVftr("Rotor Arm L2", (-10F/180F)*mpi, (-160F/180F)*mpi, (-160F/180F)*mpi, 90);
@@ -2060,7 +2064,7 @@ cfg.Get("susMode", ref susMode);
 cfg.Get("legMode", ref legMode);
 cfg.Get("dockingForward", ref dockingForward);
 cfg.Get("dockingUp", ref dockingUp);
-
+cfg.Get("legMargin", ref legMargin);
 // new para here
 
 string tmps = "";
@@ -3564,7 +3568,7 @@ float bal = 0f;
 bool wf = false;
 PIDController wbp2 = new PIDController(2F,0.1F,0F,1F,-1F,60);
 int walkLastT = 0;
-int walkInterval = 15;
+int walkInterval = 10;
 float ida = 0.5F * mpi; // inner default angle
 
 void processWalkAngle(out float tal, out float tar, int i) {
