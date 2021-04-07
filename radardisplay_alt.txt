@@ -194,7 +194,8 @@ void Main(string arg, UpdateType updateSource)
 
     runtimeTracker.AddRuntime(); 
  
-    scheduler.Update(); 
+    scheduler.Update();
+    PrintDetailedInfo();
  
     if (arg.Equals(IGC_TAG)) 
     { 
@@ -545,7 +546,7 @@ class RadarSurface
     public void AddContact(Vector3D position, MatrixD worldMatrix, Color iconColor, Color elevationLineColor, Relation relation) 
     { 
         var transformedDirection = Vector3D.TransformNormal(position - worldMatrix.Translation, Matrix.Transpose(worldMatrix));
-        transformedDirection = transformedDirection;
+        //transformedDirection = transformedDirection;
         var newlen = getLogLen(transformedDirection.Length());
         var r = newlen / transformedDirection.Length();
         transformedDirection *= r;
@@ -1026,7 +1027,7 @@ void GrabBlocks()
     //grabBlockAction = new ScheduledAction(GrabBlocks, 0.1); 
     //scheduler.AddScheduledAction(grabBlockAction); 
     scheduler.AddScheduledAction(UpdateRadarRange, 1); 
-    scheduler.AddScheduledAction(PrintDetailedInfo, 1); 
+    //scheduler.AddScheduledAction(PrintDetailedInfo, 0.01); 
  
     scheduler.AddQueuedAction(GetTurretTargets, cycleTime);                                             // cycle 1 
     scheduler.AddQueuedAction(radarSurface.SortContacts, cycleTime);                                    // cycle 2 
@@ -1072,7 +1073,8 @@ public class Scheduler
     /// </summary> 
     public void Update() 
     { 
-        double deltaTime = Math.Max(0, _program.Runtime.TimeSinceLastRun.TotalSeconds * runtimeToRealtime); 
+        double deltaTime = Math.Max(0, _program.Runtime.LastRunTimeMs * 0.1 * runtimeToRealtime);
+        //_program.Echo("a "+deltaTime);
  
         _actionsToDispose.Clear(); 
         foreach (ScheduledAction action in _scheduledActions) 

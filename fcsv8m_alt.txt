@@ -247,8 +247,15 @@ void Main(string arguments)
 					if (fcsSound != null) fcsSound.Stop();
 					TurnBlocksOnOff(lockBlockList, false);
 					TurnBlocksOnOff(searchBlockList, NeedScan);
+				MyShip.SetGyroOverride(false);
 		break;
-		case("Aim"):NeedAimMode += 1; if(NeedAimMode > 2){NeedAimMode = 0;}; break;
+		case("Aim"): 
+			NeedAimMode += 1;
+			if(NeedAimMode > 2){
+				NeedAimMode = 0;
+				MyShip.SetGyroOverride(false);
+			};
+		break;
 		case("Lock"):ShipLock(); break;
 		case("Weapon"):NeedWeaponMode += 1; if(NeedWeaponMode > 1){NeedWeaponMode = 0;}; break;
 		case("Fire"):NeedAutoFire = !NeedAutoFire; break;
@@ -263,6 +270,7 @@ void Main(string arguments)
 			}else {
 				NeedAutoFire=false;
 				NeedAimMode=0;
+				MyShip.SetGyroOverride(false);
 			}
 		break;
 		case("Dir"):
@@ -270,6 +278,7 @@ void Main(string arguments)
 				NeedAimMode=2;
 			}else {
 				NeedAimMode=0;
+				MyShip.SetGyroOverride(false);
 			}
 		break;
 		case("CircleTarget"):
@@ -562,8 +571,8 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 				Vector3D HitPoint = targetEntity.Position;
 				MatrixD TargetMainMatrix = TrackTarget.Orientation;   
 				MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
-				MyTarget.AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - TrackTarget.Position, TargetLookAtMatrix);
-			} else if (!isUnderControl){
+				MyTarget.AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - TrackTarget.Position, TargetLookAtMatrix); //
+			} else if (!isUnderControl && rotorLidarList.Count == 0){ // 非rotorLidar才清空清确锁定, 让位给无人机炮塔引导精确锁定
 				MyTarget.AccurateLockPositionToTarget = Vector3D.Zero;
 			}
 			
@@ -574,6 +583,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 
 			if (MyTargetList.Count == 0 && fcsSound != null) fcsSound.Stop();
 			TurnBlocksOnOff(lockBlockList, false);
+				MyShip.SetGyroOverride(false);
 
 			// mod by kaien
 			// NeedScan = false;
@@ -631,7 +641,7 @@ void ShipLock(){
 					Vector3D.TryParse(target.HitPosition.ToString(), out HitPoint);
 					MatrixD TargetMainMatrix = target.Orientation;   
 					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
-					MyTargetList[selectedTarget].AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - target.Position, TargetLookAtMatrix);
+					MyTargetList[selectedTarget].AccurateLockPositionToTarget = Vector3D.TransformNormal(HitPoint - target.Position, TargetLookAtMatrix); //
 					//NeedAimMode = 1;
 				}
 				else{
@@ -679,7 +689,9 @@ void ShipAim(){
 			if(NeedWeaponMode == 1)   
 			{
 			// add by kaien
-			var mv = MyShip.Velocity * 0.16;
+			var range = (TargetPosition - MyShip.Position).Length();
+			var delta = (400 - range) * 0.0002;
+			var mv = MyShip.Velocity * (0.46+delta); // close need +, far need - 
 			HitPosition = HitPointCaculate(MyShip.Position, mv, MyShip.Acceleration, TargetPosition, MyTarget.Velocity, MyTarget.Acceleration, Weapon_2_BulletInitialSpeed,Weapon_2_BulletAcceleration,Weapon_2_BulletMaxSpeed);
 			}
 		}
@@ -1164,6 +1176,8 @@ public class Ship
 	public List<IMyLargeTurretBase> AutoWeapons = new List<IMyLargeTurretBase>();
 	public List<IMySmallGatlingGun> Guns = new List<IMySmallGatlingGun>();
 	public List<IMySmallMissileLauncher> Rockets = new List<IMySmallMissileLauncher>();
+	public int rocketIdx = 0;
+	public long rocketLast = 0;
 	public List<IMyCameraBlock> Cameras = new List<IMyCameraBlock>();
 	public List<IMyGyro> Gyroscopes = new List<IMyGyro>();
 	public List<IMyThrust> Thrusts = new List<IMyThrust>();
@@ -1230,8 +1244,15 @@ public class Ship
 				MotherConnector = Connector.OtherConnector;
 			}
 		}
-		
 		if(Cockpit == null) {Debug = "Cockpit Not Found"; return;}
+		MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.Cockpit.WorldMatrix.Forward, this.Cockpit.WorldMatrix.Up);
+
+		Rockets = Rockets.OrderBy( r => {
+			var p = r.GetPosition() - Cockpit.GetPosition();
+			p = Vector3D.TransformNormal(p, refLookAtMatrix);
+			var d = Math.Abs(p.X) * 1000 + p.Y*50 + p.X;
+			return d;
+		}).ToList();
 		Cameras.ForEach(delegate(IMyCameraBlock cam){cam.ApplyAction("OnOff_On");cam.EnableRaycast = true;});
 		
 		//处理推进器
@@ -1749,8 +1770,13 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		// add by kaien
 		if (NeedWeaponMode == 0)
 		this.Guns.ForEach(delegate(IMySmallGatlingGun g){g.ApplyAction("ShootOnce");});
-		else 
-		this.Rockets.ForEach(delegate(IMySmallMissileLauncher g){g.ApplyAction("ShootOnce");});
+		else if (NeedWeaponMode == 1) {
+			if (t < rocketLast + 120/this.Rockets.Count) return;
+			this.Rockets[rocketIdx].ApplyAction("ShootOnce");
+			rocketIdx = (rocketIdx + 1) % this.Rockets.Count;
+			rocketLast = t;
+		//this.Rockets.ForEach(delegate(IMySmallMissileLauncher g){g.ApplyAction("ShootOnce");});
+		}
 	}
 }
 

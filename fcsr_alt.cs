@@ -1,5 +1,5 @@
 static bool isOnOff = true; //是否开机
-static bool OnlyAttackUpPlane = true; //自动选择目标时是否只选择转子基座炮塔的上半球面里的目标（当目标低于该炮塔时不选择这个目标）
+static bool OnlyAttackUpPlane = false; //自动选择目标时是否只选择转子基座炮塔的上半球面里的目标（当目标低于该炮塔时不选择这个目标）
 /*
  ======= [ MEA ] 全自动转子基座炮台控制程序 FCS-R v1.3 by MEA群主 QQ群530683714 =======
  【介绍】
@@ -67,17 +67,22 @@ const double AttackDistance = 910; //默认武器的自动开火距离
 //程序会自动检测原版武器并在有目标时触发武器开火。同时你也可以自己使用定时块来触发开火。你需要在需要触发自定义开火的转子基座炮台上加入一个或多个定时块，必须放进这个炮台的编组。
 //同时，你需要让这个开火定时块的名字里完全包含下方的FireTimerNameTag设置的标签，并且在这个定时块的自定义参数里写上触发开火的距离（纯数字），如果不设置距离，将采用默认武器的开火距离
 //程序会在目标进入开火距离内的时候，以每秒60次的速度对这个定时块执行“立即触发”动作。
-const string FireTimerNameTag = "[Fire_Timer]";  //自动开火定时块名字标签，定时块名字需要完全包含这个标签。
+const string FireTimerNameTag = "PG-";  //自动开火定时块名字标签，定时块名字需要完全包含这个标签。
 
 // ================ 武器子弹参数设置 =============
 const double BulletInitialSpeed = 400; //子弹初速度
 const double BulletAcceleration = 0; //子弹加速度
 const double BulletMaxSpeed = 400; //子弹最大速度
-const double ShootDistance = 910; //开火距离
+const double ShootDistance = 870; //开火距离
 const double BulletInitialSpeed2 = 170; //子弹初速度
 const double BulletAcceleration2 = 10; //子弹加速度
 const double BulletMaxSpeed2 = 190; //子弹最大速度
 const double ShootDistance2 = 910; //开火距离
+const double BulletInitialSpeed3 = 267.5; //子弹初速度
+const double BulletAcceleration3 = 0; //子弹加速度
+const double BulletMaxSpeed3 = 267.5; //子弹最大速度
+const double ShootDistance3 = 3000; //开火距离
+const float xdegree = -2.0F;
 
 // ============== 其他设置 ==============
 static int AttentionRandomTime = 180; //随机警戒模式的切换间隔，60是1秒，120是2秒，这个数必须是整数
@@ -175,7 +180,10 @@ TURRETS = tmpList;
 	//这里获取了自动武器和所有的转子基座炮塔
 	if(!init){GetBlocks(); return;}
 	
-            debugInfo = "";
+            debugInfo = "FCSR Count: " + FCSR.Count;
+	foreach ( var r in FCSR ) {
+		debugInfo += r.debugInfo;
+	}
 	
 	//生成目标，每个自动武器一个目标，每个转子基座炮台自动索敌一个目标，加一个FCS编程块目标
 	TargetList = new List<Target>();
@@ -266,7 +274,6 @@ TURRETS = tmpList;
 			R.UpdateMotionInfo();//更新运动信息
 			if(TargetList.Count > 0){
 				R.AttackCloestTarget(TargetList, mode);
-                                                debugInfo += R.debugInfo + "\n";
 			}
 			else{
 				R.Attention(AttentionMode, mode);//归位
@@ -347,7 +354,7 @@ public void GetBlocks()
 	
 	List<RotorBase> FCSR_temp = new List<RotorBase>();
 	foreach(IMyBlockGroup grou in groups){
-		FCSR_temp.Add(new RotorBase(grou));
+		FCSR_temp.Add(new RotorBase(grou, this));
 	}
 	
 	for(int i = 0; i < FCSR_temp.Count; i++){
@@ -365,7 +372,7 @@ public void GetBlocks()
 		}
 	}
 	else{
-	init = true;
+	if(FCSR.Count>0)init = true;
 	}
 }
 
@@ -469,6 +476,7 @@ this.TimeStamp = t;
 // =========== 转子炮塔组件基类 ===========
 public class RotorBase
 {
+	public MyGridProgram program;
 	public string Name;
 	public string ErrorReport = "Normal";
 	
@@ -506,8 +514,9 @@ public class RotorBase
 	public PIDController pidY = new PIDController(pp, pi, pd,pim,-pim,12);
 	
 	// -------- 初始化方法 ---------
-	public RotorBase(IMyBlockGroup thisgroup)
+	public RotorBase(IMyBlockGroup thisgroup, MyGridProgram program)
 	{
+		this.program = program;
 		Name = thisgroup.Name;
 		
 		List<IMyTerminalBlock> blocks_temp = new List<IMyTerminalBlock>();
@@ -541,8 +550,15 @@ public class RotorBase
 				int NagtiveRotor = 1;
 				if (!(block is IMyMotorStator)) continue;
 				if (block.CustomName.Contains("Hinge")) {
-					RotorYs.Add(block as IMyMotorStator);
-					RotorYField.Add(1*NagtiveRotor);
+					var dot = Vector3D.Dot(AimBlock.WorldMatrix.Left, block.WorldMatrix.Up);
+					if (Math.Abs(dot) > 0.9) {
+						RotorYs.Add(block as IMyMotorStator);
+						RotorYField.Add(1*NagtiveRotor);
+						debugInfo = block.CustomName;
+					} else {
+						RotorXs.Add(block as IMyMotorStator);
+						RotorXField.Add(1*NagtiveRotor);
+					}
 				} else {
 					RotorXs.Add(block as IMyMotorStator);
 					if (Vector3D.Dot(AimBlock.WorldMatrix.Up, block.WorldMatrix.Up)>0)
@@ -564,26 +580,22 @@ public class RotorBase
 			}
 		}
 		if (RotorYs.Count > 0) {
-		var testEl = RotorYs[0];
-		var testElN = RotorYField[0];
-		var testDir = testEl.WorldMatrix.Right;
-		if (testElN < 0) testDir = testEl.WorldMatrix.Left;
 		foreach(IMyTerminalBlock block in blocks_temp){
 			if (!(block is IMyMotorStator)) continue;
 				int NagtiveRotor = 1;
 				if(block.CustomName.Contains(RotorNagtiveTag)){NagtiveRotor = -1;}
-				var dot = Vector3D.Dot(testDir, block.WorldMatrix.Up);
-				if (Math.Abs(dot)>0.9) {
-					RotorXs.Add(block as IMyMotorStator);
-					if (dot <0 || block.CustomName.Contains("Arm")) 
-						RotorXField.Add(1*NagtiveRotor);
-					else RotorXField.Add(-1*NagtiveRotor);
-				}
+				var dot = Vector3D.Dot(AimBlock.WorldMatrix.Left, block.WorldMatrix.Up);
+				if (Math.Abs(dot)>0.9) continue;
+				var dot2 = Vector3D.Dot(AimBlock.WorldMatrix.Up, block.WorldMatrix.Up);
+				RotorXs.Add(block as IMyMotorStator);
+				if (dot2 >0  || block.CustomName.Contains("Arm")) 
+					RotorXField.Add(1*NagtiveRotor);
+				else RotorXField.Add(-1*NagtiveRotor);
 		}
 		}
 		}
 		if(RotorXs.Count < 1 || RotorYs.Count < 1) {ErrorReport = "Rotors Not Complete!"; return;}
-		
+
 		//获得武器
 		foreach(IMyTerminalBlock block in blocks_temp){
 			if(block is IMyUserControllableGun){
@@ -622,7 +634,9 @@ public class RotorBase
 	public void UpdateMotionInfo()
 	{
 		this.Acceleration = (((this.AimBlock.GetPosition() - this.Position)*ProgramUpdateRatio) - this.Velocity)*ProgramUpdateRatio;
-		this.Velocity = (this.AimBlock.GetPosition() - this.Position)*ProgramUpdateRatio;
+		if (Cockpit != null) this.Velocity = Cockpit.GetShipVelocities().LinearVelocity;
+		else this.Velocity = (this.AimBlock.GetPosition() - this.Position)*ProgramUpdateRatio;
+
 		this.Position = this.AimBlock.GetPosition();
 	}
 	
@@ -802,7 +816,7 @@ public class RotorBase
 	public void AttackCloestTarget(List<Target> targetList, int mode)
 	{
 		debugInfo = "act";
-                if (this.Weapons.Count == 0 && this.AimBlock is IMyShipController && !((this.AimBlock as IMyShipController).IsUnderControl)) {
+                if (this.Weapons.Count == 0 && this.AimBlock is IMyShipController && !((this.AimBlock as IMyShipController).IsUnderControl) && this.FireTimers.Count == 0) {
                    Target FCS_T = null;
                    foreach(var t in targetList) {
                        if (t.isFCS) FCS_T = t;
@@ -877,15 +891,14 @@ double compose = distance / 900 + (1- dot);
 			MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.AimBlock.WorldMatrix.Forward, this.AimBlock.WorldMatrix.Up);
 			Vector3D TargetPositionToMe = Vector3D.TransformNormal(MyAttackTarget.Position - this.Position, refLookAtMatrix);
 			//存在自定义开火定时块就执行自定义开火
-//			if(false && FireTimer.Count() > 0){
-//				foreach(IMyTerminalBlock fire_timer in FireTimers){
-//					int fire_distance = 0;
-//					if(!int.TryParse(fire_timer.CustomData, out fire_distance)){fire_distance = AttackDistance;}
-//					if(Vector3D.Distance(MyAttackTarget.Position, this.Position) <= AttackDistance && !sensorActive){
-//						fire_timer.ApplyAction("TriggerNow");
-//					}
-//				}
-//			}
+			if(FireTimers.Count() > 0){
+				foreach(IMyTerminalBlock fire_timer in FireTimers){
+					int fire_distance = (int)ShootDistance3;//CODING
+					if(Vector3D.Distance(MyAttackTarget.Position, this.Position) <= fire_distance && !sensorActive && isAimedOK){
+						//fire_timer.ApplyAction("TriggerNow");
+					}
+				}
+			}
 			if(Vector3D.Distance(MyAttackTarget.Position, this.Position) <= AttackDistance && !sensorActive){
 				if(isFireWhenAimOK){
 					if(isAimedOK){
@@ -942,7 +955,13 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		Vector3D thisV;
 		Vector3D thisA;
 		double bs, ba, bm;
-		if (isRocket == true) {
+		if (FireTimers.Count > 0) {
+			thisV = this.Velocity;
+			thisA = this.Acceleration;
+			bs = BulletInitialSpeed3;
+			ba = BulletAcceleration3;
+			bm = BulletMaxSpeed3;
+		} else if (isRocket == true) {
 			thisV = this.Velocity * 0.3;
 			thisA = new Vector3D(0,0,0);
 			bs = BulletInitialSpeed2;
@@ -960,12 +979,22 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		ba = 0;
 		bm = 100000;
 		}
-		
-		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position, Velocity, Acceleration, bs, ba, bm);
-                        Vector3D tp2me = Vector3D.TransformNormal(HitPoint - Cockpit.GetPosition(), MatrixD.Transpose(Cockpit.WorldMatrix));
-		Vector3D TargetPositionToMe = Vector3D.Normalize(Vector3D.TransformNormal(HitPoint - this.AimBlock.GetPosition(), refLookAtMatrix));
-		Vector3D aimDir = CalcAim(this.Position, thisV, Position, Velocity, bs, ba, bm);
-		var aimDirToMe = Vector3D.TransformNormal(aimDir,  refLookAtMatrix);
+		Vector3D ng = Vector3D.Zero;
+		if (Cockpit != null) ng = Cockpit.GetNaturalGravity();
+		debugInfo += "\nbs: " + bs;
+		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position, Velocity, Acceleration, bs, ba, bm, FireTimers.Count > 0, ng);
+                        Vector3D tp2me = Position - this.Position;
+		Vector3D TargetPositionToMe = new Vector3D(0,0,-1);
+		if (HitPoint != Vector3D.Zero) {
+		TargetPositionToMe = Vector3D.Normalize(Vector3D.TransformNormal(HitPoint - this.Position, refLookAtMatrix));
+		}
+//		Vector3D aimDir = CalcAim(this.Position, thisV, Position, Velocity, bs, ba, bm);
+//		var aimDirToMe = Vector3D.TransformNormal(aimDir,  refLookAtMatrix);
+		if (FireTimers.Count>0) {
+			// ABK piston gun aim angle correction
+			// https://www.andre-gaschler.com/rotationconverter/
+			TargetPositionToMe = Vector3D.Transform(TargetPositionToMe, new Quaternion((float)Math.Sin(toRa(xdegree * 0.5F)), 0, 0, (float)Math.Cos(toRa(xdegree * 0.5F))));
+		}
 		//储存采样点
 		if(Aim_PID_Data.Count < Aim_PID_T){
 			for(int i = 0; i < Aim_PID_T; i ++){
@@ -994,7 +1023,10 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		//double PitchValue = Aim_PID_P*(modAngle(ea) + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
 
 		bool isFireZone = angleDeltaAbs(this.RotorXs[0].Angle, hori*Math.PI) > horiD*Math.PI;
-                        isFireZone = isFireZone && tp2me.Length() < ShootDistance;
+		double fireRange = ShootDistance;
+		if (isRocket) fireRange = ShootDistance2;
+		if(FireTimers.Count>0) fireRange = ShootDistance3;
+                        isFireZone = isFireZone && tp2me.Length() < fireRange;
                         if (isStraight) isFireZone = true;
 		if (!isFireZone) {
 		PitchValue = -this.RotorYs[0].Angle * this.RotorYField[0]; //
@@ -1014,6 +1046,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		//}
 		
 		// 计算当前与预期瞄准点的瞄准夹角
+		if (HitPoint == Vector3D.Zero) return false;
 		Vector3D V_A = HitPoint - this.Position;
 		Vector3D V_B = this.AimBlock.WorldMatrix.Forward;
 		double Angle = Math.Acos(Vector3D.Dot(V_A,V_B)/(V_A.Length() * V_B.Length())) * 180 / Math.PI;
@@ -1054,8 +1087,19 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 
 // ============ 辅助函数 =============
 static Vector3D HitPointCaculate(Vector3D Me_Position, Vector3D Me_Velocity, Vector3D Me_Acceleration, Vector3D Target_Position, Vector3D Target_Velocity, Vector3D Target_Acceleration,    
-							double Bullet_InitialSpeed, double Bullet_Acceleration, double Bullet_MaxSpeed)   
-{   
+							double Bullet_InitialSpeed, double Bullet_Acceleration, double Bullet_MaxSpeed,
+bool isGravitySensitive, Vector3D ng)   
+{
+	string debugString = "";
+	//GravityHitPointCaculate(new Vector3D(1, 1, 0), new Vector3D(0,0,-1), new Vector3D(0,-1,0), 3D, out debugString);
+	//debugInfo += "\nghpc\n" + debugString + "\n";
+	if (isGravitySensitive && ng.Length() != 0) {
+		var ret = GravityHitPointCaculate(Target_Position - Me_Position, Target_Velocity - Me_Velocity, ng, Bullet_InitialSpeed, out debugString);
+		if (ret == Vector3D.Zero) return Vector3D.Zero;
+		ret += Me_Position;
+		debugInfo += "\nghpc\n" + debugString + "\n";
+		return ret;
+	}
 	//迭代算法   
 	Vector3D HitPoint = new Vector3D();   
 	Vector3D Smt = Target_Position - Me_Position;//发射点指向目标的矢量   
@@ -1506,3 +1550,143 @@ return r;
         public Matrix GetWeaponElevationMatrix(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId) =>
             _getWeaponElevationMatrix?.Invoke(weapon, weaponId) ?? Matrix.Zero;
     }
+
+static float toRa(float i) {
+return (i / 180F) * (float)Math.PI;
+}
+
+static string displayVector3D(Vector3D tar) {
+return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
+}
+
+static Vector3D GravityHitPointCaculate(Vector3D tp, Vector3D tv, Vector3D g, double aV, out string debugString) {
+/*
+目标速度为  tvx, tvy, tvz. 目标位置  tpx, tpy, tpz.
+重力加速度 gax, gay, gaz.
+我方位置 mpx, mpy, mpz, 我方速度 mvx, mvy, mvz
+炮弹速度标量 aV, 
+假设炮弹速度为 avx, avy, avz
+命中时间为 n
+
+则有
+tpx + tvx * n = mpx + mvx * n + avx * n +  0.5 * gax * n * n 方程1
+tpy + tvy * n = mpy + mvy * n + avy * n + 0.5 * gay * n * n 方程2
+tpz + tvz * n = mpz + mvz * n + avz * n + 0.5 * gaz * n * n 方程3
+avx * avx + avy * avy + avz * avz = aV * aV 方程4
+
+以重力方向向下, 面朝目标方向建立座标系, 则有 gax = gaz = 0 gay = -重力加速度
+且 tpx = mpx = 0
+由于接受参数时, 已改用本机位置和速度作为位置和速度基准, 所以还有mp = 0和mv=0
+
+步骤1, 由方程1
+则可以直接求出avx = tvx - mvx
+
+由方程3
+tpz - mpz = (avz + mvz - tvz) * n
+可知 n大 则 avz 小, n小, 则avz大
+
+由方程4
+avz * avz + avy * avy = aV * aV  - avx * avx 
+由于avx已知, 可知 avz 和 avy 形成一个圆形
+
+假设gay = 0 先求一个n出来, 再把gay代入, 重新计算avy avz n 迭代多次逼近正确的n值
+
+*/
+
+debugString = "";
+if (tp == Vector3D.Zero) return Vector3D.Zero;
+// 1 建立座标系
+// 1.1 检查 tp方向 与 g 方向是否 完全同向/异向 算法无法处理这种情况 , 不攻击 (缺陷1)
+var gd = Vector3D.Normalize(g);
+var dot = Vector3D.Dot(Vector3D.Normalize(tp), gd);
+if (dot == 1 || dot == -1) return Vector3D.Zero;
+// 1.2 构建座标转换矩阵
+var forward = Vector3D.Normalize(Vector3D.Reject(tp, gd));
+var tranmt = MatrixD.CreateLookAt(new Vector3D(), forward, -gd);
+
+// 1.3 转换座标
+var tp2 = Vector3D.TransformNormal(tp, tranmt);
+var tv2 = Vector3D.TransformNormal(tv, tranmt);
+debugString = displayVector3D(tp2);
+debugString += "\n" + displayVector3D(tv2);
+
+// 2 求 avx
+double avx = tv2.X;
+if (Math.Abs(avx) > aV) return Vector3D.Zero; // 炮速赶不上tv2.X 无法追踪
+debugString += "\navx: " + avx;
+
+// 3 无视g 先算一个avy avz
+// 3.1 假设减掉tvYZ, Z轴剩余速度有avzd, 则Y轴需要的剩余速度为 (tpy/tpz)*avzd
+// 有 (tvz+avzd)2 + (tvy + (tpy/tpz)avzd)2 = aVyz2
+double aVyz = Math.Sqrt(aV*aV - avx*avx);
+if (tv2.Z*tv2.Z + tv2.Y*tv2.Y > aVyz*aVyz) return Vector3D.Zero; // yz面目标速度大于炮弹速度 追不上, 不考虑利用重力加速度追 (缺陷2)
+// tpz 不可能为0 因为能建座标系就表示有向前的分量, 即z方向分量)
+// 采用一元二次方程 ax2 +bx + c = 0方式, 整理a , b, c
+double fa = 1 + ((tp2.Y*tp2.Y) / (tp2.Z*tp2.Z));
+double fb = 2 * tv2.Z + 2 * tv2.Y * (tp2.Y/tp2.Z);
+double fc = tv2.Z * tv2.Z + tv2.Y * tv2.Y - aVyz * aVyz;
+if (fb*fb - 4*fa*fc < 0) return Vector3D.Zero; // 无解, 返回
+// 根据 一元二次方程求根公式, 计算x (即avzd)
+double x = (-fb + Math.Sqrt(fb*fb - 4*fa*fc)) / (2*fa);
+double avz = 0;
+if (tv2.Z + x < 0) {
+avz = tv2.Z + x;
+} else {
+x =  (-fb - Math.Sqrt(fb*fb - 4*fa*fc)) / (2*fa);
+avz = tv2.Z + x;
+}
+double avy = tv2.Y + (tp2.Y/tp2.Z) * x;
+
+// 3.2 根据z轴, 算追及时间 n
+double zdelta = avz - tv2.Z;
+double n = tp2.Z / zdelta;
+if (n < 0) return Vector3D.Zero; // Z轴追及时间为负, 无法追踪
+debugString += "\naVyz: " + aVyz;
+debugString += "\navy: " + avy;
+debugString += "\navz: " + avz;
+debugString += "\nn: " + n;
+
+// 4 循环逼近多次(这个方程应该有解, 但这里采取逼近法简化)(缺陷3) 加速度的问题 主要是计算avyg分量应该取多少
+double avyg = 0;
+double avyp = avy;
+for (int i = 0; i < 4; i++) {
+// 4.1 按当前n 计算avyg, 取avyg = 0.5 * (-g) * n ; 举例, g为 向下10, 时间1秒, 我们需要向上5, 这样前0.5秒为上升期, 后0.5秒为下降期, 上升距离=下降距离, 不影响瞄准
+avyg = 0.5 * g.Length() * n;
+// 4.2 由于时间n变长了, 需要重新计算avy
+avyp = tv2.Y + (tp2.Y / n);
+// 4.3 加上avyg
+avyp = avyp + avyg;
+if (Math.Abs(avyp) > aVyz) return Vector3D.Zero;
+double avzL = Math.Sqrt(aVyz*aVyz - avyp*avyp);
+avz = - avzL;
+zdelta = avz - tv2.Z;
+double nn = tp2.Z / zdelta;
+if (nn > n) n = nn;
+else n = (nn + n) /2;
+if (n < 0) return Vector3D.Zero; // Z轴追及时间为负, 无法追踪
+
+debugString += "\navy: " + avyp;
+debugString += "\navz: " + avz;
+debugString += "\nn: " + n;
+
+}
+
+// 5 将avx avy avz 转回绝对座标系 并输出(注意本来这里应该输出碰撞点位置 , 但这里以发射速度代替, 所以还要加上本机位置, 调用者处理)
+avyp *= 0.98;
+Vector3D av2m = new Vector3D(avx, avyp, avz);
+Vector3D av = Vector3.Transform(av2m, Matrix.Transpose(tranmt));
+debugString += "\nav: " + displayVector3D(av);
+return av;
+}
+
+// (* -1.64 0.60) (- 2.3 0.6) 1.7
+// 问题1, 随着n增加, avy也需要同时减少, 而原算法没考虑这个问题, 解法, 根据n重新计算avy
+// (* 1.72 0.58) (- 2.24 0.58) (/ (+ 2.24 1.66) 2) (* 1.95 0.58)
+// 问题2, 现算法有振荡, 在2.25 和 2 两个值 之间, 10次内没有收敛 100次也有0.03的误差, 但由于每帧计算, 最多10次
+// 解法 n的增量减半 n = (nn + n) / 2, 4次内误差0.01以下
+// (* 1.86 0.537) (- 2.13 0.537) (/ (+ 2.13 1.593) 2)
+// 问题3 fcsr停止工作? 定时器开火指令有误 删除
+// 问题4 不是, 还是hinge的问题, 仰角高会炸? 限定仰角-20, 小目标会炸? subgrid-damage 会炸?
+
+// (- 2.12 0.53) (/ (+ 2.12 1.59) 2) (* 1.855 0.53)
+// (* 1.86 0.53)
