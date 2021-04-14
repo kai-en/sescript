@@ -5,9 +5,9 @@ double ATAN_BASE = 0.5;
 double APID_P = 10;
 double APID_D = 1.0;
 
-//double MISSILE_MASS = 3398.8;
+double MISSILE_MASS = 3398.8;
 //double MISSILE_MASS = 5316.4;
-double MISSILE_MASS = 1989;
+//double MISSILE_MASS = 1989;
 //double MISSILE_MASS = 1407.4;
 double LaunchDist = 150;
 //int dropTime = 0;

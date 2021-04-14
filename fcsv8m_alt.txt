@@ -1422,6 +1422,7 @@ public class Ship
 	}
 
 	public bool isNear(MyDetectedEntityInfo ft, Target t) {
+	       return JudgeTargetRelationship(ft);
                    return true;
 //	       var ftD = Vector3D.Distance(ft.BoundingBox.Max, ft.BoundingBox.Min)/2;
 //	       var maxD = ftD > t.Diameter ? ftD : t.Diameter;
@@ -1493,7 +1494,7 @@ public class Ship
 						FoundTarget = RightAngleCameras[TT_Now_i].Raycast(lidarHitPoint);
 						TT_Now_i += 1;
 						if(TT_Now_i >= RightAngleCameras.Count){TT_Now_i=0;}
-						if(!FoundTarget.IsEmpty()
+						if(!FoundTarget.IsEmpty() && isNear(FoundTarget, Tgt)
                                                                           //&& FoundTarget.EntityId == Tgt.EntityId
                                                                           ){
 							return FoundTarget;
@@ -1534,7 +1535,11 @@ public class Ship
 				if(!FoundTarget.IsEmpty() && isNear(FoundTarget, Tgt)){
 					MatrixD TargetMainMatrix = FoundTarget.Orientation;   
 					MatrixD TargetLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), TargetMainMatrix.Forward, TargetMainMatrix.Up);
-                                        Tgt.trackOffset = Vector3D.Zero;
+                                        //Tgt.trackOffset = Vector3D.Zero;
+					var hitposition = FoundTarget.HitPosition ?? Vector3D.Zero;
+					if (hitposition == Vector3D.Zero) Tgt.trackOffset = Vector3D.Zero;
+					else
+					Tgt.trackOffset = Vector3D.TransformNormal(hitposition - FoundTarget.Position, TargetLookAtMatrix);
 					return FoundTarget;
 				}
 			}

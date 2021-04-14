@@ -96,7 +96,7 @@ Vector3D naturalGravity;
 double naturalGravityLength;
 Vector3D holdPosition;
 bool isHold = false;
-bool isDown = true;
+bool isDown = false;
 bool isME = false;
 bool isLaunch = false;
 bool isBase = false;
@@ -111,7 +111,7 @@ long ptdSeparatedStart = 0;
 bool limitInnerRotor = true;
 bool isAeroDynamic=false;
 float angleWhenDown= 0F; //default 0 , vf -0.65F
-float angleWhenWalk= -0.1F; //default 0.1F
+float angleWhenWalk= 0F; //default 0.1F
 int aeroSpeedLevel=0;
 int sl_fs = 0;
 int sl_bs = 0;
@@ -173,6 +173,7 @@ Vector3D MePosition = Vector3D.Zero;
 double AimRatio = 0.5;
 double maxAV = 1;
 Vector3D MeLastPosition;
+double diffX, diffZ;
 Vector3D MeVelocity;
 Vector3D MeLastVelocity;
 Vector3D MeAcceleration;
@@ -206,7 +207,7 @@ IMyShipController Head = null;
 List<IMyTerminalBlock> rotorShoulder = new List<IMyTerminalBlock>();
 string RotorShoulderNameTag = "Rotor Shoulder";
 PIDController[] shoulderPIDList = new PIDController[2];
-int legMode = 0; // default = 0, vf = 1
+static int legMode = 0; // default = 0, vf = 1
 float legMargin = -0.05f * (float)Math.PI;
 int legFoldStart = 0;
 int legFoldTime = 120;
@@ -538,13 +539,11 @@ if (!suc || isAssist) {
 //
 bool isFcsAiming = LockTargetAiming && LockTargetPosition!=Vector3D.Zero;
 if(ng.Length() > 0.001 && !isFcsAiming) {
-var forward = msc.WorldMatrix.Forward;
-var left = msc.WorldMatrix.Left;
-var diff = diffGravity(left, ng, forward);
+var diff = diffX;
 if (diff != 0) {
 SetGyroRoll(diff * AimRatio * 60 * -1);
 }
-diff = diffGravity(forward, ng, -left);
+diff = diffZ;
 if(isDown && legMode == 1) {
 diff += angleWhenDown;
 }
@@ -721,7 +720,7 @@ Random rnd = new Random();
 class VFTRotor {
 IMyMotorStator r;
 float[] pl = new float[3];
-PIDController pid = new PIDController(20f, 0.1f, 0f, 1f, -1f, 60);
+PIDController pid = new PIDController(8f, 0.1f, 0f, 1f, -1f, 60);
 long delay = 0L;
 long lastMode = 0L;
 IMyPistonBase p;
@@ -732,11 +731,12 @@ float[] tansl = new float[3]{0,0,0};
 float[] tanel = new float[3]{0,0,0};
 bool isTaReverse;
 bool isVTA;
+int iWTA;
 
-static int DELAY_ALL = 50;
+static int DELAY_ALL = 120;
 
 public VFTRotor(IMyTerminalBlock r, float p0, float p1, float p2, long d
-,float ps0=0, float pe0=0, float ps1=0, float pe1=0, float ps2=0, float pe2=0, float ns0=0, float ne0=0, float ns1=0, float ne1=0, float ns2=0, float ne2=0, bool tr = false) {
+,float ps0=0, float pe0=0, float ps1=0, float pe1=0, float ps2=0, float pe2=0, float ns0=0, float ne0=0, float ns1=0, float ne1=0, float ns2=0, float ne2=0, bool tr = false, int wta = -1) {
 pl[0] = p0;
 pl[1] = p1;
 pl[2] = p2;
@@ -764,6 +764,7 @@ tanel[1] = ne1;
 tanel[2] = ne2;
 isTaReverse = tr;
 isVTA = !(pe0==0 && pe1==0 && pe2==0 && ne0==0 && ne1==0 && ne2==0);
+iWTA = wta;
 }
 
 public void setMode(int mode) {
@@ -778,14 +779,18 @@ if (t < vftrStart + d) return;
 
 var targetA = pl[mode];
 var need = 0F;
-if (VTA >= 0 && isVTA) {
-need = VTA - tapsl[mode];
-if (need < 0) need = 0;
-need *= (tapel[mode] - tapsl[mode]) / toRa(90F);
+if (isVTA && legMode!=3 ) {
+if (VTA >= 0) {
+need = MathHelper.Clamp(VTA - tapsl[mode], 0, tapel[mode] - tapsl[mode]);
+// need *= (tapel[mode] - tapsl[mode]) / toRa(90F);
 } else {
-need = VTA - tansl[mode]; 
-if (need > 0) need = 0;
-need *= (tanel[mode] - tansl[mode]) / toRa(-90F); 
+need = MathHelper.Clamp(VTA - tansl[mode], tanel[mode] - tansl[mode], 0);
+// need *= (tanel[mode] - tansl[mode]) / toRa(-90F); 
+}
+}
+
+if (legMode == 3 && iWTA >= 0 && iWTA < 6) {
+need += WTA[iWTA];
 }
 
 if (isTaReverse) need = - need;
@@ -809,13 +814,13 @@ List<VFTRotor> landrList = new List<VFTRotor>();
 static float VTA = 0; //global vector angle left;
 
 void tryAddVftr(String name, float p0, float p1, float p2, long d, List<VFTRotor> li
-, float ps0=0, float pe0=0, float ns0=0, float ne0=0, float ps1=0, float pe1=0, float ns1=0, float ne1=0, float ps2=0, float pe2=0, float ns2=0, float ne2=0, bool tr = false
+, float ps0=0, float pe0=0, float ns0=0, float ne0=0, float ps1=0, float pe1=0, float ns1=0, float ne1=0, float ps2=0, float pe2=0, float ns2=0, float ne2=0, bool tr = false, int wta = -1
 ) {
 List<IMyTerminalBlock> tmprs = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(tmprs, b => ((IMyTerminalBlock)b).CustomName.Contains(name));
 if (tmprs.Count == 0) return;
 if (tmprs[0] is IMyMotorStator)
-foreach(var t in tmprs) li.Add(new VFTRotor((IMyMotorStator)t, p0, p1, p2, d, ps0, pe0, ps1, pe1, ps2, pe2, ns0, ne0, ns1, ne1, ns2, ne2, tr));
+foreach(var t in tmprs) li.Add(new VFTRotor((IMyMotorStator)t, p0, p1, p2, d, ps0, pe0, ps1, pe1, ps2, pe2, ns0, ne0, ns1, ne1, ns2, ne2, tr, wta));
 else if (tmprs[0] is IMyPistonBase)
 foreach(var t in tmprs) li.Add(new VFTRotor((IMyPistonBase)t, p0, p1, p2, d));
 
@@ -917,10 +922,19 @@ r.SetValueFloat("Velocity", (float)shoulderPIDList[0].Filter(-tsl - modangle(r.A
 
 void NavigationInfoUpdata(bool before)
 {
-if (Head != null && Head.IsUnderControl) {
+if (Head != null && vftrMode == 2) {
 msc = Head;
+upThrusters = backwardThrustersR;
+downThrusters = forwardThrustersR;
+forwardThrusters = upThrustersR;
+backwardThrusters = downThrustersR;
+
 } else {
 msc = Cockpit;
+upThrusters = upThrustersR;
+downThrusters = downThrustersR;
+forwardThrusters = forwardThrustersR;
+backwardThrusters = backwardThrustersR;
 }
 refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), msc.WorldMatrix.Forward, msc.WorldMatrix.Up);
 refMatrix = msc.WorldMatrix;
@@ -935,7 +949,7 @@ myShipMass = msc.CalculateShipMass();
 shipMass = myShipMass.PhysicalMass;
 naturalGravity = Cockpit.GetNaturalGravity();
 naturalGravityLength = naturalGravity.Length();
-dampenersOn = Cockpit.DampenersOverride;
+dampenersOn = msc.DampenersOverride;
 
 if(Head != null ) {
 if (Head.IsUnderControl) {
@@ -990,9 +1004,6 @@ if (naturalGravity.Length() > 0.1 && inputVec.Length() >0.1) {
   wantUD = Math.Abs(inputVecWorld.Dot(Vector3D.Normalize(naturalGravity))) > udi;
 }
 if (!wantUD) {
-var forward = msc.WorldMatrix.Forward;
-var left = msc.WorldMatrix.Left;
-var diffZ = diffGravity(forward, naturalGravity, -left);
 if (Math.Abs(diffZ) > uda) wantUD = true;
 }
 if (!wantUD && isUnderControl) {
@@ -1022,10 +1033,6 @@ resetThrusters(false);
 }
 bool cd = false;
 if ( inputVec.Y < -0.5 && lastDownT == 0) {
-var forward = msc.WorldMatrix.Forward;
-var left = msc.WorldMatrix.Left;
-var diffX = diffGravity(left, naturalGravity, forward);
-var diffZ = diffGravity(forward, naturalGravity, -left);
 if (Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2 && MeVelocity.Length() < 30) {
 lastDownT = t;
 }
@@ -1086,14 +1093,22 @@ cfgTarget.Get("Velocity"+i, ref tmpS);
 Vector3D.TryParse(tmpS, out tmpV);
 LTVs.Add(tmpV);
 }
-
 }
+var left = msc.WorldMatrix.Left;
+var forward = msc.WorldMatrix.Forward;
+diffX = diffGravity(left, naturalGravity, forward);
+diffZ = diffGravity(forward, naturalGravity, -left);
+
+
+// add before end
 }
 else
 {
 MeLastPosition = MePosition;
 MeLastVelocity = MeVelocity;
 }
+
+
 }
 
 
@@ -1394,14 +1409,31 @@ setDampenersOverride(Cockpit, true);
 refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);
 
 Head = getBlockByName(HeadNameTag) as IMyShipController;
-if (Head != null) {
-legMode = 1;
-}
+
 //tryAddVftr("Piston Leg2", 0, 0, 1, 0, vftrList);
 //tryAddVftr("wing-p", 0, toRa(28F), toRa(28F), 0, wingrList);
 //tryAddVftr("Hinge landgear", 0, toRa(-45F), toRa(-45F), 0, landrList);
-tryAddVftr("Hinge Wing", toRa(30F), 0, 0, 0, wingrList);
-tryAddVftr("Hinge Land", toRa(-1F), toRa(-60F), toRa(-60F), 0, landrList);
+
+//cvl-3x
+//tryAddVftr("Hinge Wing", toRa(30F), 0, 0, 0, wingrList);
+//tryAddVftr("Hinge Land", toRa(-1F), toRa(-60F), toRa(-60F), 0, landrList);
+
+// R-2
+tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
+tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
+tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
+tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
+tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
+tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
+
+tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
+tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
+tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+
+tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
+tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
+
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
 if (Cockpit is IMyTextSurfaceProvider) {
@@ -1678,6 +1710,10 @@ Gyroscopes[i].SetValue(gyroRollFieldHead[i], (float)rollRate * gyroRollFactorHea
 
 // speed control start
 List<IMyTerminalBlock> thrusters = null;
+List<IMyTerminalBlock> forwardThrustersR = new List<IMyTerminalBlock>();
+List<IMyTerminalBlock> upThrustersR = new List<IMyTerminalBlock>();
+List<IMyTerminalBlock> downThrustersR = new List<IMyTerminalBlock>();
+List<IMyTerminalBlock> backwardThrustersR = new List<IMyTerminalBlock>();
 List<IMyTerminalBlock> forwardThrusters = new List<IMyTerminalBlock>();
 List<IMyTerminalBlock> leftThrusters = new List<IMyTerminalBlock>();
 List<IMyTerminalBlock> rightThrusters = new List<IMyTerminalBlock>();
@@ -1752,7 +1788,7 @@ for (int i = 0; i < thrusters.Count; i++){
 Base6Directions.Direction thrusterDirection = refWorldMatrix.GetClosestDirection(thrusters[i].WorldMatrix.Backward);
 switch (thrusterDirection){
 case Base6Directions.Direction.Forward:
-forwardThrusters.Add(thrusters[i]);
+forwardThrustersR.Add(thrusters[i]);
 break;
 case Base6Directions.Direction.Left:
 leftThrusters.Add(thrusters[i]);
@@ -1761,13 +1797,13 @@ case Base6Directions.Direction.Right:
 rightThrusters.Add(thrusters[i]);
 break;
 case Base6Directions.Direction.Up:
-upThrusters.Add(thrusters[i]);
+upThrustersR.Add(thrusters[i]);
 break;
 case Base6Directions.Direction.Down:
-downThrusters.Add(thrusters[i]);
+downThrustersR.Add(thrusters[i]);
 break;
 case Base6Directions.Direction.Backward:
-backwardThrusters.Add(thrusters[i]);
+backwardThrustersR.Add(thrusters[i]);
 break;
 }
 }
@@ -2315,9 +2351,7 @@ var naturalGravityNormal = Vector3D.Normalize(naturalGravity);
 double sr = 0;
 if (naturalGravityLength > 0) {
 // VTOL roll adjust
-var forward = Cockpit.WorldMatrix.Forward;
-var left = Cockpit.WorldMatrix.Left;
-var diff = diffGravity(left, naturalGravity, forward);
+var diff = diffX;
 
 // use roll to get side speed in gravity
 var sideRoll = maintainSpeedToMeAA.X * 0.001f; // radio
@@ -2402,23 +2436,11 @@ var nud = msc.WorldMatrix.Up.Dot(naturalGravity);
 if(isME) nud = 0; 
 var nbf = msc.WorldMatrix.Backward.Dot(naturalGravity);
 
-List<IMyTerminalBlock> upThrustersIfHead = upThrusters;
-List<IMyTerminalBlock> downThrustersIfHead = downThrusters;
-List<IMyTerminalBlock> forwardThrustersIfHead = forwardThrusters;
-List<IMyTerminalBlock> backwardThrustersIfHead = backwardThrusters;
-
-if (legMode > 1 && Head != null) {
-upThrustersIfHead = backwardThrusters;
-downThrustersIfHead = forwardThrusters;
-forwardThrustersIfHead = upThrusters;
-backwardThrustersIfHead = downThrusters;
-}
-
 DimSpeed(maintainSpeedToMe.X, rightThrusters, leftThrusters, ref thrusterPercentX, nowSpeedToMe.X, lastSpeedX, "LEFT".Equals(dockingApproach)||"RIGHT".Equals(dockingApproach), nrl,0);
 lastSpeedX = nowSpeedToMe.X;
-dr = DimSpeed(maintainSpeedToMe.Y, upThrustersIfHead, downThrustersIfHead, ref thrusterPercentY, nowSpeedToMe.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
+dr = DimSpeed(maintainSpeedToMe.Y, upThrusters, downThrusters, ref thrusterPercentY, nowSpeedToMe.Y, lastSpeedY, "UP".Equals(dockingApproach)||"DOWN".Equals(dockingApproach), nud,1);
 lastSpeedY = nowSpeedToMe.Y;
-DimSpeed(maintainSpeedToMe.Z, backwardThrustersIfHead, forwardThrustersIfHead, ref thrusterPercentZ, nowSpeedToMe.Z, lastSpeedZ, "FORWARD".Equals(dockingApproach)||"BACKWARD".Equals(dockingApproach), nbf,2);
+DimSpeed(maintainSpeedToMe.Z, backwardThrusters, forwardThrusters, ref thrusterPercentZ, nowSpeedToMe.Z, lastSpeedZ, "FORWARD".Equals(dockingApproach)||"BACKWARD".Equals(dockingApproach), nbf,2);
 lastSpeedZ = nowSpeedToMe.Z;
 return dr;
 }
@@ -2587,6 +2609,13 @@ case "WEAPON2":
 if (sonCode == null) break;
 callComputer(fighterFcs,"WEAPON2");
 break;
+case "VFTUP":
+VFTransformNew(true);
+break;
+case "VFTDOWN":
+VFTransformNew(false);
+break;
+
 default:
 break;
 }
@@ -3032,7 +3061,7 @@ var t = (IMyThrust)block;
 thrustNeed -= dir * t.CurrentThrust;
 }
 var thrustNeedX = Vector3D.Dot(thrustNeed, msc.WorldMatrix.Right); // tnx
-thrustNeed = Vector3D.Reject(thrustNeed, msc.WorldMatrix.Left); // tn y + z CODING
+thrustNeed = Vector3D.Reject(thrustNeed, msc.WorldMatrix.Left); // tn y + z
 
 needA_G = Vector3D.TransformNormal(thrustNeed,refLookAtMatrix) / mass; //
 // dead zone
@@ -3253,7 +3282,7 @@ bool noLevel1 = false;
 const string rotorLeftName = "Advanced Rotor Left";
 const string rotorRightName = "Advanced Rotor Right";
 
-float targetAngleLeft, targetAngleRight, targetAngleRear;
+float targetAngleLeft, targetAngleRight, targetAngleRear; // deprecated
 float leftIndicator, rightIndicator;
 
 string error;
@@ -3365,18 +3394,25 @@ targetAngleLeft = 0;
 targetAngleRear = 0;
 }
 
+if (legMode == 3) {
+debugInfo = "ws: " + walkSeq;
+for (int i = 0; i < 3; i++) {
+processWalkAngle(i);
+}
+}
+
 for(int i = 0; i < rotorLeft.Count; i++){
 List<IMyTerminalBlock> rl = rotorLeft[i], rr = rotorRight[i];
 var ta = targetAngleLeft;
 
 float tal, tar;
 tal = tar = ta;
-if (legMode ==3) {
-var tmpi = i;
-if (noLevel1) tmpi += 1;
-processWalkAngle(out tal, out tar, tmpi);
-}
-// roll
+//if (legMode ==3) {
+//var tmpi = i;
+//if (noLevel1) tmpi += 1;
+//processWalkAngle(out tal, out tar, tmpi);
+//}
+// roll deprecated
 if (! limitInnerRotor && naturalGravityLength > 0.01f && isAeroDynamic && aeroSpeedLevel>0) {
 if(i==0 || i == 1) {
 float rolldiff = MathHelper.Clamp(inputRoll * 0.1f, -0.1f*(float)Math.PI, 0.1f*(float)Math.PI);
@@ -3419,24 +3455,25 @@ float bal = 0f;
 bool wf = false;
 PIDController wbp2 = new PIDController(2F,0.1F,0F,1F,-1F,60);
 int walkLastT = 0;
-int walkInterval = 10;
-float ida = 0.5F * mpi; // inner default angle
+static float slowRate = 1.5F;
+static int walkInterval = (int) (10 * slowRate);
 
-void processWalkAngle(out float tal, out float tar, int i) {
+static float[] WTA = new float[6]; //l = 024 r = 135
+
+void processWalkAngle(int i) {
 if (inputVec.Z < -0.1) wf = true;
 else if (inputVec.Z > 0.1) wf = false;
 
 var ng = naturalGravity;
 var forward = msc.WorldMatrix.Forward;
 var left = msc.WorldMatrix.Left;
-var diff = diffGravity(left, ng, forward);
+var diff = diffX;
 if (walkSeq > 3) {
 diff += 0.03;
 } else {
 diff -= 0.03;
 }
 
-var diffZ = diffGravity(forward, ng, -left);
 if (walkSeq == 1 || walkSeq == 2 || walkSeq == 4|| walkSeq == 5) {
 if(t > walkLastT + walkInterval) {
 walkSeq ++;
@@ -3456,7 +3493,7 @@ walkLastT = t;
 }
 
 if (i == 0) {
-tal = tar = 0f;
+//tal = tar = 0f;
 return;
 }
 
@@ -3466,10 +3503,12 @@ if (walkSeq == 3) bal = MathHelper.Clamp((float)wbp2.Filter(-diff, 2), -wbab, wb
 
 float bau = bal;
 
+float tal = 0f, tar = 0f;
+
 if (i == 1) {
 tal = tar = 0f;
 } else {
-tal = tar = ida;
+tal = tar = 0f;
 }
 
 if (walkSeq == 0) {
@@ -3479,32 +3518,36 @@ if (i==1) {
 tar = -wba;
 tal = 0;
 }else{
-tar = wba+ ida + wmf;
-tal = -wab+ ida;
+tar = wba + wmf;
+tal = -wab;
 }
 } else if (walkSeq == 2 || walkSeq==5) {
 if (i==1){
 tar = -0;
 tal = -wua;
 }else{
-tar = 0 + ida + wmf;
-tal = wa + wua + ida + wmf;
+tar = 0 + wmf;
+tal = wa + wua + wmf;
 }
 } else if (walkSeq == 3 || walkSeq == 6) {
 if (i == 1) {
 tal = - wba;
 tar = - wbab + bau;
 } else {
-tal = wa + wba + ida;
-tar = -wab + wbab - bau + ida;
+tal = wa + wba;
+tar = -wab + wbab - bau;
 }
 }
 
-if (walkSeq > 3) {
+// CODING
+if (walkSeq > 3 && i > 0) {
 var tmp = tal;
 tal = tar;
 tar = tmp;
 }
+
+WTA[(i-1) * 2] = tal * slowRate;
+WTA[(i-1) * 2 + 1] = tar * slowRate;
 
 }
 

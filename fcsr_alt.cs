@@ -116,16 +116,22 @@ static Vector3D PBPosition;
 
 static IMyShipController Cockpit;
 string HeadNameTag = "VF_HEAD";
-IMyShipController Head;
+static IMyShipController Head;
+static IMyShipController msc;
 static bool isAeroDynamic = false;
 static float aeroTRM = 0f;// transport rotor margin 0.2
 static float aeroFM = 0f;// front margin 0.05
 static int aeroACS = -180;
 static int aeroAMP = 0;
 static string debugInfo = "";
+static string initInfo = "";
 
 public static WcPbApi api = null;
-List<IMyTerminalBlock> TURRETS = new List<IMyTerminalBlock>();
+public List<IMyTerminalBlock> StaticWeapons = new List<IMyTerminalBlock>();
+public List<MyDefinitionId> WeaponDefinitions = new List<MyDefinitionId>();
+public List<string> definitionSubIds = new List<string>();
+
+//List<IMyTerminalBlock> TURRETS = new List<IMyTerminalBlock>();
 
 static IMyRemoteControl remoteBlock = null;
 static Vector3D piratePosition = Vector3D.Zero;
@@ -146,26 +152,44 @@ void Main(string arguments)
 	if(arguments == "On"){isOnOff = true;
                      if (api == null) {
                      api = new WcPbApi();
-                     try{api.Activate(Me);}catch(Exception e){api=null;};
-                     List<MyDefinitionId> TEMP_TUR = new List<MyDefinitionId>();
-if(api!=null)api.GetAllCoreTurrets(TEMP_TUR);
+                     try{api.Activate(Me);}catch(Exception e){
+		     initInfo += "\napi error" + e;
+		     api=null;
+		     };
+    StaticWeapons.Clear();
+    WeaponDefinitions.Clear();
+	definitionSubIds.Clear();
+		     if (api != null){
+        api.GetAllCoreStaticLaunchers(WeaponDefinitions);
+	WeaponDefinitions.ForEach(d=>definitionSubIds.Add(d.SubtypeName));
+    GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(StaticWeapons, b =>
+    // b.CubeGrid == Me.CubeGrid &&
+    definitionSubIds.Contains(b.BlockDefinition.SubtypeName));
+	//StaticWeapons.ForEach(b => api.FireWeaponOnce(b));
+foreach(var i in StaticWeapons) {
+initInfo += "\n" + i.BlockDefinition.SubtypeName;
+}
+}
+
+//                     List<MyDefinitionId> TEMP_TUR = new List<MyDefinitionId>();
+//if(api!=null)api.GetAllCoreTurrets(TEMP_TUR);
 //debugInfo = "ct: " + TEMP_TUR.Count;
-List<string> definitionSubIds = new List<string>();
-TEMP_TUR.ForEach(d => definitionSubIds.Add(d.SubtypeName));
+//List<string> definitionSubIds = new List<string>();
+//TEMP_TUR.ForEach(d => definitionSubIds.Add(d.SubtypeName));
 //foreach(var d in TEMP_TUR) {
 //debugInfo += "\n" + d.SubtypeName;
 //}
-
-List<IMyTerminalBlock> tmpList = new List<IMyTerminalBlock>();
-GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(tmpList, b => b.CubeGrid == 
-    Me.CubeGrid && b.CustomName.Contains("M-2 Destroyer Launcher"));
+//initInfo += "\nchecking FCSR-REF"; 
+//List<IMyTerminalBlock> tmpList = new List<IMyTerminalBlock>();
+//GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(tmpList, b =>
+//b.CubeGrid == Me.CubeGrid &&
+//b.CustomName.Contains("[FCSR-REF]"));
 //foreach(var i in tmpList) {
-//debugInfo += "\n" + i.BlockDefinition.SubtypeName;
+//initInfo += "\n" + i.BlockDefinition.SubtypeName;
 //}
 
-//GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(TURRETS, b => b.CubeGrid == 
-//    Me.CubeGrid && definitionSubIds.Contains(b.BlockDefinition.SubtypeName));
-TURRETS = tmpList;
+//GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(TURRETS, b => b.CubeGrid == Me.CubeGrid && definitionSubIds.Contains(b.BlockDefinition.SubtypeName));
+//TURRETS.AddRange(tmpList);
 //debugInfo += "\ntuc: " + TURRETS.Count;
                      }
             }
@@ -181,8 +205,9 @@ TURRETS = tmpList;
 	if(!init){GetBlocks(); return;}
 	
             debugInfo = "FCSR Count: " + FCSR.Count;
+            debugInfo += "\nWeaponCore Count: " + StaticWeapons.Count;
 	foreach ( var r in FCSR ) {
-		debugInfo += r.debugInfo;
+		debugInfo += "\n" + r.debugInfo;
 	}
 	
 	//生成目标，每个自动武器一个目标，每个转子基座炮台自动索敌一个目标，加一个FCS编程块目标
@@ -208,36 +233,46 @@ TURRETS = tmpList;
 			TargetList.Add(ATWP_T);
 		}
 	}
-	foreach(var tu in TURRETS){
+	debugInfo += "\nchecking WeaponCore target";
+	if (api == null) debugInfo += "\napi is null";
+	foreach(var tu in StaticWeapons){
                     //var e = api.GetWeaponTarget(tu);
                     if (api == null) continue;
-                    var e = api.GetAiFocus(tu);
-                    if (e == null) continue;
-                    debugInfo += "\ne: " + e.EntityId;
-                    if (e.EntityId == 0) continue;
+		    debugInfo += "\napi working";
+		    var e = api.GetWeaponTarget(tu);
+		    if ((e?.EntityId ?? 0) == 0) {
+		    debugInfo += "\nGetWeaponTarget is null";
+		    e = api.GetAiFocus(Me.CubeGrid.EntityId);
+		    }
+		    if ((e?.EntityId ?? 0) == 0) debugInfo += "\nAiFocus is null";
+                    if ((e?.EntityId ?? 0) == 0) continue;
+		    var ee = e ?? new MyDetectedEntityInfo();
+                    debugInfo += "\ne: " + (e?.EntityId ?? 0);
+                    debugInfo += "\nep: " + (e?.Position ?? Vector3D.Zero);
+                    if (ee.EntityId == 0) continue;
                         bool hav = false;
                         foreach (var t in TargetList) {
-                            if (t.EntityId == e.EntityId) hav = true;
+                            if (t.EntityId == ee.EntityId) hav = true;
                         }
                         if (hav) continue;
                     		Target lt = new Target();
 			foreach ( Target ti in LastTargetList ) {
-				if (ti.EntityId == e.EntityId) {
+				if (ti.EntityId == ee.EntityId) {
 					lt = ti;
 					break;
 				}
 			}
                         Target nt = new Target();
-                    		nt.Name = e.Name;
-			nt.EntityId = e.EntityId;
-			nt.Diameter = Vector3D.Distance(e.WorldAABB.Max, e.WorldAABB.Min);
-                                    nt.Position = e.GetPosition();
+                    		nt.Name = ee.Name;
+			nt.EntityId = ee.EntityId;
+			//nt.Diameter = Vector3D.Distance(ee.WorldAABB.Max, ee.WorldAABB.Min);
+                                    nt.Position = ee.Position;
                                     if (lt.EntityId == 0) {
                                     nt.Velocity = Vector3D.Zero;
                                     } else if (t == lt.TimeStamp) {
 			nt.Velocity = lt.Velocity;
 			} else {
-			nt.Velocity = (e.GetPosition() - lt.Position) / ((t - lt.TimeStamp)/60D);
+			nt.Velocity = (ee.Position - lt.Position) / ((t - lt.TimeStamp)/60D);
 			}
 
 			nt.TimeStamp = t;
@@ -246,14 +281,17 @@ TURRETS = tmpList;
 	LastTargetList = TargetList;
 
 	//指令每个炮台选择最近的目标
+	bool controlByHead = Head!=null && Head.IsUnderControl;
+	if (controlByHead) msc = Head;
+	else msc = Cockpit;
+
 	int mode = 0; // no aero
-	if (isAeroDynamic && Cockpit != null) {
-	var MeVelocity = Cockpit.GetShipVelocities().LinearVelocity;
-	MatrixD refWorldMatrix = Cockpit.WorldMatrix;
+	if (isAeroDynamic && msc != null) {
+	var MeVelocity = msc.GetShipVelocities().LinearVelocity;
+	MatrixD refWorldMatrix = msc.WorldMatrix;
 	MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), refWorldMatrix.Forward, refWorldMatrix.Up);
 	Vector3D mySpeedToMe = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
-	bool controlByHead = Head!=null && Head.IsUnderControl;
-	var naturalGravity = Cockpit.GetNaturalGravity();
+	var naturalGravity = msc.GetNaturalGravity();
 	if (Math.Abs(mySpeedToMe.Z)>18 && !controlByHead && naturalGravity.Length() > 0.01) {
 	if(aeroAMP != 1) {
 	aeroACS = t;
@@ -288,6 +326,7 @@ TURRETS = tmpList;
 		}
 	}
 	
+            Echo("initInfo "+ initInfo);
             Echo("debugInfo "+ debugInfo);
 	ShowMainLCD();
 }
@@ -501,14 +540,16 @@ public class RotorBase
 	public string debugInfo;
 	public bool isRocket = true;
 	public CustomConfiguration cfg;
-	public double hori;
-	public double horiD;
-	public double vert;
-	public double vertD;
-	public double offX = 0;
-	public double offY = 0;
-	public double ra=0;
-	public double raD=1;
+	public float hori;
+	public float horiD;
+	public float vert;
+	public float vertD;
+	public float offX = 0;
+	public float offY = 1F;
+	public float onX = 0;
+	public float onY = 0;
+	public float ra=0;
+	public float raD=1F;
 	static float pp=20F,pi=1F,pd=0F, pim=0.1F;
 	public PIDController pidX = new PIDController(pp, pi, pd,pim,-pim,12);
 	public PIDController pidY = new PIDController(pp, pi, pd,pim,-pim,12);
@@ -530,12 +571,23 @@ public class RotorBase
 		cfg = new CustomConfiguration(AimBlock);
 		cfg.Load();
 		cfg.Get("vert", ref vert);
+		vert = toRa(vert);
 		cfg.Get("vertD", ref vertD);
+		vertD = toRa(vertD);
 		cfg.Get("hori", ref hori);
+		hori = toRa(hori);
 		cfg.Get("horiD", ref horiD);
+		horiD = toRa(horiD);
 		cfg.Get("offX", ref offX);
+		offX = toRa(offX);
 		cfg.Get("offY", ref offY);
+		offY = toRa(offY);
+		cfg.Get("onX", ref onX);
+		onX = toRa(onX);
+		cfg.Get("onY", ref onY);
+		onY = toRa(onY);
 		cfg.Get("ra", ref ra);
+		ra = toRa(ra);
 		cfg.Get("raD", ref raD);
 		
 		//获得转子
@@ -634,7 +686,7 @@ public class RotorBase
 	public void UpdateMotionInfo()
 	{
 		this.Acceleration = (((this.AimBlock.GetPosition() - this.Position)*ProgramUpdateRatio) - this.Velocity)*ProgramUpdateRatio;
-		if (Cockpit != null) this.Velocity = Cockpit.GetShipVelocities().LinearVelocity;
+		if (msc != null) this.Velocity = msc.GetShipVelocities().LinearVelocity;
 		else this.Velocity = (this.AimBlock.GetPosition() - this.Position)*ProgramUpdateRatio;
 
 		this.Position = this.AimBlock.GetPosition();
@@ -665,13 +717,13 @@ public class RotorBase
 		switch(aeroMode) {
 		case 0:
 			for(int i = 0; i < this.RotorXs.Count; i ++){
-			            var a = this.RotorXs[i].Angle;
+			            var a = this.RotorXs[i].Angle - (float)(onX);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
 				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
-			             var a = this.RotorYs[i].Angle;
+			             var a = this.RotorYs[i].Angle - (float)(onY);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
 				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
@@ -698,13 +750,13 @@ public class RotorBase
 			}
 
 			for(int i = 0; i < this.RotorXs.Count; i ++){
-			            var a = this.RotorXs[i].Angle - xt;
+			            var a = this.RotorXs[i].Angle - xt - (float)(onX);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
 				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
-			            var a = this.RotorYs[i].Angle - yt;
+			            var a = this.RotorYs[i].Angle - yt - (float)(onY);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
 				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
@@ -731,13 +783,13 @@ public class RotorBase
 			}
 			}
 			for(int i = 0; i < this.RotorXs.Count; i ++){
-			            var a = this.RotorXs[i].Angle - xt;
+			            var a = this.RotorXs[i].Angle - xt - (float)(onX);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
 				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
-			            var a = this.RotorYs[i].Angle - yt;
+			            var a = this.RotorYs[i].Angle - yt - (float)(onY);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
 				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
@@ -746,13 +798,13 @@ public class RotorBase
 		break;
                         default:
 			for(int i = 0; i < this.RotorXs.Count; i ++){
-			            var a = this.RotorXs[i].Angle - (float)(offX*Math.PI);
+			            var a = this.RotorXs[i].Angle - (float)(offX);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
 				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
-				var a = this.RotorYs[i].Angle - (float)(offY*Math.PI);
+				var a = this.RotorYs[i].Angle - (float)(offY);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
 				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
@@ -837,10 +889,11 @@ public class RotorBase
 			double distance = Vector3D.Distance(targetList[i].Position, this.Position);
 double dot = 1;
 // a b k filter direction use ra and raD
-if (Cockpit != null && raD != 1) {
-Vector3D mid = Cockpit.WorldMatrix.Right * Math.Sin(this.ra) + Cockpit.WorldMatrix.Forward * Math.Cos(this.ra);
+if (msc != null && raD != 1) {
+this.debugInfo = "ra: " + this.ra;
+Vector3D mid = msc.WorldMatrix.Right * Math.Sin(this.ra) + msc.WorldMatrix.Forward * Math.Cos(this.ra);
 Vector3D tar = Vector3D.Normalize(targetList[i].Position - this.Position);
-this.debugInfo = "\n dirYN: " + (Vector3D.Dot(mid, tar) < this.raD);
+this.debugInfo += "\n dirYN: " + (Vector3D.Dot(mid, tar));
 dot = Vector3D.Dot(mid, tar);
 if ( dot < this.raD) continue;
 }
@@ -870,20 +923,20 @@ double compose = distance / 900 + (1- dot);
 			bool rx = false;
 			for(int i = 0; i < this.RotorXs.Count; i ++){
 			            var a = this.RotorXs[i].Angle;
-				if (this.RotorXs.Count == 2 && angleDeltaAbs(a , vert*Math.PI) < vertD*Math.PI) {
+				if (this.RotorXs.Count == 2 && angleDeltaAbs(a , vert) < vertD) {
 					rx = true;
 				}else
-				if (this.RotorXs.Count == 1 && angleDeltaAbs(a , hori*Math.PI) < horiD*Math.PI) {
+				if (this.RotorXs.Count == 1 && angleDeltaAbs(a , hori) < horiD) {
 					rx = true;
 				}
 			}
 			bool ry = false;
 			for(int i = 0; i < this.RotorYs.Count; i ++){
 			            var a = this.RotorYs[i].Angle;
-				if (this.RotorYs.Count == 2 && angleDeltaAbs(a , vert*Math.PI) < vertD*Math.PI) {
+				if (this.RotorYs.Count == 2 && angleDeltaAbs(a , vert) < vertD) {
 					ry = true;
 				}else
-				if (this.RotorYs.Count == 1 && angleDeltaAbs(a , hori*Math.PI) < horiD*Math.PI) {
+				if (this.RotorYs.Count == 1 && angleDeltaAbs(a , hori) < horiD) {
 					ry = true;
 				}
 			}
@@ -980,7 +1033,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		bm = 100000;
 		}
 		Vector3D ng = Vector3D.Zero;
-		if (Cockpit != null) ng = Cockpit.GetNaturalGravity();
+		if (msc != null) ng = msc.GetNaturalGravity();
 		debugInfo += "\nbs: " + bs;
 		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position, Velocity, Acceleration, bs, ba, bm, FireTimers.Count > 0, ng);
                         Vector3D tp2me = Position - this.Position;
@@ -1022,15 +1075,15 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		double PitchValue = Aim_PID_P*(TargetPositionToMe.Y + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
 		//double PitchValue = Aim_PID_P*(modAngle(ea) + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
 
-		bool isFireZone = angleDeltaAbs(this.RotorXs[0].Angle, hori*Math.PI) > horiD*Math.PI;
+		bool isFireZone = angleDeltaAbs(this.RotorXs[0].Angle, hori) > horiD;
 		double fireRange = ShootDistance;
 		if (isRocket) fireRange = ShootDistance2;
 		if(FireTimers.Count>0) fireRange = ShootDistance3;
                         isFireZone = isFireZone && tp2me.Length() < fireRange;
                         if (isStraight) isFireZone = true;
 		if (!isFireZone) {
-		PitchValue = -this.RotorYs[0].Angle * this.RotorYField[0]; //
-		YawValue = -this.RotorXs[0].Angle * this.RotorXField[0]; //
+		PitchValue = (float)(onY) - this.RotorYs[0].Angle * this.RotorYField[0]; //
+		YawValue = (float)(onX)-this.RotorXs[0].Angle * this.RotorXField[0]; //
 		}
 
                         PitchValue = MathHelper.Clamp(PitchValue, -0.99, 0.99);
@@ -1360,196 +1413,164 @@ r = r + MathHelper.TwoPi;
 return r;
 }
 
+public class WcPbApi
+{
+    private Action<ICollection<MyDefinitionId>> _getCoreWeapons;
+    private Action<ICollection<MyDefinitionId>> _getCoreStaticLaunchers;
+    private Action<ICollection<MyDefinitionId>> _getCoreTurrets;
+    private Func<IMyTerminalBlock, IDictionary<string, int>, bool> _getBlockWeaponMap;
+    private Func<long, MyTuple<bool, int, int>> _getProjectilesLockedOn;
+    private Action<IMyTerminalBlock, IDictionary<MyDetectedEntityInfo, float>> _getSortedThreats;
+    private Func<long, int, MyDetectedEntityInfo> _getAiFocus;
+    private Func<IMyTerminalBlock, long, int, bool> _setAiFocus;
+    private Func<IMyTerminalBlock, int, MyDetectedEntityInfo> _getWeaponTarget;
+    private Action<IMyTerminalBlock, long, int> _setWeaponTarget;
+    private Action<IMyTerminalBlock, bool, int> _fireWeaponOnce;
+    private Action<IMyTerminalBlock, bool, bool, int> _toggleWeaponFire;
+    private Func<IMyTerminalBlock, int, bool, bool, bool> _isWeaponReadyToFire;
+    private Func<IMyTerminalBlock, int, float> _getMaxWeaponRange;
+    private Func<IMyTerminalBlock, ICollection<string>, int, bool> _getTurretTargetTypes;
+    private Action<IMyTerminalBlock, ICollection<string>, int> _setTurretTargetTypes;
+    private Action<IMyTerminalBlock, float> _setBlockTrackingRange;
+    private Func<IMyTerminalBlock, long, int, bool> _isTargetAligned;
+    private Func<IMyTerminalBlock, long, int, bool> _canShootTarget;
+    private Func<IMyTerminalBlock, long, int, Vector3D?> _getPredictedTargetPos;
+    private Func<IMyTerminalBlock, float> _getHeatLevel;
+    private Func<IMyTerminalBlock, float> _currentPowerConsumption;
+    private Func<MyDefinitionId, float> _getMaxPower;
+    private Func<long, bool> _hasGridAi;
+    private Func<IMyTerminalBlock, bool> _hasCoreWeapon;
+    private Func<long, float> _getOptimalDps;
+    private Func<IMyTerminalBlock, int, string> _getActiveAmmo;
+    private Action<IMyTerminalBlock, int, string> _setActiveAmmo;
+    private Action<Action<Vector3, float>> _registerProjectileAdded;
+    private Action<Action<Vector3, float>> _unRegisterProjectileAdded;
+    private Func<long, float> _getConstructEffectiveDps;
+    private Func<IMyTerminalBlock, long> _getPlayerController;
+    private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, int, Matrix> _getWeaponAzimuthMatrix;
+    private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, int, Matrix> _getWeaponElevationMatrix;
 
-    public class WcPbApi
+    public bool Activate(IMyTerminalBlock pbBlock)
     {
-        private Action<ICollection<MyDefinitionId>> _getCoreWeapons;
-        private Action<ICollection<MyDefinitionId>> _getCoreStaticLaunchers;
-        private Action<ICollection<MyDefinitionId>> _getCoreTurrets;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, IDictionary<string, int>, bool> _getBlockWeaponMap;
-        private Func<VRage.Game.ModAPI.Ingame.IMyEntity, MyTuple<bool, int, int>> _getProjectilesLockedOn;
-        private Action<VRage.Game.ModAPI.Ingame.IMyEntity, IDictionary<VRage.Game.ModAPI.Ingame.IMyEntity, float>> _getSortedThreats;
-        private Func<VRage.Game.ModAPI.Ingame.IMyEntity, int, VRage.Game.ModAPI.Ingame.IMyEntity> _getAiFocus;
-        private Func<VRage.Game.ModAPI.Ingame.IMyEntity, VRage.Game.ModAPI.Ingame.IMyEntity, int, bool> _setAiFocus;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, int, VRage.Game.ModAPI.Ingame.IMyEntity> _getWeaponTarget;
-        private Action<Sandbox.ModAPI.Ingame.IMyTerminalBlock, VRage.Game.ModAPI.Ingame.IMyEntity, int> _setWeaponTarget;
-        private Action<Sandbox.ModAPI.Ingame.IMyTerminalBlock, bool, int> _fireWeaponOnce;
-        private Action<Sandbox.ModAPI.Ingame.IMyTerminalBlock, bool, bool, int> _toggleWeaponFire;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, int, bool, bool, bool> _isWeaponReadyToFire;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, int, float> _getMaxWeaponRange;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, ICollection<string>, int, bool> _getTurretTargetTypes;
-        private Action<Sandbox.ModAPI.Ingame.IMyTerminalBlock, ICollection<string>, int> _setTurretTargetTypes;
-        private Action<Sandbox.ModAPI.Ingame.IMyTerminalBlock, float> _setBlockTrackingRange;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, VRage.Game.ModAPI.Ingame.IMyEntity, int, bool> _isTargetAligned;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, VRage.Game.ModAPI.Ingame.IMyEntity, int, bool> _canShootTarget;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, VRage.Game.ModAPI.Ingame.IMyEntity, int, Vector3D?> _getPredictedTargetPos;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, float> _getHeatLevel;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, float> _currentPowerConsumption;
-        private Func<MyDefinitionId, float> _getMaxPower;
-        private Func<VRage.Game.ModAPI.Ingame.IMyEntity, bool> _hasGridAi;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, bool> _hasCoreWeapon;
-        private Func<VRage.Game.ModAPI.Ingame.IMyEntity, float> _getOptimalDps;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, int, string> _getActiveAmmo;
-        private Action<Sandbox.ModAPI.Ingame.IMyTerminalBlock, int, string> _setActiveAmmo;
-        private Action<Action<Vector3, float>> _registerProjectileAdded;
-        private Action<Action<Vector3, float>> _unRegisterProjectileAdded;
-        private Func<VRage.Game.ModAPI.Ingame.IMyEntity, float> _getConstructEffectiveDps;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, long> _getPlayerController;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, int, Matrix> _getWeaponAzimuthMatrix;
-        private Func<Sandbox.ModAPI.Ingame.IMyTerminalBlock, int, Matrix> _getWeaponElevationMatrix;
-        public bool Activate(Sandbox.ModAPI.Ingame.IMyTerminalBlock pbBlock)
-        {
-            var dict = pbBlock.GetProperty("WcPbAPI")?.As<Dictionary<string, Delegate>>().GetValue(pbBlock);
-            if (dict == null) throw new Exception($"WcPbAPI failed to activate");
-            return ApiAssign(dict);
-        }
-
-        public bool ApiAssign(IReadOnlyDictionary<string, Delegate> delegates)
-        {
-            if (delegates == null)
-                return false;
-
-            AssignMethod(delegates, "GetCoreWeapons", ref _getCoreWeapons);
-            AssignMethod(delegates, "GetCoreStaticLaunchers", ref _getCoreStaticLaunchers);
-            AssignMethod(delegates, "GetCoreTurrets", ref _getCoreTurrets);
-            AssignMethod(delegates, "GetBlockWeaponMap", ref _getBlockWeaponMap);
-            AssignMethod(delegates, "GetProjectilesLockedOn", ref _getProjectilesLockedOn);
-            AssignMethod(delegates, "GetSortedThreats", ref _getSortedThreats);
-            AssignMethod(delegates, "GetAiFocus", ref _getAiFocus);
-            AssignMethod(delegates, "SetAiFocus", ref _setAiFocus);
-            AssignMethod(delegates, "GetWeaponTarget", ref _getWeaponTarget);
-            AssignMethod(delegates, "SetWeaponTarget", ref _setWeaponTarget);
-            AssignMethod(delegates, "FireWeaponOnce", ref _fireWeaponOnce);
-            AssignMethod(delegates, "ToggleWeaponFire", ref _toggleWeaponFire);
-            AssignMethod(delegates, "IsWeaponReadyToFire", ref _isWeaponReadyToFire);
-            AssignMethod(delegates, "GetMaxWeaponRange", ref _getMaxWeaponRange);
-            AssignMethod(delegates, "GetTurretTargetTypes", ref _getTurretTargetTypes);
-            AssignMethod(delegates, "SetTurretTargetTypes", ref _setTurretTargetTypes);
-            AssignMethod(delegates, "SetBlockTrackingRange", ref _setBlockTrackingRange);
-            AssignMethod(delegates, "IsTargetAligned", ref _isTargetAligned);
-            AssignMethod(delegates, "CanShootTarget", ref _canShootTarget);
-            AssignMethod(delegates, "GetPredictedTargetPosition", ref _getPredictedTargetPos);
-            AssignMethod(delegates, "GetHeatLevel", ref _getHeatLevel);
-            AssignMethod(delegates, "GetCurrentPower", ref _currentPowerConsumption);
-            AssignMethod(delegates, "GetMaxPower", ref _getMaxPower);
-            AssignMethod(delegates, "HasGridAi", ref _hasGridAi);
-            AssignMethod(delegates, "HasCoreWeapon", ref _hasCoreWeapon);
-            AssignMethod(delegates, "GetOptimalDps", ref _getOptimalDps);
-            AssignMethod(delegates, "GetActiveAmmo", ref _getActiveAmmo);
-            AssignMethod(delegates, "SetActiveAmmo", ref _setActiveAmmo);
-            AssignMethod(delegates, "RegisterProjectileAdded", ref _registerProjectileAdded);
-            AssignMethod(delegates, "UnRegisterProjectileAdded", ref _unRegisterProjectileAdded);
-            AssignMethod(delegates, "GetConstructEffectiveDps", ref _getConstructEffectiveDps);
-            AssignMethod(delegates, "GetPlayerController", ref _getPlayerController);
-            AssignMethod(delegates, "GetWeaponAzimuthMatrix", ref _getWeaponAzimuthMatrix);
-            AssignMethod(delegates, "GetWeaponElevationMatrix", ref _getWeaponElevationMatrix);
-            return true;
-        }
-
-        private void AssignMethod<T>(IReadOnlyDictionary<string, Delegate> delegates, string name, ref T field) where T : class
-        {
-            if (delegates == null) {
-                field = null;
-                return;
-            }
-
-            Delegate del;
-            if (!delegates.TryGetValue(name, out del))
-                throw new Exception($"{GetType().Name} :: Couldn't find {name} delegate of type {typeof(T)}");
-
-            field = del as T;
-            if (field == null)
-                throw new Exception(
-                    $"{GetType().Name} :: Delegate {name} is not type {typeof(T)}, instead it's: {del.GetType()}");
-        }
-
-        public void GetAllCoreWeapons(ICollection<MyDefinitionId> collection) => _getCoreWeapons?.Invoke(collection);
-
-        public void GetAllCoreStaticLaunchers(ICollection<MyDefinitionId> collection) =>
-            _getCoreStaticLaunchers?.Invoke(collection);
-
-        public void GetAllCoreTurrets(ICollection<MyDefinitionId> collection) => _getCoreTurrets?.Invoke(collection);
-
-        public bool GetBlockWeaponMap(Sandbox.ModAPI.Ingame.IMyTerminalBlock weaponBlock, IDictionary<string, int> collection) =>
-            _getBlockWeaponMap?.Invoke(weaponBlock, collection) ?? false;
-
-        public MyTuple<bool, int, int> GetProjectilesLockedOn(VRage.Game.ModAPI.Ingame.IMyEntity victim) =>
-            _getProjectilesLockedOn?.Invoke(victim) ?? new MyTuple<bool, int, int>();
-
-        public void GetSortedThreats(VRage.Game.ModAPI.Ingame.IMyEntity shooter, IDictionary<VRage.Game.ModAPI.Ingame.IMyEntity, float> collection) =>
-            _getSortedThreats?.Invoke(shooter, collection);
-
-        public VRage.Game.ModAPI.Ingame.IMyEntity GetAiFocus(VRage.Game.ModAPI.Ingame.IMyEntity shooter, int priority = 0) => _getAiFocus?.Invoke(shooter, priority);
-
-        public bool SetAiFocus(VRage.Game.ModAPI.Ingame.IMyEntity shooter, VRage.Game.ModAPI.Ingame.IMyEntity target, int priority = 0) =>
-            _setAiFocus?.Invoke(shooter, target, priority) ?? false;
-
-        public VRage.Game.ModAPI.Ingame.IMyEntity GetWeaponTarget(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId = 0) =>
-            _getWeaponTarget?.Invoke(weapon, weaponId) ?? null;
-
-        public void SetWeaponTarget(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, VRage.Game.ModAPI.Ingame.IMyEntity target, int weaponId = 0) =>
-            _setWeaponTarget?.Invoke(weapon, target, weaponId);
-
-        public void FireWeaponOnce(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, bool allWeapons = true, int weaponId = 0) =>
-            _fireWeaponOnce?.Invoke(weapon, allWeapons, weaponId);
-
-        public void ToggleWeaponFire(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, bool on, bool allWeapons, int weaponId = 0) =>
-            _toggleWeaponFire?.Invoke(weapon, on, allWeapons, weaponId);
-
-        public bool IsWeaponReadyToFire(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId = 0, bool anyWeaponReady = true,
-            bool shootReady = false) =>
-            _isWeaponReadyToFire?.Invoke(weapon, weaponId, anyWeaponReady, shootReady) ?? false;
-
-        public float GetMaxWeaponRange(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId) =>
-            _getMaxWeaponRange?.Invoke(weapon, weaponId) ?? 0f;
-
-        public bool GetTurretTargetTypes(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, IList<string> collection, int weaponId = 0) =>
-            _getTurretTargetTypes?.Invoke(weapon, collection, weaponId) ?? false;
-
-        public void SetTurretTargetTypes(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, IList<string> collection, int weaponId = 0) =>
-            _setTurretTargetTypes?.Invoke(weapon, collection, weaponId);
-
-        public void SetBlockTrackingRange(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, float range) =>
-            _setBlockTrackingRange?.Invoke(weapon, range);
-
-        public bool IsTargetAligned(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, VRage.Game.ModAPI.Ingame.IMyEntity targetEnt, int weaponId) =>
-            _isTargetAligned?.Invoke(weapon, targetEnt, weaponId) ?? false;
-
-        public bool CanShootTarget(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, VRage.Game.ModAPI.Ingame.IMyEntity targetEnt, int weaponId) =>
-            _canShootTarget?.Invoke(weapon, targetEnt, weaponId) ?? false;
-
-        public Vector3D? GetPredictedTargetPosition(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, VRage.Game.ModAPI.Ingame.IMyEntity targetEnt, int weaponId) =>
-            _getPredictedTargetPos?.Invoke(weapon, targetEnt, weaponId) ?? null;
-
-        public float GetHeatLevel(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon) => _getHeatLevel?.Invoke(weapon) ?? 0f;
-        public float GetCurrentPower(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon) => _currentPowerConsumption?.Invoke(weapon) ?? 0f;
-        public float GetMaxPower(MyDefinitionId weaponDef) => _getMaxPower?.Invoke(weaponDef) ?? 0f;
-        public bool HasGridAi(VRage.Game.ModAPI.Ingame.IMyEntity entity) => _hasGridAi?.Invoke(entity) ?? false;
-        public bool HasCoreWeapon(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon) => _hasCoreWeapon?.Invoke(weapon) ?? false;
-        public float GetOptimalDps(VRage.Game.ModAPI.Ingame.IMyEntity entity) => _getOptimalDps?.Invoke(entity) ?? 0f;
-
-        public string GetActiveAmmo(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId) =>
-            _getActiveAmmo?.Invoke(weapon, weaponId) ?? null;
-
-        public void SetActiveAmmo(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId, string ammoType) =>
-            _setActiveAmmo?.Invoke(weapon, weaponId, ammoType);
-
-        public void RegisterProjectileAddedCallback(Action<Vector3, float> action) =>
-            _registerProjectileAdded?.Invoke(action);
-
-        public void UnRegisterProjectileAddedCallback(Action<Vector3, float> action) =>
-            _unRegisterProjectileAdded?.Invoke(action);
-
-        public float GetConstructEffectiveDps(VRage.Game.ModAPI.Ingame.IMyEntity entity) => _getConstructEffectiveDps?.Invoke(entity) ?? 0f;
-
-        public long GetPlayerController(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon) => _getPlayerController?.Invoke(weapon) ?? -1;
-
-        public Matrix GetWeaponAzimuthMatrix(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId) =>
-            _getWeaponAzimuthMatrix?.Invoke(weapon, weaponId) ?? Matrix.Zero;
-
-        public Matrix GetWeaponElevationMatrix(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId) =>
-            _getWeaponElevationMatrix?.Invoke(weapon, weaponId) ?? Matrix.Zero;
+        var dict = pbBlock.GetProperty("WcPbAPI")?.As<Dictionary<string, Delegate>>().GetValue(pbBlock);
+        if (dict == null) throw new Exception($"WcPbAPI failed to activate");
+        return ApiAssign(dict);
     }
+
+    public bool ApiAssign(IReadOnlyDictionary<string, Delegate> delegates)
+    {
+        if (delegates == null)
+            return false;
+        AssignMethod(delegates, "GetCoreWeapons", ref _getCoreWeapons);
+        AssignMethod(delegates, "GetCoreStaticLaunchers", ref _getCoreStaticLaunchers);
+        AssignMethod(delegates, "GetCoreTurrets", ref _getCoreTurrets);
+        AssignMethod(delegates, "GetBlockWeaponMap", ref _getBlockWeaponMap);
+        AssignMethod(delegates, "GetProjectilesLockedOn", ref _getProjectilesLockedOn);
+        AssignMethod(delegates, "GetSortedThreats", ref _getSortedThreats);
+        AssignMethod(delegates, "GetAiFocus", ref _getAiFocus);
+        AssignMethod(delegates, "SetAiFocus", ref _setAiFocus);
+        AssignMethod(delegates, "GetWeaponTarget", ref _getWeaponTarget);
+        AssignMethod(delegates, "SetWeaponTarget", ref _setWeaponTarget);
+        AssignMethod(delegates, "FireWeaponOnce", ref _fireWeaponOnce);
+        AssignMethod(delegates, "ToggleWeaponFire", ref _toggleWeaponFire);
+        AssignMethod(delegates, "IsWeaponReadyToFire", ref _isWeaponReadyToFire);
+        AssignMethod(delegates, "GetMaxWeaponRange", ref _getMaxWeaponRange);
+        AssignMethod(delegates, "GetTurretTargetTypes", ref _getTurretTargetTypes);
+        AssignMethod(delegates, "SetTurretTargetTypes", ref _setTurretTargetTypes);
+        AssignMethod(delegates, "SetBlockTrackingRange", ref _setBlockTrackingRange);
+        AssignMethod(delegates, "IsTargetAligned", ref _isTargetAligned);
+        AssignMethod(delegates, "CanShootTarget", ref _canShootTarget);
+        AssignMethod(delegates, "GetPredictedTargetPosition", ref _getPredictedTargetPos);
+        AssignMethod(delegates, "GetHeatLevel", ref _getHeatLevel);
+        AssignMethod(delegates, "GetCurrentPower", ref _currentPowerConsumption);
+        AssignMethod(delegates, "GetMaxPower", ref _getMaxPower);
+        AssignMethod(delegates, "HasGridAi", ref _hasGridAi);
+        AssignMethod(delegates, "HasCoreWeapon", ref _hasCoreWeapon);
+        AssignMethod(delegates, "GetOptimalDps", ref _getOptimalDps);
+        AssignMethod(delegates, "GetActiveAmmo", ref _getActiveAmmo);
+        AssignMethod(delegates, "SetActiveAmmo", ref _setActiveAmmo);
+        AssignMethod(delegates, "RegisterProjectileAdded", ref _registerProjectileAdded);
+        AssignMethod(delegates, "UnRegisterProjectileAdded", ref _unRegisterProjectileAdded);
+        AssignMethod(delegates, "GetConstructEffectiveDps", ref _getConstructEffectiveDps);
+        AssignMethod(delegates, "GetPlayerController", ref _getPlayerController);
+        AssignMethod(delegates, "GetWeaponAzimuthMatrix", ref _getWeaponAzimuthMatrix);
+        AssignMethod(delegates, "GetWeaponElevationMatrix", ref _getWeaponElevationMatrix);
+        return true;
+    }
+
+    private void AssignMethod<T>(IReadOnlyDictionary<string, Delegate> delegates, string name, ref T field) where T : class
+    {
+        if (delegates == null) {
+            field = null;
+            return;
+        }
+        Delegate del;
+        if (!delegates.TryGetValue(name, out del))
+            throw new Exception($"{GetType().Name} :: Couldn't find {name} delegate of type {typeof(T)}");
+        field = del as T;
+        if (field == null)
+            throw new Exception(
+                $"{GetType().Name} :: Delegate {name} is not type {typeof(T)}, instead it's: {del.GetType()}");
+    }
+    public void GetAllCoreWeapons(ICollection<MyDefinitionId> collection) => _getCoreWeapons?.Invoke(collection);
+    public void GetAllCoreStaticLaunchers(ICollection<MyDefinitionId> collection) =>
+        _getCoreStaticLaunchers?.Invoke(collection);
+    public void GetAllCoreTurrets(ICollection<MyDefinitionId> collection) => _getCoreTurrets?.Invoke(collection);
+    public bool GetBlockWeaponMap(IMyTerminalBlock weaponBlock, IDictionary<string, int> collection) =>
+        _getBlockWeaponMap?.Invoke(weaponBlock, collection) ?? false;
+    public MyTuple<bool, int, int> GetProjectilesLockedOn(long victim) =>
+        _getProjectilesLockedOn?.Invoke(victim) ?? new MyTuple<bool, int, int>();
+    public void GetSortedThreats(IMyTerminalBlock pbBlock, IDictionary<MyDetectedEntityInfo, float> collection) =>
+        _getSortedThreats?.Invoke(pbBlock, collection);
+    public MyDetectedEntityInfo? GetAiFocus(long shooter, int priority = 0) => _getAiFocus?.Invoke(shooter, priority);
+    public bool SetAiFocus(IMyTerminalBlock pbBlock, long target, int priority = 0) =>
+        _setAiFocus?.Invoke(pbBlock, target, priority) ?? false;
+    public MyDetectedEntityInfo? GetWeaponTarget(IMyTerminalBlock weapon, int weaponId = 0) =>
+        _getWeaponTarget?.Invoke(weapon, weaponId) ?? null;
+    public void SetWeaponTarget(IMyTerminalBlock weapon, long target, int weaponId = 0) =>
+        _setWeaponTarget?.Invoke(weapon, target, weaponId);
+    public void FireWeaponOnce(IMyTerminalBlock weapon, bool allWeapons = true, int weaponId = 0) =>
+        _fireWeaponOnce?.Invoke(weapon, allWeapons, weaponId);
+    public void ToggleWeaponFire(IMyTerminalBlock weapon, bool on, bool allWeapons, int weaponId = 0) =>
+        _toggleWeaponFire?.Invoke(weapon, on, allWeapons, weaponId);
+    public bool IsWeaponReadyToFire(IMyTerminalBlock weapon, int weaponId = 0, bool anyWeaponReady = true,
+        bool shootReady = false) =>
+        _isWeaponReadyToFire?.Invoke(weapon, weaponId, anyWeaponReady, shootReady) ?? false;
+    public float GetMaxWeaponRange(IMyTerminalBlock weapon, int weaponId) =>
+        _getMaxWeaponRange?.Invoke(weapon, weaponId) ?? 0f;
+    public bool GetTurretTargetTypes(IMyTerminalBlock weapon, IList<string> collection, int weaponId = 0) =>
+        _getTurretTargetTypes?.Invoke(weapon, collection, weaponId) ?? false;
+    public void SetTurretTargetTypes(IMyTerminalBlock weapon, IList<string> collection, int weaponId = 0) =>
+        _setTurretTargetTypes?.Invoke(weapon, collection, weaponId);
+    public void SetBlockTrackingRange(IMyTerminalBlock weapon, float range) =>
+        _setBlockTrackingRange?.Invoke(weapon, range);
+    public bool IsTargetAligned(IMyTerminalBlock weapon, long targetEnt, int weaponId) =>
+        _isTargetAligned?.Invoke(weapon, targetEnt, weaponId) ?? false;
+    public bool CanShootTarget(IMyTerminalBlock weapon, long targetEnt, int weaponId) =>
+        _canShootTarget?.Invoke(weapon, targetEnt, weaponId) ?? false;
+    public Vector3D? GetPredictedTargetPosition(IMyTerminalBlock weapon, long targetEnt, int weaponId) =>
+        _getPredictedTargetPos?.Invoke(weapon, targetEnt, weaponId) ?? null;
+    public float GetHeatLevel(IMyTerminalBlock weapon) => _getHeatLevel?.Invoke(weapon) ?? 0f;
+    public float GetCurrentPower(IMyTerminalBlock weapon) => _currentPowerConsumption?.Invoke(weapon) ?? 0f;
+    public float GetMaxPower(MyDefinitionId weaponDef) => _getMaxPower?.Invoke(weaponDef) ?? 0f;
+    public bool HasGridAi(long entity) => _hasGridAi?.Invoke(entity) ?? false;
+    public bool HasCoreWeapon(IMyTerminalBlock weapon) => _hasCoreWeapon?.Invoke(weapon) ?? false;
+    public float GetOptimalDps(long entity) => _getOptimalDps?.Invoke(entity) ?? 0f;
+    public string GetActiveAmmo(IMyTerminalBlock weapon, int weaponId) =>
+        _getActiveAmmo?.Invoke(weapon, weaponId) ?? null;
+    public void SetActiveAmmo(IMyTerminalBlock weapon, int weaponId, string ammoType) =>
+        _setActiveAmmo?.Invoke(weapon, weaponId, ammoType);
+    public void RegisterProjectileAddedCallback(Action<Vector3, float> action) =>
+        _registerProjectileAdded?.Invoke(action);
+    public void UnRegisterProjectileAddedCallback(Action<Vector3, float> action) =>
+        _unRegisterProjectileAdded?.Invoke(action);
+    public float GetConstructEffectiveDps(long entity) => _getConstructEffectiveDps?.Invoke(entity) ?? 0f;
+    public long GetPlayerController(IMyTerminalBlock weapon) => _getPlayerController?.Invoke(weapon) ?? -1;
+    public Matrix GetWeaponAzimuthMatrix(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId) =>
+        _getWeaponAzimuthMatrix?.Invoke(weapon, weaponId) ?? Matrix.Zero;
+    public Matrix GetWeaponElevationMatrix(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId) =>
+        _getWeaponElevationMatrix?.Invoke(weapon, weaponId) ?? Matrix.Zero;
+}
 
 static float toRa(float i) {
 return (i / 180F) * (float)Math.PI;
