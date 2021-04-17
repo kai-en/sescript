@@ -129,7 +129,8 @@ float MaxRange
     } 
 } 
  
-string textPanelName = "R_LCD"; 
+string textPanelName = "[R_LCD]"; 
+string cmdPanelName = "[R_LCD_CMD]"; 
 float projectionAngle = 60f; 
 float turretMaxRange = 800f; 
  
@@ -140,6 +141,7 @@ RuntimeTracker runtimeTracker;
 Dictionary<long, TargetData> targetDataDict = new Dictionary<long, TargetData>(); 
 List<IMyLargeTurretBase> turrets = new List<IMyLargeTurretBase>(); 
 List<IMyTextSurface> textSurfaces = new List<IMyTextSurface>(); 
+List<IMyTextSurface> cmdSurfaces = new List<IMyTextSurface>(); 
 List<IMyShipController> controllers = new List<IMyShipController>(); 
 IMyShipController reference; 
 IMyShipController lastActiveShipController = null; 
@@ -189,6 +191,44 @@ void Main(string arg, UpdateType updateSource)
 	   WriteCustomDataIni();
 	} 
 	return;
+	} else if (arg.Equals("RROW")) {
+	    if (droneSelectRow >= droneCodeList.Count -1) droneSelectRow = -1;
+	    else droneSelectRow ++;
+	} else if (arg.Equals("RCOL")) {
+	    droneSelectColumn = (droneSelectColumn + 1) % 6;
+	} else if (arg.Equals("REXE")) {
+	    var code = MOTHER_CODE;
+	    if (droneSelectRow >= 0) {
+	       code += "|" + droneCodeList[droneSelectRow];
+	    }
+	    string command = "";
+	    switch(droneSelectColumn) {
+	    case 0:
+	        command = "FLYBYON";
+	    break;
+	    case 1:
+	        command = "DOCKINGON";
+	    break;
+	    case 2:
+	        command = "DKMVF6";
+	    break;
+	    case 3:
+	        command = "DKMVF5";
+	    break;
+	    case 4:
+	        command = "DKMVB5";
+	    break;
+	    case 5:
+	        command = "DKMVF7";
+	    break;
+	    default:
+	    break;
+	    }
+	    var myTuple = new MyTuple<string, string>(code, command);
+	    IGC.SendBroadcastMessage(IGC_TAG, myTuple);
+	} else if (arg.Equals("RCLEAR")) {
+	    droneCodeList.Clear();
+	    droneSelectRow = -1;
 	}
 	updateMotion();
 
@@ -201,7 +241,6 @@ void Main(string arg, UpdateType updateSource)
     { 
         ProcessNetworkMessage(); 
     } else {
-	// CODING
 	string command = arg;
 	var myTuple = new MyTuple<string, string>(MOTHER_CODE, command);
 	IGC.SendBroadcastMessage(IGC_TAG, myTuple);
@@ -271,7 +310,6 @@ enemyList.Sort((l, r) =>
         (int)((MePosition - r.Value.Position).Length() -
 	(MePosition - l.Value.Position).Length())
 );
-// CODING
 if (enemyList.Count > 0) {
 var k = enemyList[0].Key;
 var v = enemyList[0].Value;
@@ -315,10 +353,10 @@ void ProcessNetworkMessage()
                 targetDataDict[entityId] = new TargetData(position, TargetRelation.Enemy, ingestCount, velocity, motherCode, targetMatrix, 0);
             } 
         } else if(messageData is MyTuple<string, string>) {
-		// CODING
 		var myTuple = (MyTuple<string, string>)messageData;
 		string motherCode = myTuple.Item1;
-		if (motherCode == SON_CODE) {
+		debugInfo = "mc: " + motherCode;
+		if (motherCode == SON_CODE || motherCode == SON_CODE + "|" + MOTHER_CODE) {
 			string command = myTuple.Item2;
 			PlayAction(dcsComputer, "Run", "RADAR:" + command);
 		}
@@ -359,7 +397,158 @@ void NetworkTargets()
             IGC.SendBroadcastMessage(IGC_TAG, myTuple); 
         } 
     //} 
-} 
+}
+
+List<string> droneCodeList = new List<string>();
+int droneSelectRow = -1;
+int droneSelectColumn = 0;
+
+void DrawCmdPanel() {
+	if (cmdSurfaces.Count == 0) return;
+	//
+	var friendList = targetDataDict.Values.ToList<TargetData>().Where(t => t.Relation == TargetRelation.Friendly).ToList();
+	foreach(var td in friendList) {
+	    if (!droneCodeList.Contains(td.Code)) droneCodeList.Add(td.Code);
+	}
+	//
+	var surface = cmdSurfaces[0];
+
+        surface.ContentType = ContentType.SCRIPT; 
+        surface.Script = ""; 
+ 
+        Vector2 surfaceSize = surface.TextureSize; 
+        Vector2 screenCenter = surfaceSize * 0.5f; 
+        Vector2 viewportSize = surface.SurfaceSize; 
+        Vector2 scale = viewportSize / 512f; 
+        float minScale = Math.Min(scale.X, scale.Y); 
+        float sideLength = Math.Min(viewportSize.X, viewportSize.Y) - 12f;
+	
+	Color selectColor = new Color(255, 0, 0, 100); 
+  
+        using (var frame = surface.DrawFrame()) 
+        { 
+            // Fill background with background color 
+            MySprite sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", color: backColor); 
+            sprite.Position = screenCenter; 
+            frame.Add(sprite); 
+
+	    string FONT = "Debug";
+	    float HUD_TEXT_SIZE = 0.8f; 
+
+	    float textSize = minScale * HUD_TEXT_SIZE;
+	    Vector2 halfScreenSize = viewportSize * 0.5f;
+	    sprite = MySprite.CreateText($"Drone Command System", FONT, textColor, textSize, TextAlignment.CENTER);
+	    sprite.Position = screenCenter + new Vector2(0, -halfScreenSize.Y);
+	    frame.Add(sprite);
+	    var ms = minScale;
+	    float lineHeight = 24 * ms;
+	    float nowHeight = lineHeight;
+	    var uc = textColor;
+	    bool sele = false;
+	    for(int i = 0; i < droneCodeList.Count; i ++) {
+		nowHeight += lineHeight;		
+	        var code = droneCodeList[i];
+		uc = textColor; sele = false;
+		if (i == droneSelectRow) { uc = selectColor; sele = true; }
+	        sprite = MySprite.CreateText($"{code}", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 0) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"TO", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 340, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 1) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"DK", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 370, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 2) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"F6", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 400, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+		
+		if (sele && droneSelectColumn == 3) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"F5", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 430, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 4) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"B5", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 460, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 5) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"F7", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 490, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		var tmpl = targetDataDict.Values.ToList<TargetData>().Where(t => t.Code == code).ToList();
+		if (tmpl.Count == 0) continue;
+		TargetData td = tmpl[0];
+		
+	        sprite = MySprite.CreateText($"{Math.Round((td.Position-MePosition).Length(),1)}", FONT, textColor, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 250, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+	    }
+		nowHeight += lineHeight;		
+
+		uc = textColor;sele = false;
+		if (droneSelectRow == -1) {uc = selectColor; sele = true;}
+	        sprite = MySprite.CreateText($"ALL", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 0) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"TO", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 340, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 1) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"DK", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 370, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 2) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"F6", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 400, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+		
+		if (sele && droneSelectColumn == 3) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"F5", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 430, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 4) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"B5", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 460, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+		if (sele && droneSelectColumn == 5) uc = selectColor;
+		else uc = textColor;
+	        sprite = MySprite.CreateText($"F7", FONT, uc, textSize, TextAlignment.LEFT);
+		sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 490, -halfScreenSize.Y + nowHeight);
+		frame.Add(sprite);
+
+	    // CODING
+
+            //DrawRadarText(frame, screenCenter, viewportSize, minScale); 
+        } 
+
+}
  
 void GetTurretTargets() 
 { 
@@ -554,7 +743,6 @@ class RadarSurface
         float yOffset = (float)(transformedDirection.Z); 
         float zOffset = (float)(transformedDirection.Y);
         
-        // CODING
         // log len
         //xOffset = (float) getLogLen(transformedDirection.X);
         //yOffset = (float) getLogLen(transformedDirection.Z);
@@ -972,6 +1160,11 @@ bool PopulateLists(IMyTerminalBlock block)
     if (StringContains(block.CustomName, textPanelName)) 
     { 
         AddTextSurfaces(block, textSurfaces); 
+    }
+    
+    if (StringContains(block.CustomName, cmdPanelName)) 
+    { 
+        AddTextSurfaces(block, cmdSurfaces); 
     } 
  
     var turret = block as IMyLargeTurretBase; 
@@ -998,7 +1191,7 @@ void GrabBlocks()
     textSurfaces.Clear(); 
  
     GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(null, PopulateLists); 
- 
+
     if (turrets.Count == 0) 
         Log.Warning($"No turrets found. You will only be able to see targets that are broadcast by allies."); 
  
@@ -1042,7 +1235,7 @@ void GrabBlocks()
     scheduler.AddQueuedAction(() => Draw(6 * step, 7 * step), cycleTime);                               // cycle 9 
     scheduler.AddQueuedAction(radarSurface.ClearContacts, cycleTime);                                   // cycle 10 
  
-
+    scheduler.AddQueuedAction(DrawCmdPanel, cycleTime);
 } 
 #endregion 
  

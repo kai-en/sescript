@@ -170,6 +170,7 @@ float[] gyroRollFactorHead = null;
 const float GYRO_FACTOR = 1f;
 static int t = 1;
 Vector3D MePosition = Vector3D.Zero;
+Vector3D myToShipPosition = Vector3D.Zero;
 double AimRatio = 0.5;
 double maxAV = 1;
 Vector3D MeLastPosition;
@@ -294,6 +295,7 @@ case ("CONTROL"):
 attackMode=false;
 flyByOn=false;
 dockingOn=false;
+isDkMv=false;
 resetThrusters();
 approachIdx = 0;
 PlayActionList(connectors, "OnOff_On");
@@ -302,6 +304,7 @@ SetGyroOverride(false);
 break;
 case ("FLYBY"):
 if (sonCode == null) break;
+isDkMv=false;
 attackMode=false;
 flyByOn = !flyByOn;
 if (flyByOn) {
@@ -326,6 +329,7 @@ case ("FLYBYON"):
 break;
 case ("DOCKING"):
 if (sonCode == null) break;
+isDkMv=false;
 attackMode=false;
 dockingOn = !dockingOn;
 if (dockingOn) {
@@ -941,6 +945,13 @@ refMatrix = msc.WorldMatrix;
 if(before)
 {
 MePosition = msc.CenterOfMass;
+
+if (shipPosition != Vector3D.Zero) {
+Vector3D myPosition = MePosition;
+MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
+myToShipPosition = Vector3D.TransformNormal(MePosition - shipPosition, shipLookAtMatrix);
+}
+
 MeVelocity = msc.GetShipVelocities().LinearVelocity;
 mySpeedToMe = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
 MeAcceleration = (MeVelocity-MeLastVelocity)*60;
@@ -1225,11 +1236,6 @@ else lcd.FontColor = new Color(0,76,255);
 }
 
 void recordNp(out double l, out double u , out double f, out string h, out string t) {
-shipPosition = new Vector3D(shipMatrix.M41, shipMatrix.M42, shipMatrix.M43);
-Vector3D myPosition = MePosition;
-Vector3D myToShipPosition = myPosition - shipPosition;
-MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
-myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
 l = Math.Round(-myToShipPosition.X,2);
 u = Math.Round(myToShipPosition.Y,2);
 f = Math.Round(-myToShipPosition.Z,2);
@@ -1431,9 +1437,8 @@ tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
 tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
 tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
 
-tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
 tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
-
+tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
 if (Cockpit is IMyTextSurfaceProvider) {
@@ -1739,19 +1744,18 @@ string dockingUp="UP";
 bool dockingOn=false;
 string dockingApproach="DOWN";
 List<Vector3D> dockingList = new List<Vector3D>();
+List<Vector3D> lndList = new List<Vector3D>();
 float dtp=0F;
 //bool isApproach=false;
 int approachIdx = 0;
 void resetApproachIdx() {
 approachIdx = 0;
 if (shipMatrix == MatrixD.Zero) return;
-MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
-Vector3D myToShip = Vector3D.TransformNormal(MePosition - shipPosition, shipLookAtMatrix);
-if (myToShip.Length() > 500) return;
+if (myToShipPosition.Length() > 500) return;
 double n = 99999;
 for(int i = 0; i < dockingList.Count; i++) {
 var v = dockingList[i];
-var l = (myToShip - v).Length();
+var l = (myToShipPosition - v).Length();
 if ( l < n) {
 approachIdx = i;
 n = l;
@@ -2055,6 +2059,15 @@ cfg.Get("legMargin", ref legMargin);
 
 string tmps = "";
 cfg.Get("dockingList", ref tmps);
+parseV3L(tmps, dockingList);
+cfg.Get("lndList", ref tmps);
+parseV3L(tmps, lndList);
+cfg.Get("shipWidth", ref shipWidth);
+cfg.Get("shipHeight", ref shipHeight);
+cfg.Get("shipLength", ref shipLength);
+}
+
+void parseV3L (string tmps, List<Vector3D> l) {
 string[] ps = tmps.Split(';');
 foreach (var s in ps) {
 string[] ss = s.Split(',');
@@ -2065,12 +2078,9 @@ v = new Vector3D(Convert.ToDouble(ss[0]),Convert.ToDouble(ss[1]),Convert.ToDoubl
 } catch {
 continue;
 }
-dockingList.Add(v);
+l.Add(v);
 }
 
-cfg.Get("shipWidth", ref shipWidth);
-cfg.Get("shipHeight", ref shipHeight);
-cfg.Get("shipLength", ref shipLength);
 }
 
 void InitSpeedControl() {
@@ -2472,6 +2482,7 @@ return true;
 }
 
 void startFlyBy() {
+isDkMv=false;
 dockingOn=false;
 isDown=false;
 resetApproachIdx();
@@ -2491,6 +2502,7 @@ callComputer(fighterFcs, "ALLON");
 }
 
 void startDocking(){
+isDkMv=false;
 attackMode=false;
 isDown=false;
 setDampenersOverride(Cockpit, false);
@@ -2615,7 +2627,18 @@ break;
 case "VFTDOWN":
 VFTransformNew(false);
 break;
-
+case "DKMVF7":
+dockMove(18);
+break;
+case "DKMVF6":
+dockMove(16.25);
+break;
+case "DKMVF5":
+dockMove(12.5);
+break;
+case "DKMVB5":
+dockMove(-12.5);
+break;
 default:
 break;
 }
@@ -2711,23 +2734,8 @@ needFlyByAim = true;
 void RefreshMaintainSpeed(){
 // ¼ÆËãËÙ¶È
 if(shipMatrix == MatrixD.Zero) return;
-shipPosition = new Vector3D(shipMatrix.M41, shipMatrix.M42, shipMatrix.M43);
-MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
-
-
-Vector3D myPosition = MePosition;
-Vector3D myToShipPosition = MePosition - shipPosition;
-myToShipPosition = Vector3D.TransformNormal(myToShipPosition, shipLookAtMatrix);
 distanceInfo=displayVector3D(myToShipPosition);
 targetPosition = calcApproach(myToShipPosition, shipPosition, ref approachIdx);
-
-// if (flyByOn) {
-// if (approachIdx == 0 && dockingList.Count > 0) {
-// var v = dockingList[0];
-// targetPosition = shipPosition + shipMatrix.Right * v.X + shipMatrix.Up * v.Y + shipMatrix.Backward * v.Z;
-// targetPosition = shipPosition + Vector3D.TransformNormal(v, shipMatrix);
-// }
-// }
 
 if (dockingOn && approachIdx == dockingList.Count - 1) {
 // to maintain some speed when docking, modify the target position deeper.
@@ -2758,18 +2766,20 @@ if (attackMode) {
 targetPosition = flyByAttackPosition;
 }
 
-Vector3D diffPosition = targetPosition - myPosition;
+Vector3D diffPosition = targetPosition - MePosition;
 
 if (attackMode) {
 shipSpeed = flyByAimSpeed;
 }
 
 bool isClose = Math.Abs(myToShipPosition.X) < shipWidth && Math.Abs(myToShipPosition.Y) < shipHeight && Math.Abs(myToShipPosition.Z) < shipLength && (approachIdx == 0);
+MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
+
 Vector3D shipSpeedBaseShip = Vector3D.TransformNormal(shipSpeed, shipLookAtMatrix);
-Vector3D diffPositionBaseShip =  Vector3D.TransformNormal(targetPosition - myPosition, shipLookAtMatrix);
+Vector3D diffPositionBaseShip =  Vector3D.TransformNormal(targetPosition - MePosition, shipLookAtMatrix);
 
 if (isClose) {
-Vector3D m2s = myPosition - shipPosition;
+Vector3D m2s = MePosition - shipPosition;
 m2s = Vector3D.TransformNormal(m2s, shipLookAtMatrix);
 m2s = new Vector3D(m2s.X / shipWidth, m2s.Y / shipHeight, m2s.Z / shipLength);
 m2s = Vector3D.TransformNormal(m2s, shipMatrix);
@@ -2900,12 +2910,17 @@ Vector3D tp = new Vector3D(0,0,0);
 float delta = 2f;
 
 Vector3D testP = dockingList[approachIdx];
-Vector3D approachPos = shipPosition + Vector3D.TransformNormal(testP, shipMatrix);
+if (lndList.Count >= dockingList.Count && dockingOn) {
+testP = lndList[approachIdx];
+}
+if (dockingOn && isDkMv) {
+testP = DkMvTarget;
+}
 
 bool canProceed = false;
 if ((myToShipPosition - testP).Length() < delta || approachIdx == 0) canProceed = true;
 
-if (canProceed == false) return approachPos;
+if (canProceed == true && isDkMv == false) {
 
 if (flyByOn && approachIdx != 0) {
 approachIdx --;
@@ -2915,7 +2930,16 @@ if (dockingOn && approachIdx < dockingList.Count - 1) {
 approachIdx ++;
 }
 
-return shipPosition + Vector3D.TransformNormal(dockingList[approachIdx], shipMatrix);
+testP = dockingList[approachIdx];
+if (lndList.Count >= dockingList.Count && dockingOn) {
+testP = lndList[approachIdx];
+}
+
+}
+
+Vector3D approachPos = shipPosition + Vector3D.TransformNormal(testP, shipMatrix);
+
+return approachPos;
 }
 
 void findByGroup(string groupName, List<IMyTerminalBlock> blocks) {
@@ -3762,3 +3786,14 @@ if (i > 0) return i - d;
 else return i + d;
 }
 }
+
+Vector3D DkMvTarget = Vector3D.Zero;
+bool isDkMv = false;
+void dockMove(double f) {
+DkMvTarget = myToShipPosition + new Vector3D(0,0,-f);
+flyByOn = false;
+dockingOn = true;
+isDkMv = true;
+approachIdx = dockingList.Count - 1;
+}
+

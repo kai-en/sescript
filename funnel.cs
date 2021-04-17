@@ -1,3 +1,4 @@
+static double STDBY_DISTANCE = 200;
 static int f_no = 0;
 double GUILD_RATE = 0.3;
 double ATAN_BASE = 0.1;
@@ -24,7 +25,7 @@ string FTag = "#B#"+f_no;
 string VERSION = "0.1";
 const float mpi = (float)Math.PI;
 
-static int commandMode = 2; // 0 standby, 1 attack, 2 supply
+static int commandMode = 0; // 0 standby, 1 attack, 2 supply
 const int CM_ATK = 1;
 const int CM_STD = 0;
 const int CM_SUP = 2;
@@ -87,6 +88,7 @@ Random rnd = new Random();
 	    public int delayStartCount = 0;
 	    public Vector3D TargetVelocity = Vector3D.Zero;
 	    public Vector3D TargetVelocityPanel = Vector3D.Zero;
+
 	    public double nearest = 1000000;
 	    public Vector3D lastVelocity = Vector3D.Zero;
 	    public Vector3D lastAVelocity = Vector3D.Zero;
@@ -111,6 +113,10 @@ Random rnd = new Random();
 	// a b K
 	IMyTextPanel gcTargetPanel = null;
 	String gcTargetPanelName="LCD Panel GC Target"+f_no;
+	    IMyTerminalBlock fcsComputer = null;
+	    String fcsComputerName="fcs";
+List<Vector3D> LTPs = new List<Vector3D>();
+List<Vector3D> LTVs = new List<Vector3D>();
 	
             IMyShipController RC;
             List<IMyMotorStator> hingeList = new List<IMyMotorStator>();
@@ -145,6 +151,10 @@ Random rnd = new Random();
 	    if (TempCollection4.Count > 0)
                 {gcTargetPanel = TempCollection4[0] as IMyTextPanel;}
 
+		GridTerminalSystem.GetBlocksOfType<IMyProgrammableBlock>(TempCollection4, a => a.CustomName.Contains(fcsComputerName) );
+	    if (TempCollection4.Count > 0)
+                {fcsComputer = TempCollection4[0];}
+
                 GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(hingeList, a => a.CustomName.Contains(FTag) );
 
             }
@@ -175,7 +185,7 @@ Echo(debugInfo);
                 //Core Block Checks
                 if (RC == null || RC.CubeGrid.GetCubeBlock(RC.Position) == null)
                 { Echo(" ~ No Ship Control Found,\nInstall Forward Facing Cockpit/RC/Flightseat And Press Recompile"); RC = null; return; }
-                if (gcTargetPanel == null)
+                if (gcTargetPanel == null && fcsComputer == null)
                 { Echo(" ~ Searching For A new Seeker\n (Target Panel)\n Install Block And Press Recompile"); return; }
 
                 #endregion
@@ -212,14 +222,21 @@ Echo(debugInfo);
                 //Runs Guidance Block (foreach missile)
                 //---------------------------------------
                 debugInfo = "";
-                var panelInfo = gcTargetPanel.GetPublicTitle();
-	    var tokens = panelInfo.Split(':');
 	    Vector3D targetPanelPosition = Vector3D.Zero;
 	    Vector3D targetPanelVelocity = Vector3D.Zero;
+	    if (gcTargetPanel != null) {
+                var panelInfo = gcTargetPanel.GetPublicTitle();
+	    var tokens = panelInfo.Split(':');
 	    if (panelInfo.StartsWith("[T:") && tokens.Length >= 7) {
 	       targetPanelPosition = new Vector3D(Convert.ToDouble(tokens[1]),Convert.ToDouble(tokens[2]),Convert.ToDouble(tokens[3]));
 	       targetPanelVelocity = new Vector3D(Convert.ToDouble(tokens[4]),Convert.ToDouble(tokens[5]),Convert.ToDouble(tokens[6]));
 	    }
+	    }
+
+if (fcsComputer != null && targetPanelPosition == Vector3D.Zero) {
+checkFcsTarget(out targetPanelPosition, out targetPanelVelocity);
+}
+
                 for (int i = 0; i < FUNNELS.Count; i++)
                 {
                     var ThisFunnel = FUNNELS[i];
@@ -376,7 +393,7 @@ Echo(debugInfo);
                     //Checks All Key Blocks Are Present
                     bool HasTurret = TempTurrets.Count > 0;
 	        // a b K
-	        if (gcTargetPanel != null) HasTurret = true;
+	        if (gcTargetPanel != null || fcsComputer != null) HasTurret = true;
 
                     bool HasPower = TempPower.Count > 0;
                     bool HasMerge = TempMerges.Count > 0;
@@ -624,7 +641,7 @@ Echo(debugInfo);
                     }
                     
                     if (f_no != 0) dir = RC.WorldMatrix.Right;
-                    ENEMY_POS = RC.GetPosition() + dir*70;
+                    ENEMY_POS = RC.GetPosition() + dir* STDBY_DISTANCE;
                     ThisFunnel.TargetVelocity = RC.GetShipVelocities().LinearVelocity;
                     bool canRunNext = (ENEMY_POS - ThisFunnel.MIS_PREV_POS).Length() < 2 && (ThisFunnel.TargetVelocity - ThisFunnel.lastVelocity).Length()<1;
 //                    debugInfo += "\nidx can runnext: " + idx + " " + canRunNext + "\n"; 
@@ -681,20 +698,19 @@ Echo(debugInfo);
                   
                   if (hingeStatus == 0) {
                   ENEMY_POS = RC.GetPosition();
-                  Vector3D offO = hingeList[ThisFunnel.hingeIdx].Position - RC.Position;
-                  offO *= 0.5;
-                  Vector3D off = offO + new Vector3D(xo, yo - 1, zo);
-                  Vector3D pre = RC.GetPosition() + Vector3D.TransformNormal(off , RC.WorldMatrix);
+                  Vector3D offO = hingeList[ThisFunnel.hingeIdx].GetPosition() - RC.GetPosition();
+                  Vector3D off = offO + Vector3D.TransformNormal(new Vector3D(xo, yo - 1, zo), RC.WorldMatrix);
+                  Vector3D pre = RC.GetPosition() + off;
                   Vector3D diffxz = Vector3D.Reject(pre - ThisFunnel.MIS_PREV_POS, RC.WorldMatrix.Up);
 //                  debugInfo += "diffxz: " + diffxz.Length() + "\n";
                   if (diffxz.Length() < 1) ThisFunnel.runningSubMode = 1;
                   else ThisFunnel.runningSubMode = 0;
                   if (diffxz.Length() < 0.2) {
-                  off = offO + new Vector3D(xo, yo, zo);
+                  off = offO + Vector3D.TransformNormal(new Vector3D(xo, yo, zo), RC.WorldMatrix);
                   }
                   
 //                  debugInfo += "XYZ: " + displayVector3D(off) + "\n";
-                  ENEMY_POS += Vector3D.TransformNormal(off, RC.WorldMatrix);
+                  ENEMY_POS += off;
                   ThisFunnel.TargetVelocity = RC.GetShipVelocities().LinearVelocity;
                   if (commandMode == CM_STD) {
                   ThisFunnel.runningMode = CM_STD;
@@ -1279,4 +1295,165 @@ public static Vector3D HitPointCaculate(Vector3D Me_Position, Vector3D Me_Veloci
 		}   
 	}   
 	return HitPoint;   
+}
+
+void checkFcsTarget(out Vector3D targetPosition, out Vector3D targetVelocity) {
+CustomConfiguration cfgTarget = new CustomConfiguration(fcsComputer);
+cfgTarget.Load();
+
+string tmpS = "";
+cfgTarget.Get("Position", ref tmpS);
+Vector3D.TryParse(tmpS, out targetPosition);
+cfgTarget.Get("Aiming", ref tmpS);
+//LockTargetAiming = tmpS == "True";
+// if fcs have target launch missile immediatly
+// if(targetPanelPosition!=Vector3D.Zero && autoFireMissile ) fireMissile();
+
+cfgTarget.Get("Velocity", ref tmpS);
+Vector3D.TryParse(tmpS, out targetVelocity);
+
+//cfgTarget.Get("Asteroid", ref tmpS);
+//Vector3D.TryParse(tmpS, out asteroidPosition);
+
+//cfgTarget.Get("radarHighThreatPosition", ref tmpS);
+//Vector3D.TryParse(tmpS, out radarHighThreatPosition);
+
+int tmpI = 0;
+cfgTarget.Get("TargetCount", ref tmpI);
+
+int targetCount = tmpI;
+LTPs.Clear();
+LTVs.Clear();
+for (int i = 0; i < targetCount; i++) {
+Vector3D tmpP, tmpV;
+cfgTarget.Get("Position"+i, ref tmpS);
+Vector3D.TryParse(tmpS, out tmpP);
+LTPs.Add(tmpP);
+cfgTarget.Get("Velocity"+i, ref tmpS);
+Vector3D.TryParse(tmpS, out tmpV);
+LTVs.Add(tmpV);
+}
+
+}
+
+public class CustomConfiguration
+{
+public IMyTerminalBlock configBlock;
+public Dictionary<string, string> config;
+
+public CustomConfiguration(IMyTerminalBlock block)
+{
+configBlock = block;
+config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+}
+
+public void Load()
+{
+ParseCustomData(configBlock, config);
+}
+
+public void Save()
+{
+WriteCustomData(configBlock, config);
+}
+
+public string Get(string key, string defVal = null)
+{
+return config.GetValueOrDefault(key.Trim(), defVal);
+}
+
+public void Get(string key, ref string res)
+{
+string val;
+if (config.TryGetValue(key.Trim(), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref int res)
+{
+int val;
+if (int.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref float res)
+{
+float val;
+if (float.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref double res)
+{
+double val;
+if (double.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Get(string key, ref bool res)
+{
+bool val;
+if (bool.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+public void Get(string key, ref bool? res)
+{
+bool val;
+if (bool.TryParse(Get(key), out val))
+{
+res = val;
+}
+}
+
+public void Set(string key, string value)
+{
+config[key.Trim()] = value;
+}
+
+public static void ParseCustomData(IMyTerminalBlock block, Dictionary<string, string> cfg, bool clr = true)
+{
+if (clr)
+{
+cfg.Clear();
+}
+
+string[] arr = block.CustomData.Split(new char[] {'\r','\n'}, StringSplitOptions.RemoveEmptyEntries);
+for (int i = 0; i < arr.Length; i++)
+{
+string ln = arr[i];
+string va;
+
+int p = ln.IndexOf('=');
+if (p > -1)
+{
+va = ln.Substring(p + 1);
+ln = ln.Substring(0, p);
+}
+else
+{
+va = "";
+}
+cfg[ln.Trim()] = va.Trim();
+}
+}
+
+public static void WriteCustomData(IMyTerminalBlock block, Dictionary<string, string> cfg)
+{
+StringBuilder sb = new StringBuilder(cfg.Count * 100);
+foreach (KeyValuePair<string, string> va in cfg)
+{
+sb.Append(va.Key).Append('=').Append(va.Value).Append('\n');
+}
+block.CustomData = sb.ToString();
+}
 }
