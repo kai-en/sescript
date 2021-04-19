@@ -571,7 +571,7 @@ public class RotorBase
 	public float ra=0;
 	public float raD=1F;
 	public double bulletMaxSpeedConf = 0;
-	public double bulletMaxRange = 0;
+	public double bulletMaxRange = 900;
 	public float gravityRate = 0;
 	public double curvationRate = 0.2;
 	public bool isAutoFire = true;
@@ -998,7 +998,7 @@ double compose = distance / 900 + (1- dot);
 					}
 				}
 			}
-			if(Vector3D.Distance(MyAttackTarget.Position, this.Position) <= AttackDistance && !sensorActive){
+			if(Vector3D.Distance(MyAttackTarget.Position, this.Position) <= this.bulletMaxRange && !sensorActive){
 				if(isFireWhenAimOK){
 					if(isAimedOK){
 						this.Fire();
