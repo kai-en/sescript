@@ -1,5 +1,5 @@
-static bool isOnOff = true; //ÊÇ·ñ¿ª»ú
-static bool OnlyAttackUpPlane = false; //×Ô¶¯Ñ¡ÔñÄ¿±êÊ±ÊÇ·ñÖ»Ñ¡Ôñ×ª×Ó»ù×ùÅÚËşµÄÉÏ°ëÇòÃæÀïµÄÄ¿±ê£¨µ±Ä¿±êµÍÓÚ¸ÃÅÚËşÊ±²»Ñ¡ÔñÕâ¸öÄ¿±ê£©
+static bool isOnOff = true; //ÊÇ·ñ¿ª»ú ½¢´¬true ¿É±äÕ½»úÊÖ±Û false
+static bool OnlyAttackUpPlane = false; //×Ô¶¯Ñ¡ÔñÄ¿±êÊ±ÊÇ·ñÖ»Ñ¡Ôñ×ª×Ó»ù×ùÅÚËşµÄÉÏ°ëÇòÃæÀïµÄÄ¿±ê£¨µ±Ä¿±êµÍÓÚ¸ÃÅÚËşÊ±²»Ñ¡ÔñÕâ¸öÄ¿±ê£© ½¢´¬Ò»°ãtrue ¿É±äÕ½»úÒ»°ãfalse
 /*
  ======= [ MEA ] È«×Ô¶¯×ª×Ó»ù×ùÅÚÌ¨¿ØÖÆ³ÌĞò FCS-R v1.3 by MEAÈºÖ÷ QQÈº530683714 =======
  ¡¾½éÉÜ¡¿
@@ -91,9 +91,10 @@ static int AttentionRandomTime = 180; //Ëæ»ú¾¯½äÄ£Ê½µÄÇĞ»»¼ä¸ô£¬60ÊÇ1Ãë£¬120ÊÇ2Ã
 // PID¿ØÖÆ
 const double RotorMaxSpeed = 30; //×Ô¶¯×´Ì¬ÏÂ×ª×Ó×î´ó½ÇËÙ¶È£¬µ¥Î» È¦/·ÖÖÓ¡£±ê×¼Öµ30
 const double AimRatio = 5; //Ãé×¼¾«¶È£¬µ¥Î»£º¶È¡£ÓÃÀ´ÅĞ¶ÏÅÚÌ¨ÊÇ·ñÃé×¼£¬ÒÔ±ãÆäËû¶¯×÷ÅĞ¶Ï¡£²»Ó°ÏìÃé×¼µÄĞ§ÂÊ¡£µ±Ãé×¼¿éµÄÕıÇ°·½ÏòÁ¿ÓëÃé×¼¿éºÍÄ¿±êµÄÁ¬ÏßÏòÁ¿¼Ğ½ÇĞ¡ÓÚÕâ¸öÖµÊ±£¬Õû¸öÏµÍ³ÅĞ¶¨Ãé×¼ÁËÄ¿±ê¡£
-const double Aim_PID_P = 0.9; //±ÈÀıÏµÊı£º¿ÉÒÔÀí½âÎªÕû¸öPID¿ØÖÆµÄ×ÜÁ¦¶È£¬½¨Òé·¶Î§0µ½1.2£¬1ÊÇÍêÈ«³öÁ¦¡£
-const double Aim_PID_I = 8; //»ı·ÖÏµÊı£ºÔö¼ÓÕâ¸öÏµÊı»áÈÃ¾²Ì¬Îó²îÔö¼Ó£¨¼´¸ßËÙ»·ÈÆÎó²î£©£¬µ«»á¼õÉÙÃé×¼µÄÕğµ´¡£·´Ö®Í¬Àí
-const double Aim_PID_D = 1; //Î¢·ÖÏµÊı£ºÔö¼ÓÕâ¸öÏµÊı»á¼õÉÙÃé×¼µÄÕğµ´·ù¶È£¬µ«»á¼Ó¾çÔÚĞ¡½Ç¶ÈÆ«²îÊ±µÄÕğµ´·ù¶È¡£·´Ö®Í¬Àí
+const double Aim_PID_P = 20; //±ÈÀıÏµÊı£º¿ÉÒÔÀí½âÎªÕû¸öPID¿ØÖÆµÄ×ÜÁ¦¶È£¬½¨Òé·¶Î§0µ½1.2£¬1ÊÇÍêÈ«³öÁ¦¡£
+const double Aim_PID_I = 1; //»ı·ÖÏµÊı£ºÔö¼ÓÕâ¸öÏµÊı»áÈÃ¾²Ì¬Îó²îÔö¼Ó£¨¼´¸ßËÙ»·ÈÆÎó²î£©£¬µ«»á¼õÉÙÃé×¼µÄÕğµ´¡£·´Ö®Í¬Àí
+const double Aim_PID_D = 0; //Î¢·ÖÏµÊı£ºÔö¼ÓÕâ¸öÏµÊı»á¼õÉÙÃé×¼µÄÕğµ´·ù¶È£¬µ«»á¼Ó¾çÔÚĞ¡½Ç¶ÈÆ«²îÊ±µÄÕğµ´·ù¶È¡£·´Ö®Í¬Àí
+
 const int Aim_PID_T = 5; //PID ²ÉÑùÖÜÆÚ£¨µ¥Î»£ºÖ¡£©£¬ÖÜÆÚÔ½Ğ¡Ğ§¹ûÔ½ºÃ£¬µ«Ì«Ğ¡µÄÖÜÆÚ»áÈÃ»ı·ÖÏµÊıÄÑÒÔ·¢»ÓĞ§¹û
 // ÊÖ¶¯¿ØÖÆ
 const double PlayerAimRatio = 0.1; // Íæ¼ÒÊÖ¶¯¿ØÖÆµÄÃé×¼ÁéÃô¶È£¬Ö»ÓĞµ±Ãé×¼¿éÊÇÔ¶³Ì¿ØÖÆ¿é»ò¼İÊ»²Õ²Å´æÔÚÕâ¸ö¹¦ÄÜ¡£
@@ -152,8 +153,8 @@ void Main(string arguments)
 	if(arguments == "On"){isOnOff = true;
                      if (api == null) {
                      api = new WcPbApi();
-                     try{api.Activate(Me);}catch(Exception e){
-		     initInfo += "\napi error" + e;
+                     try{api.Activate(Me);}catch(Exception ex){
+		     initInfo += "\napi error" + ex;
 		     api=null;
 		     };
     StaticWeapons.Clear();
@@ -171,26 +172,7 @@ initInfo += "\n" + i.BlockDefinition.SubtypeName;
 }
 }
 
-//                     List<MyDefinitionId> TEMP_TUR = new List<MyDefinitionId>();
-//if(api!=null)api.GetAllCoreTurrets(TEMP_TUR);
-//debugInfo = "ct: " + TEMP_TUR.Count;
-//List<string> definitionSubIds = new List<string>();
-//TEMP_TUR.ForEach(d => definitionSubIds.Add(d.SubtypeName));
-//foreach(var d in TEMP_TUR) {
-//debugInfo += "\n" + d.SubtypeName;
-//}
-//initInfo += "\nchecking FCSR-REF"; 
-//List<IMyTerminalBlock> tmpList = new List<IMyTerminalBlock>();
-//GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(tmpList, b =>
-//b.CubeGrid == Me.CubeGrid &&
-//b.CustomName.Contains("[FCSR-REF]"));
-//foreach(var i in tmpList) {
-//initInfo += "\n" + i.BlockDefinition.SubtypeName;
-//}
 
-//GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(TURRETS, b => b.CubeGrid == Me.CubeGrid && definitionSubIds.Contains(b.BlockDefinition.SubtypeName));
-//TURRETS.AddRange(tmpList);
-//debugInfo += "\ntuc: " + TURRETS.Count;
                      }
             }
 	if(arguments == "Off"){isOnOff = false;}
@@ -221,11 +203,12 @@ initInfo += "\n" + i.BlockDefinition.SubtypeName;
 		TargetList.Add(FCS_T);
 	}
 	//»ñÈ¡×Ô¶¯ÎäÆ÷Ä¿±ê
+	bool hav = false;
 	for(int i = 0; i < AutoWeapons.Count; i ++){
 		Target ATWP_T = new Target();
 		ATWP_T.GetTarget(AutoWeapons[i]);
                         if (ATWP_T.EntityId == 0) continue;
-                        bool hav = false;
+                        hav = false;
                         foreach (var t in TargetList) {
                             if (t.EntityId == ATWP_T.EntityId) hav = true;
                         }
@@ -235,6 +218,43 @@ initInfo += "\n" + i.BlockDefinition.SubtypeName;
 	}
 	debugInfo += "\nchecking WeaponCore target";
 	if (api == null) debugInfo += "\napi is null";
+	else {
+	// checking focus
+		    var e = api.GetAiFocus(Me.CubeGrid.EntityId);
+		    
+		    if ((e?.EntityId ?? 0) == 0) debugInfo += "\nAiFocus is null";
+		    var ee = e ?? new MyDetectedEntityInfo();
+                    debugInfo += "\ne: " + (e?.EntityId ?? 0);
+                    debugInfo += "\nep: " + (e?.Position ?? Vector3D.Zero);
+                        hav = false;
+                        foreach (var t in TargetList) {
+                            if (t.EntityId == ee.EntityId) hav = true;
+                        }
+                        if (!hav) {
+                    		Target lt = new Target();
+			foreach ( Target ti in LastTargetList ) {
+				if (ti.EntityId == ee.EntityId) {
+					lt = ti;
+					break;
+				}
+			}
+                        Target nt = new Target();
+                    		nt.Name = ee.Name;
+			nt.EntityId = ee.EntityId;
+			//nt.Diameter = Vector3D.Distance(ee.WorldAABB.Max, ee.WorldAABB.Min);
+                                    nt.Position = ee.Position;
+                                    if (lt.EntityId == 0) {
+                                    nt.Velocity = Vector3D.Zero;
+                                    } else if (t == lt.TimeStamp) {
+			nt.Velocity = lt.Velocity;
+			} else {
+			nt.Velocity = (ee.Position - lt.Position) / ((t - lt.TimeStamp)/60D);
+			}
+
+			nt.TimeStamp = t;
+                        TargetList.Add(nt);
+	              }
+	}
 	foreach(var tu in StaticWeapons){
                     //var e = api.GetWeaponTarget(tu);
                     if (api == null) continue;
@@ -242,15 +262,13 @@ initInfo += "\n" + i.BlockDefinition.SubtypeName;
 		    var e = api.GetWeaponTarget(tu);
 		    if ((e?.EntityId ?? 0) == 0) {
 		    debugInfo += "\nGetWeaponTarget is null";
-		    e = api.GetAiFocus(Me.CubeGrid.EntityId);
 		    }
-		    if ((e?.EntityId ?? 0) == 0) debugInfo += "\nAiFocus is null";
                     if ((e?.EntityId ?? 0) == 0) continue;
 		    var ee = e ?? new MyDetectedEntityInfo();
                     debugInfo += "\ne: " + (e?.EntityId ?? 0);
                     debugInfo += "\nep: " + (e?.Position ?? Vector3D.Zero);
                     if (ee.EntityId == 0) continue;
-                        bool hav = false;
+                        hav = false;
                         foreach (var t in TargetList) {
                             if (t.EntityId == ee.EntityId) hav = true;
                         }
@@ -404,6 +422,8 @@ public void GetBlocks()
             GridTerminalSystem.GetBlocksOfType<IMyRemoteControl> (tmpBlocks);
             if (tmpBlocks.Count>0) remoteBlock = (IMyRemoteControl)tmpBlocks[0];
 
+
+
 	if(DebugMode){
 		foreach(RotorBase rt in FCSR_temp){
 			string info = rt.Name + " -- " + rt.ErrorReport;
@@ -550,9 +570,19 @@ public class RotorBase
 	public float onY = 0;
 	public float ra=0;
 	public float raD=1F;
+	public double bulletMaxSpeedConf = 0;
+	public double bulletMaxRange = 0;
+	public float gravityRate = 0;
+	public double curvationRate = 0.2;
+	public bool isAutoFire = true;
+	public double PID_P = Aim_PID_P;
+	public double PID_I = Aim_PID_I;
+	public double PID_D = Aim_PID_D;
+	public string FACE_TO = "Forward";
+	
 	static float pp=20F,pi=1F,pd=0F, pim=0.1F;
-	public PIDController pidX = new PIDController(pp, pi, pd,pim,-pim,12);
-	public PIDController pidY = new PIDController(pp, pi, pd,pim,-pim,12);
+	public List<PIDController> pidXL = new List<PIDController>();
+	public List<PIDController> pidYL = new List<PIDController>();
 	
 	// -------- ³õÊ¼»¯·½·¨ ---------
 	public RotorBase(IMyBlockGroup thisgroup, MyGridProgram program)
@@ -562,7 +592,6 @@ public class RotorBase
 		
 		List<IMyTerminalBlock> blocks_temp = new List<IMyTerminalBlock>();
 		thisgroup.GetBlocks(blocks_temp);
-		
 		//»ñµÃÃé×¼¿é
 		foreach(IMyTerminalBlock block in blocks_temp){
 			if(block.CustomName.Contains(AimBlockKey)) {AimBlock = block; break;}
@@ -589,7 +618,17 @@ public class RotorBase
 		cfg.Get("ra", ref ra);
 		ra = toRa(ra);
 		cfg.Get("raD", ref raD);
-		
+
+		cfg.Get("bulletMaxSpeedConf", ref bulletMaxSpeedConf);
+		cfg.Get("bulletMaxRange", ref bulletMaxRange);
+		cfg.Get("gravityRate", ref gravityRate);
+		cfg.Get("curvationRate", ref curvationRate);
+		cfg.Get("isAutoFire", ref isAutoFire);
+		cfg.Get("PID_P", ref PID_P);
+		cfg.Get("PID_I", ref PID_I);
+		cfg.Get("PID_D", ref PID_D);
+		cfg.Get("FACE_TO", ref FACE_TO);
+
 		//»ñµÃ×ª×Ó
 		bool haveHinge = false;
 		foreach(IMyTerminalBlock b in blocks_temp) {
@@ -648,6 +687,13 @@ public class RotorBase
 		}
 		if(RotorXs.Count < 1 || RotorYs.Count < 1) {ErrorReport = "Rotors Not Complete!"; return;}
 
+		for(int i = 0; i < RotorXs.Count; i++) {
+		    pidXL.Add(new PIDController(PID_P, PID_I, pd,pim,-pim,12));
+		}
+		for(int i = 0; i < RotorYs.Count; i++) {
+		    pidYL.Add(new PIDController(PID_P, PID_I, pd,pim,-pim,12));
+		}
+
 		//»ñµÃÎäÆ÷
 		foreach(IMyTerminalBlock block in blocks_temp){
 			if(block is IMyUserControllableGun){
@@ -701,13 +747,13 @@ public class RotorBase
 			            var a = this.RotorXs[i].Angle - ((t % 300) * MathHelper.TwoPi/300);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
+				this.RotorXs[i].TargetVelocityRPM = (float)pidXL[i].Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
 			             var a = this.RotorYs[i].Angle;
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
+				this.RotorYs[i].TargetVelocityRPM = (float)pidYL[i].Filter(-a,2);
 			}
 			return;
 		}
@@ -720,13 +766,13 @@ public class RotorBase
 			            var a = this.RotorXs[i].Angle - (float)(onX);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
+				this.RotorXs[i].TargetVelocityRPM = (float)pidXL[i].Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
 			             var a = this.RotorYs[i].Angle - (float)(onY);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
+				this.RotorYs[i].TargetVelocityRPM = (float)pidYL[i].Filter(-a,2);
 			}
 		break;
 		case 1:
@@ -753,13 +799,13 @@ public class RotorBase
 			            var a = this.RotorXs[i].Angle - xt - (float)(onX);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
+				this.RotorXs[i].TargetVelocityRPM = (float)pidXL[i].Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
 			            var a = this.RotorYs[i].Angle - yt - (float)(onY);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
+				this.RotorYs[i].TargetVelocityRPM = (float)pidYL[i].Filter(-a,2);
 			}
 		break;
 		case 2:
@@ -786,13 +832,13 @@ public class RotorBase
 			            var a = this.RotorXs[i].Angle - xt - (float)(onX);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
+				this.RotorXs[i].TargetVelocityRPM = (float)pidXL[i].Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
 			            var a = this.RotorYs[i].Angle - yt - (float)(onY);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
+				this.RotorYs[i].TargetVelocityRPM = (float)pidYL[i].Filter(-a,2);
 			}
 
 		break;
@@ -801,13 +847,13 @@ public class RotorBase
 			            var a = this.RotorXs[i].Angle - (float)(offX);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorXs[i].TargetVelocityRPM = (float)pidX.Filter(-a,2);
+				this.RotorXs[i].TargetVelocityRPM = (float)pidXL[i].Filter(-a,2);
 			}
 			for(int i = 0; i < this.RotorYs.Count; i ++){
 				var a = this.RotorYs[i].Angle - (float)(offY);
 				if (a > Math.PI) a = a - MathHelper.TwoPi;
 				if (a < -Math.PI) a = a + MathHelper.TwoPi;
-				this.RotorYs[i].TargetVelocityRPM = (float)pidY.Filter(-a,2);
+				this.RotorYs[i].TargetVelocityRPM = (float)pidYL[i].Filter(-a,2);
 			}
                         break;
 		}
@@ -976,7 +1022,6 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 }
 
 	// ---------- Ãé×¼Ä¿±ê -----------
-	private List<Vector3D> Aim_PID_Data = new List<Vector3D>();
 	bool AimAtTarget(Vector3D Position)
 	{
 		return AimAtTarget(Position, new Vector3D(), new Vector3D(), true);
@@ -1014,6 +1059,12 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 			bs = BulletInitialSpeed3;
 			ba = BulletAcceleration3;
 			bm = BulletMaxSpeed3;
+		} else if (bulletMaxSpeedConf != 0) {
+			thisV = this.Velocity;
+			thisA = this.Acceleration;
+			bs = bulletMaxSpeedConf;
+			ba = 0;
+			bm = bulletMaxSpeedConf;
 		} else if (isRocket == true) {
 			thisV = this.Velocity * 0.3;
 			thisA = new Vector3D(0,0,0);
@@ -1035,7 +1086,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		Vector3D ng = Vector3D.Zero;
 		if (msc != null) ng = msc.GetNaturalGravity();
 		debugInfo += "\nbs: " + bs;
-		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position, Velocity, Acceleration, bs, ba, bm, FireTimers.Count > 0, ng);
+		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position, Velocity, Acceleration, bs, ba, bm, FireTimers.Count > 0 ? 1F : gravityRate, ng, bulletMaxRange, curvationRate);
                         Vector3D tp2me = Position - this.Position;
 		Vector3D TargetPositionToMe = new Vector3D(0,0,-1);
 		if (HitPoint != Vector3D.Zero) {
@@ -1048,55 +1099,44 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 			// https://www.andre-gaschler.com/rotationconverter/
 			TargetPositionToMe = Vector3D.Transform(TargetPositionToMe, new Quaternion((float)Math.Sin(toRa(xdegree * 0.5F)), 0, 0, (float)Math.Cos(toRa(xdegree * 0.5F))));
 		}
-		//´¢´æ²ÉÑùµã
-		if(Aim_PID_Data.Count < Aim_PID_T){
-			for(int i = 0; i < Aim_PID_T; i ++){
-				Aim_PID_Data.Add(new Vector3D());
-			}
-		}
-		else{Aim_PID_Data.Remove(Aim_PID_Data[0]); Aim_PID_Data.Add(TargetPositionToMe);}
-		
-		//»ñµÃ²ÉÑùµã»ı·Ö
-		double X_I = 0;
-		double Y_I = 0;
-		foreach(Vector3D datapoint in Aim_PID_Data){
-			X_I += datapoint.X;
-			Y_I += datapoint.Y;
-		}
 		
 		//¼ÆËãÊä³ö
-		//double aa=0, ea=0;
-		//Vector3D.GetAzimuthAndElevation(TargetPositionToMe, out aa, out ea);
+		var targetPositionToReal = Vector3D.TransformNormal(TargetPositionToMe, this.AimBlock.WorldMatrix);//
+		var faceDir = msc.WorldMatrix.Forward;
+		if (FACE_TO == "Right") faceDir = msc.WorldMatrix.Right;
+		else if (FACE_TO == "Left") faceDir = msc.WorldMatrix.Left;
+		else if (FACE_TO == "Backward") faceDir = msc.WorldMatrix.Backward;
+		var rcLookAt = MatrixD.CreateLookAt(Vector3D.Zero, faceDir, msc.WorldMatrix.Up);
+		var tpToRc = Vector3D.TransformNormal(targetPositionToReal, rcLookAt);
+		double aa=0, ea=0;
+		Vector3D.GetAzimuthAndElevation(tpToRc, out aa, out ea);
 		//debugInfo += "\n" + aa + " " + ea;
-		double YawValue = Aim_PID_P*(TargetPositionToMe.X + (1/Aim_PID_I)*X_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].X - Aim_PID_Data[0].X)/Aim_PID_T);
-		//double YawValue = Aim_PID_P*(modAngle(aa) + (1/Aim_PID_I)*X_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].X - Aim_PID_Data[0].X)/Aim_PID_T);
-
-
-		double PitchValue = Aim_PID_P*(TargetPositionToMe.Y + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
-		//double PitchValue = Aim_PID_P*(modAngle(ea) + (1/Aim_PID_I)*Y_I + Aim_PID_D*(Aim_PID_Data[Aim_PID_T-1].Y - Aim_PID_Data[0].Y)/Aim_PID_T);
 
 		bool isFireZone = angleDeltaAbs(this.RotorXs[0].Angle, hori) > horiD;
 		double fireRange = ShootDistance;
 		if (isRocket) fireRange = ShootDistance2;
 		if(FireTimers.Count>0) fireRange = ShootDistance3;
+		if (bulletMaxRange != 0) fireRange = bulletMaxRange;
                         isFireZone = isFireZone && tp2me.Length() < fireRange;
                         if (isStraight) isFireZone = true;
 		if (!isFireZone) {
-		PitchValue = (float)(onY) - this.RotorYs[0].Angle * this.RotorYField[0]; //
-		YawValue = (float)(onX)-this.RotorXs[0].Angle * this.RotorXField[0]; //
+		aa = (float)onX * this.RotorXField[0];
+		ea = (float)onY * this.RotorYField[0];
 		}
-
-                        PitchValue = MathHelper.Clamp(PitchValue, -0.99, 0.99);
-                        YawValue = MathHelper.Clamp(YawValue, -0.99, 0.99);
 
 		for(int i = 0; i < this.RotorXs.Count; i ++){
-			this.RotorXs[i].TargetVelocityRPM = (float)(YawValue * this.RotorXField[i] * RotorMaxSpeed);
+			var a = (float)(-aa*this.RotorXField[i]) - this.RotorXs[i].Angle;
+			if (a > Math.PI) a = a - MathHelper.TwoPi;
+			if (a < -Math.PI) a = a + MathHelper.TwoPi;
+			this.RotorXs[i].TargetVelocityRPM = (float)pidXL[i].Filter(a,2);
 		}
-		//if(TargetPositionToMe.Z < 0){
 			for(int i = 0; i < this.RotorYs.Count; i ++){
-				this.RotorYs[i].TargetVelocityRPM = (float)(PitchValue * this.RotorYField[i] * RotorMaxSpeed);
+				//this.RotorYs[i].TargetVelocityRPM = (float)(PitchValue * this.RotorYField[i] * RotorMaxSpeed);
+			var a = (float)(ea*this.RotorYField[i]) - this.RotorYs[i].Angle;
+			if (a > Math.PI) a = a - MathHelper.TwoPi;
+			if (a < -Math.PI) a = a + MathHelper.TwoPi;
+			this.RotorYs[i].TargetVelocityRPM = (float)pidYL[i].Filter(a,2);
 			}
-		//}
 		
 		// ¼ÆËãµ±Ç°ÓëÔ¤ÆÚÃé×¼µãµÄÃé×¼¼Ğ½Ç
 		if (HitPoint == Vector3D.Zero) return false;
@@ -1110,6 +1150,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 	// ------ ¿ª»ğ ---------
 	public void Fire()
 	{
+		if (!isAutoFire) return;
 		foreach(IMyTerminalBlock gun in this.Weapons){
 			gun.ApplyAction(ShootActionName);
 		}
@@ -1141,13 +1182,13 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 // ============ ¸¨Öúº¯Êı =============
 static Vector3D HitPointCaculate(Vector3D Me_Position, Vector3D Me_Velocity, Vector3D Me_Acceleration, Vector3D Target_Position, Vector3D Target_Velocity, Vector3D Target_Acceleration,    
 							double Bullet_InitialSpeed, double Bullet_Acceleration, double Bullet_MaxSpeed,
-bool isGravitySensitive, Vector3D ng)   
+float gravityRate, Vector3D ng, double bulletMaxRange, double curvationRate)   
 {
 	string debugString = "";
 	//GravityHitPointCaculate(new Vector3D(1, 1, 0), new Vector3D(0,0,-1), new Vector3D(0,-1,0), 3D, out debugString);
 	//debugInfo += "\nghpc\n" + debugString + "\n";
-	if (isGravitySensitive && ng.Length() != 0) {
-		var ret = GravityHitPointCaculate(Target_Position - Me_Position, Target_Velocity - Me_Velocity, ng, Bullet_InitialSpeed, out debugString);
+	if (gravityRate > 0 && ng.Length() != 0) {
+		var ret = GravityHitPointCaculate(Target_Position - Me_Position, Target_Velocity - Me_Velocity, ng * gravityRate, Bullet_InitialSpeed, bulletMaxRange, curvationRate, out debugString);
 		if (ret == Vector3D.Zero) return Vector3D.Zero;
 		ret += Me_Position;
 		debugInfo += "\nghpc\n" + debugString + "\n";
@@ -1580,7 +1621,13 @@ static string displayVector3D(Vector3D tar) {
 return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(tar.Z, 2);
 }
 
-static Vector3D GravityHitPointCaculate(Vector3D tp, Vector3D tv, Vector3D g, double aV, out string debugString) {
+static Vector3D GravityHitPointCaculate(Vector3D tp, Vector3D tv, Vector3D g, double aV, double bulletMaxRange, double curvationRate, out string debugString) {
+
+// ÎÊÌâ5 »³ÒÉĞÇÇòÇúÂÊÔ­Òò£¬¶Ôg²ÉÈ¡½üĞ¡Ô¶´ó´¦Àí
+var gd = Vector3D.Normalize(g);
+var ngtpr = Vector3D.Reject(tp, gd).Length();
+g = g * (1 + ((ngtpr - bulletMaxRange*0.5)*2 / bulletMaxRange) * curvationRate);
+
 /*
 Ä¿±êËÙ¶ÈÎª  tvx, tvy, tvz. Ä¿±êÎ»ÖÃ  tpx, tpy, tpz.
 ÖØÁ¦¼ÓËÙ¶È gax, gay, gaz.
@@ -1618,7 +1665,6 @@ debugString = "";
 if (tp == Vector3D.Zero) return Vector3D.Zero;
 // 1 ½¨Á¢×ù±êÏµ
 // 1.1 ¼ì²é tp·½Ïò Óë g ·½ÏòÊÇ·ñ ÍêÈ«Í¬Ïò/ÒìÏò Ëã·¨ÎŞ·¨´¦ÀíÕâÖÖÇé¿ö , ²»¹¥»÷ (È±Ïİ1)
-var gd = Vector3D.Normalize(g);
 var dot = Vector3D.Dot(Vector3D.Normalize(tp), gd);
 if (dot == 1 || dot == -1) return Vector3D.Zero;
 // 1.2 ¹¹½¨×ù±ê×ª»»¾ØÕó
@@ -1711,3 +1757,4 @@ return av;
 
 // (- 2.12 0.53) (/ (+ 2.12 1.59) 2) (* 1.855 0.53)
 // (* 1.86 0.53)
+// (/ 1300 2.72)

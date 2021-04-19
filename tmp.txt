@@ -15,3 +15,22 @@ f74e c07e
 
 订单号335571125已移交给快递员Valery Lebedev，电话：8 800 600-95-25
 Подробнее: https://www.labirint.ru/cabinet/order/335571125/
+
+
+onY=54
+ra=30
+raD=0.55
+bulletMaxSpeedConf=500
+bulletMaxRange=2000
+gravityRate=0.1
+isAutoFire=false
+
+
+bulletMaxSpeedConf=300
+bulletMaxRange=3500
+gravityRate=0.12
+curvationRate=0.02
+isAutoFire=false
+PID_P=0.01
+PID_I=0.1
+PID_D=0.1
