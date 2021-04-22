@@ -224,6 +224,7 @@ List<IMyTerminalBlock> lcdBackList = new List<IMyTerminalBlock>();
 // new down mode
 Vector3D downStartPos = Vector3D.Zero;
 int lastDownT = 0;
+int lastUpT = 0;
 
 // auto fire missile
 bool autoFireMissile = false;
@@ -239,15 +240,19 @@ bool ahhOn = false;
 bool continueAhhOn = false;
 int continueAhhStart = 0;
 void setAhhOn(bool v) {
-ahhOn = v;
-if (isAeroDynamic) return;
-if (ahhOn == false) {
-continueAhhOn = false;
-continueAhhStart = 0;
-} else {
-if (continueAhhStart == 0) continueAhhStart = t;
-else if ( t > continueAhhStart + 180 ) continueAhhOn = true;
-}
+// new ahh
+ahhOn = continueAhhOn = v;
+return;
+
+//ahhOn = v;
+//if (isAeroDynamic) return;
+//if (ahhOn == false) {
+//continueAhhOn = false;
+//continueAhhStart = 0;
+//} else {
+//if (continueAhhStart == 0) continueAhhStart = t;
+//else if ( t > continueAhhStart + 180 ) continueAhhOn = true;
+//}
 }
 bool useAhh = true;
 double ahh = 0;
@@ -538,7 +543,9 @@ resetThrusters();
 }
 
 if ((!(flyByOn||dockingOn) && ng.Length() > 0.001f && dampenersOn) || isAssist) {
-if (!suc || isAssist) {
+if (
+//!suc ||
+isAssist) {
 
 //
 bool isFcsAiming = LockTargetAiming && LockTargetPosition!=Vector3D.Zero;
@@ -1025,28 +1032,52 @@ wantUD = true;
 }
 }
 
-if (useAhh && !wantUD && !(flyByOn || dockingOn)) {
+//if (useAhh && !wantUD && !(flyByOn || dockingOn)) {
+//
+//if (!ahhOn) {
+//double h = 0;
+//if (msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h)) {
+//ahh = h;
+//setAhhOn(true);
+//}
+//} else {
+//setAhhOn(true);
+//}
+//}
+// coding
 
-if (!ahhOn) {
+if (wantUD) {
+setAhhOn(false);
+resetThrusters(false);
+}
+
+}
+
+
+if ( inputVec.Y > 0.5) {
+if (lastUpT == 0 && Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2 && MeVelocity.Length() < 30) {
+lastUpT = t;
+}
+setAhhOn(false);
+} else if (Math.Abs(inputVec.Y) > -0.1 && lastUpT != 0) {
+if( t - lastUpT < 10) {
 double h = 0;
 if (msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h)) {
 ahh = h;
 setAhhOn(true);
 }
-} else {
-setAhhOn(true);
 }
-}
-if (wantUD) {
+lastUpT = 0;
+} else if (inputVec.Y < -0.5) {
 setAhhOn(false);
-resetThrusters(false);
 }
-}
+
 bool cd = false;
-if ( inputVec.Y < -0.5 && lastDownT == 0) {
-if (Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2 && MeVelocity.Length() < 30) {
+if ( inputVec.Y < -0.5) {
+if (lastDownT == 0 && Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2 && MeVelocity.Length() < 30) {
 lastDownT = t;
 }
+isDown=false;
 } else if (Math.Abs(inputVec.Y) < 0.1 && lastDownT != 0) {
 if( t - lastDownT < 10) {
 isDown = true;
@@ -1421,8 +1452,8 @@ Head = getBlockByName(HeadNameTag) as IMyShipController;
 //tryAddVftr("Hinge landgear", 0, toRa(-45F), toRa(-45F), 0, landrList);
 
 //cvl-3x
-//tryAddVftr("Hinge Wing", toRa(30F), 0, 0, 0, wingrList);
-//tryAddVftr("Hinge Land", toRa(-1F), toRa(-60F), toRa(-60F), 0, landrList);
+// tryAddVftr("Hinge Wing", toRa(30F), 0, 0, 0, wingrList);
+// tryAddVftr("Hinge Land", toRa(-1F), toRa(-60F), toRa(-60F), 0, landrList);
 
 // R-2
 tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
@@ -3563,7 +3594,6 @@ tar = -wab + wbab - bau;
 }
 }
 
-// CODING
 if (walkSeq > 3 && i > 0) {
 var tmp = tal;
 tal = tar;
