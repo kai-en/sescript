@@ -5,7 +5,7 @@ double ATAN_BASE = 0.5;
 double APID_P = 10;
 double APID_D = 1.0;
 
-double MISSILE_MASS = 3398.8;
+//double MISSILE_MASS = 3398.8;
 //double MISSILE_MASS = 5316.4;
 //double MISSILE_MASS = 1989;
 //double MISSILE_MASS = 1407.4;
@@ -21,6 +21,7 @@ double aero_liftrate = 0.1;
 bool isPn = false;
 
 static bool autoFireMissile = false;
+static bool isTrackVelocity = true;
 static long lastAutoFire = 1000;
 static long AUTO_FIRE_INTERVAL = 600;
 static long AUTO_FIRE_MAX = 4;
@@ -94,6 +95,7 @@ IMyTerminalBlock pgtimer = null;
                 //Permanent Missile Details
                 public double MissileAccel = 10;
                 public double MissileMass = 0;
+                public double MISSILE_MASS = 0;
                 public double MissileThrust = 0;
                 public bool IsLargeGrid = false;
                 public double FuseDistance = 2;
@@ -312,6 +314,7 @@ List<Vector3D> LTVs = new List<Vector3D>();
                 QuickEcho(MISSILES.Count, "Active (Fired) Missiles:");
                 QuickEcho(refuelerList.Count, "Refuelers:");
                 QuickEcho(autoFireMissile, "Auto fire:");
+                QuickEcho(isTrackVelocity, "Track V:");
                 QuickEcho(isPn?"PN":"Parallel", "Guild rate:");
                 QuickEcho(Runtime.LastRunTimeMs, "Runtime:");
 Echo(debugInfo);
@@ -366,6 +369,9 @@ Echo(debugInfo);
 	       }else if (args[0] == "SetAuto") {
                        if (args[1] == "True") autoFireMissile = true;
                        else autoFireMissile = false;
+	       }else if (args[0] == "SetTrack") {
+                       if (args[1] == "True") isTrackVelocity = true;
+                       else isTrackVelocity = false;
                    }else if (args[0] == "SetUsePN") {
                        if (args[1] == "True") isPn = true;
                        else isPn = false;
@@ -736,7 +742,7 @@ if(true) {
 // 新算法
 // 4 推力 / 质量 = 可以提供的加速度的长度 sdl
 
-double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust * This_Missile.THRUSTERS.Count / MISSILE_MASS;
+double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust * This_Missile.THRUSTERS.Count / This_Missile.MISSILE_MASS;
 
 // 1 求不需要的速度
 //debugInfo = "TR: " + targetRange.Length() + "\n";
@@ -748,7 +754,7 @@ Vector3D rv = Vector3D.Reject(targetV, tarN);
 
 // 1.1 拦截方式
 var otv = This_Missile.TargetVelocity;
-if (otv.Length() > 10) {
+if (otv.Length() > 10 && isTrackVelocity) {
 var rrd = Vector3D.Reject(targetRange, Vector3D.Normalize(otv));
 var rrv = rrd * 0.3; // rr rate
 if (rrv.Length() > 90) { //
@@ -1043,6 +1049,10 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
 		}
                         NEW_MISSILE.POWER = TempPower[0];
                         NEW_MISSILE.MERGE = TempMerges[0];
+			NEW_MISSILE.MISSILE_MASS = 5316.4;
+			CustomConfiguration cfg = new CustomConfiguration(NEW_MISSILE.GYRO);
+			cfg.Load();
+			cfg.Get("MISSILE_MASS", ref NEW_MISSILE.MISSILE_MASS);
                         MISSILES.Add(NEW_MISSILE);
                         Lstrundata = "Launched Missile:" + MISSILES.Count;
                         return true;

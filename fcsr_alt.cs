@@ -137,6 +137,9 @@ public List<string> definitionSubIds = new List<string>();
 static IMyRemoteControl remoteBlock = null;
 static Vector3D piratePosition = Vector3D.Zero;
 
+static Dictionary<string, List<IMyTerminalBlock>> weaponDic = new Dictionary<string, List<IMyTerminalBlock>>();
+static Dictionary<string, int> weaponSeqDic = new Dictionary<string, int>();
+
 Program()
 {
 Runtime.UpdateFrequency = UpdateFrequency.Update1;
@@ -145,6 +148,7 @@ Runtime.UpdateFrequency = UpdateFrequency.Update1;
 void Main(string arguments)
 {
 	t ++;//时钟
+	debugInfo = "";
 
 	//接收指令
 	if(arguments == "Debug"){DebugMode = true;}
@@ -181,12 +185,42 @@ initInfo += "\n" + i.BlockDefinition.SubtypeName;
 		if(AttentionMode > 3){AttentionMode = 1;}
 	}
 	
+	try {
+	var al = arguments.Split(':');	
+	if (al.Length <= 1) throw new Exception();
+	switch(al[0]) {
+	case "FireOne":
+	List<IMyTerminalBlock> wl = null;
+	int idx = 0;
+	if (!weaponDic.ContainsKey(al[1])) {
+	var group = GridTerminalSystem.GetBlockGroupWithName(al[1]);
+	if (group == null) break;
+	wl = new List<IMyTerminalBlock>();
+	group.GetBlocks(wl);
+
+	var mscLookAt = MatrixD.CreateLookAt(Vector3D.Zero, msc.WorldMatrix.Forward, msc.WorldMatrix.Up);
+	wl.Sort((a,b)=>(Vector3D.TransformNormal(a.GetPosition()-msc.GetPosition(), mscLookAt).Z.CompareTo( Vector3D.TransformNormal(b.GetPosition()-msc.GetPosition(), mscLookAt).Z)
+	));
+	weaponDic[al[1]] = wl;
+	weaponSeqDic[al[1]] = 0;
+	} else {
+	wl = weaponDic[al[1]];
+	idx = weaponSeqDic[al[1]];
+	}
+	weaponSeqDic[al[1]] = (idx + 1) % wl.Count;
+	wl[idx].ApplyAction(ShootActionName);
+	break;
+	default:
+	break;
+	}
+	}catch(Exception e){}
+	
 	PBPosition = Me.GetPosition();
 	
 	//这里获取了自动武器和所有的转子基座炮塔
 	if(!init){GetBlocks(); return;}
 	
-            debugInfo = "FCSR Count: " + FCSR.Count;
+            debugInfo += "\nFCSR Count: " + FCSR.Count;
             debugInfo += "\nWeaponCore Count: " + StaticWeapons.Count;
 	foreach ( var r in FCSR ) {
 		debugInfo += "\n" + r.debugInfo;
@@ -228,7 +262,10 @@ initInfo += "\n" + i.BlockDefinition.SubtypeName;
                     debugInfo += "\nep: " + (e?.Position ?? Vector3D.Zero);
                         hav = false;
                         foreach (var t in TargetList) {
-                            if (t.EntityId == ee.EntityId) hav = true;
+                            if (t.EntityId == ee.EntityId) {
+			    hav = true;
+			    t.type = "Focus";
+			    }
                         }
                         if (!hav) {
                     		Target lt = new Target();
@@ -252,6 +289,7 @@ initInfo += "\n" + i.BlockDefinition.SubtypeName;
 			}
 
 			nt.TimeStamp = t;
+			nt.type = "Focus";
                         TargetList.Add(nt);
 	              }
 	}
@@ -448,6 +486,7 @@ public class Target
 	public Vector3D Acceleration;
 	public MatrixD Orientation;
             public bool isFCS = false;
+	public string type = "Auto";
 	
 	// --------- 初始化方法 -------
 	public Target()
@@ -579,6 +618,9 @@ public class RotorBase
 	public double PID_I = Aim_PID_I;
 	public double PID_D = Aim_PID_D;
 	public string FACE_TO = "Forward";
+	public string TARGET_TYPE = "All";
+	public double OFFSET_Y = 0;
+	public double RANDOM_Y = 0;
 	
 	static float pp=20F,pi=1F,pd=0F, pim=0.1F;
 	public List<PIDController> pidXL = new List<PIDController>();
@@ -628,6 +670,9 @@ public class RotorBase
 		cfg.Get("PID_I", ref PID_I);
 		cfg.Get("PID_D", ref PID_D);
 		cfg.Get("FACE_TO", ref FACE_TO);
+		cfg.Get("TARGET_TYPE", ref TARGET_TYPE);
+		cfg.Get("OFFSET_Y", ref OFFSET_Y);
+		cfg.Get("RANDOM_Y", ref RANDOM_Y);
 
 		//获得转子
 		bool haveHinge = false;
@@ -667,7 +712,12 @@ public class RotorBase
 					RotorYs.Add(block as IMyMotorStator);
 					if (dot > 0) RotorYField.Add(1*NagtiveRotor);
 					else RotorYField.Add(-1*NagtiveRotor);
-				} 
+				} else {
+					RotorXs.Add(block as IMyMotorStator);
+					if (Vector3D.Dot(AimBlock.WorldMatrix.Up, block.WorldMatrix.Up)>0)
+						RotorXField.Add(1*NagtiveRotor);
+					else RotorXField.Add(-1*NagtiveRotor);
+				}
 			}
 		}
 		if (RotorYs.Count > 0) {
@@ -679,7 +729,7 @@ public class RotorBase
 				if (Math.Abs(dot)>0.9) continue;
 				var dot2 = Vector3D.Dot(AimBlock.WorldMatrix.Up, block.WorldMatrix.Up);
 				RotorXs.Add(block as IMyMotorStator);
-				if (dot2 >0  || block.CustomName.Contains("Arm")) 
+				if (dot2 >0  || block.CustomName.Contains("[Arm]")) 
 					RotorXField.Add(1*NagtiveRotor);
 				else RotorXField.Add(-1*NagtiveRotor);
 		}
@@ -932,6 +982,9 @@ public class RotorBase
 		double currentDis = double.MaxValue;
 		Target MyAttackTarget = new Target();
 		for(int i = 0; i < targetList.Count; i ++){
+			if (this.TARGET_TYPE == "Focus") {
+			   if (!targetList[i].isFCS && targetList[i].type != "Focus") continue;
+			}
 			double distance = Vector3D.Distance(targetList[i].Position, this.Position);
 double dot = 1;
 // a b k filter direction use ra and raD
@@ -1086,7 +1139,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		Vector3D ng = Vector3D.Zero;
 		if (msc != null) ng = msc.GetNaturalGravity();
 		debugInfo += "\nbs: " + bs;
-		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position, Velocity, Acceleration, bs, ba, bm, FireTimers.Count > 0 ? 1F : gravityRate, ng, bulletMaxRange, curvationRate);
+		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position + this.AimBlock.WorldMatrix.Up * (OFFSET_Y + RANDOM_Y * 0.001 * R_D.Next(-1000, 1000)), Velocity, Acceleration, bs, ba, bm, FireTimers.Count > 0 ? 1F : gravityRate, ng, bulletMaxRange, curvationRate);
                         Vector3D tp2me = Position - this.Position;
 		Vector3D TargetPositionToMe = new Vector3D(0,0,-1);
 		if (HitPoint != Vector3D.Zero) {
@@ -1102,15 +1155,18 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		
 		//计算输出
 		var targetPositionToReal = Vector3D.TransformNormal(TargetPositionToMe, this.AimBlock.WorldMatrix);//
-		var faceDir = msc.WorldMatrix.Forward;
-		if (FACE_TO == "Right") faceDir = msc.WorldMatrix.Right;
-		else if (FACE_TO == "Left") faceDir = msc.WorldMatrix.Left;
-		else if (FACE_TO == "Backward") faceDir = msc.WorldMatrix.Backward;
-		var rcLookAt = MatrixD.CreateLookAt(Vector3D.Zero, faceDir, msc.WorldMatrix.Up);
+		var faceDir = RotorXs[0].WorldMatrix.Forward;
+		if (FACE_TO == "Right") faceDir = RotorXs[0].WorldMatrix.Right;
+		else if (FACE_TO == "Left") faceDir = RotorXs[0].WorldMatrix.Left;
+		else if (FACE_TO == "Backward") faceDir = RotorXs[0].WorldMatrix.Backward;
+		var upDir = RotorXs[0].WorldMatrix.Up;
+		if (RotorXField[0] < 0) upDir = RotorXs[0].WorldMatrix.Down;
+		var rcLookAt = MatrixD.CreateLookAt(Vector3D.Zero, faceDir, upDir);
 		var tpToRc = Vector3D.TransformNormal(targetPositionToReal, rcLookAt);
 		double aa=0, ea=0;
 		Vector3D.GetAzimuthAndElevation(tpToRc, out aa, out ea);
 		//debugInfo += "\n" + aa + " " + ea;
+		if (this.AimBlock.CustomName.Contains("[Arm]")) ea += Math.PI * 0.5;
 
 		bool isFireZone = angleDeltaAbs(this.RotorXs[0].Angle, hori) > horiD;
 		double fireRange = ShootDistance;
