@@ -99,6 +99,8 @@ string DCS_NAME = "dcs";
 IMyProgrammableBlock dcsComputer = null;
 IMyProgrammableBlock fcsComputer = null;
 string FCS_NAME = "fcs";
+IMyTerminalBlock fcsReference = null;
+string FCS_REFERENCE_NAME = "Lidar FCS#R";
 
 
 IMyBroadcastListener broadcastListener; 
@@ -379,6 +381,10 @@ void NetworkTargets()
 	var rd = MatrixD.CreateFromDir(reference.WorldMatrix.Forward, newUp);
 	refWorldMatrix = rd;
 	}
+	if (true && fcsReference != null) { // use lider
+	   refWorldMatrix = fcsReference.WorldMatrix;
+	}
+
         var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)TargetRelation.Friendly, Me.CubeGrid.EntityId, reference.GetPosition(), 0, encodeMessage(MOTHER_CODE, refWorldMatrix, reference.GetShipVelocities().LinearVelocity, (t%50000/50000f) * MathHelper.TwoPi));
         IGC.SendBroadcastMessage(IGC_TAG, myTuple); 
     } 
@@ -1758,6 +1764,7 @@ void init() {
     }
     dcsComputer = getBlockByName<IMyProgrammableBlock>(DCS_NAME);
     fcsComputer = getBlockByName<IMyProgrammableBlock>(FCS_NAME);
+    fcsReference = getBlockByName<IMyTerminalBlock>(FCS_REFERENCE_NAME, false);
 
     inited = true;
 }

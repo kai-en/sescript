@@ -32,7 +32,7 @@ custom data sample for mother ship
 CockpitNameTag=Flight Seat 3
 dockingList=0,0,-250;0,50.5,-16.14;0,-3.78,-15.6;0,-14.89,-16.14
 DCSLCDNameTag=DCS_LCD
-fighterFcsName=Programmable block fcsoc
+fighterFcsName=Programmable block fcs
 LCDNameTag=LCD Panel fcs
 homingTurretName=R_FORWARD_OC
 useTurretAsAimer=true
@@ -236,8 +236,8 @@ return n.Contains("#A#") || n.Contains("#B#") || n.Contains("RCS") || n.Contains
 bool isSM = false;
 
 // auto height hold
-bool ahhOn = false;
-bool continueAhhOn = false;
+bool ahhOn = true;
+bool continueAhhOn = true;
 int continueAhhStart = 0;
 void setAhhOn(bool v) {
 // new ahh
@@ -620,6 +620,7 @@ if (ahhOn && !isDown && !isLaunch && dampenersOn) {
 double h = 0;
 bool getted = msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h);
 if (getted) {
+if (ahh == 0) ahh = h;
 var needD = ahh - h;
 needD = needD / (Vector3D.Dot(-Vector3D.Normalize(naturalGravity), msc.WorldMatrix.Up));  
 var needV = needD;
@@ -1455,7 +1456,7 @@ Head = getBlockByName(HeadNameTag) as IMyShipController;
 // tryAddVftr("Hinge Wing", toRa(30F), 0, 0, 0, wingrList);
 // tryAddVftr("Hinge Land", toRa(-1F), toRa(-60F), toRa(-60F), 0, landrList);
 
-// R-2
+// U2
 tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
 tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
 tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
