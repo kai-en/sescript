@@ -357,7 +357,6 @@ void ProcessNetworkMessage()
         } else if(messageData is MyTuple<string, string>) {
 		var myTuple = (MyTuple<string, string>)messageData;
 		string motherCode = myTuple.Item1;
-		debugInfo = "mc: " + motherCode;
 		if (motherCode == SON_CODE || motherCode == SON_CODE + "|" + MOTHER_CODE) {
 			string command = myTuple.Item2;
 			PlayAction(dcsComputer, "Run", "RADAR:" + command);

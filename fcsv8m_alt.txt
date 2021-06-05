@@ -34,6 +34,7 @@
 static string CockpitNameTag = "NOT_EXIST_COCKPIT"; //控制座椅名字，设为AUTO时自动使用主控座椅。必须
 static string HeadNameTag = "VF_HEAD"; //可变形战机头部名字
 static string LCDNameTag = "NOT_EXIST_LCD"; //信息面板方块名（设为ALL采用所有的）
+static string LightLCDNameTag = "NOT_EXIST_LIGHT_LCD"; //信息面板方块名（设为ALL采用所有的）
 static string[] CamerasNameTag = {"", "NOT_EXIST_CAMERA"}; //摄像头编组名、方块名（设为ALL采用所有的）
 static string[] GyroscopesNameTag = {"", "NOT_EXIST_GYRO"}; //陀螺仪编组名、方块名（设为ALL采用所有的）
 static string[] ThurstsNameTag = {"", "NOT_EXIST_THRUST"}; //推进器编组名、方块名（设为ALL采用所有的）
@@ -151,6 +152,7 @@ case("INITDEFAULT"):
 if(!init) {
 CockpitNameTag = "R_FORWARD";
 LCDNameTag = "Text panel fcs"; 
+LightLCDNameTag = "[FCS_LIGHT]"; 
 CamerasNameTag = new string[]{"", "ALL"}; 
 GyroscopesNameTag = new string[]{"", "ALL"}; 
 ThurstsNameTag = new string[]{"", "ALL"}; 
@@ -172,6 +174,7 @@ break;
 case ("REINIT"):
 CockpitNameTag = args[0];
 LCDNameTag = args[1]; 
+LightLCDNameTag = "[FCS_LIGHT]"; 
 CamerasNameTag = new string[]{"", "ALL"}; 
 GyroscopesNameTag = new string[]{"", "ALL"}; 
 ThurstsNameTag = new string[]{"", "ALL"}; 
@@ -250,6 +253,7 @@ void Main(string arguments)
 					TurnBlocksOnOff(lockBlockList, false);
 					TurnBlocksOnOff(searchBlockList, NeedScan);
 				MyShip.SetGyroOverride(false);
+				if (!NeedScan) NeedAimMode = 0;
 		break;
 		case("Aim"): 
 			NeedAimMode += 1;
@@ -278,6 +282,7 @@ void Main(string arguments)
 		case("Dir"):
 			if(NeedAimMode != 2) {
 				NeedAimMode=2;
+				AimOffSetVector = new Vector3D();
 			}else {
 				NeedAimMode=0;
 				MyShip.SetGyroOverride(false);
@@ -866,29 +871,34 @@ void ShowInfoLCD(){
 		info += ( TargetVectorToMe.Y > 0 ? (" Up: " + Math.Round(TargetVectorToMe.Y,2)) : (TargetVectorToMe.Y < 0 ? (" Down: " + -Math.Round(TargetVectorToMe.Y,2)): " U-D: 0")) + br + br;   
 	}
 	info += debugInfo;
-	foreach(IMyTextSurface lcd in InfoLCD){
-		if(!NeedScan){
+	var ccolor = new Color(BackgroundColorWhenIdle.X, BackgroundColorWhenIdle.Y, BackgroundColorWhenIdle.Z);
+	if(!NeedScan){
 		// mod by kaien
-			lcd.FontColor=new Color(BackgroundColorWhenIdle.X, BackgroundColorWhenIdle.Y, BackgroundColorWhenIdle.Z);
-			SetBlocksValueColor(fcsLightList, "Color", new Color(255,255,255));
+			ccolor=new Color(BackgroundColorWhenIdle.X, BackgroundColorWhenIdle.Y, BackgroundColorWhenIdle.Z);
+			SetBlocksValueColor(fcsLightList, "Color", ccolor);
 		}
 		else if(MyTarget.EntityId == 0){
 		// mod by kaien
-			lcd.FontColor=new Color(BackgroundColorWhenSearch.X, BackgroundColorWhenSearch.Y, BackgroundColorWhenSearch.Z);
-			SetBlocksValueColor(fcsLightList, "Color", lcd.FontColor) ;
+			ccolor=new Color(BackgroundColorWhenSearch.X, BackgroundColorWhenSearch.Y, BackgroundColorWhenSearch.Z);
+			SetBlocksValueColor(fcsLightList, "Color", ccolor) ;
 		}
 		else if(MyTarget.AccurateLockPositionToTarget.Length() == 0){
 		// mod by kaien
-			lcd.FontColor=new Color(BackgroundColorWhenTarget.X, BackgroundColorWhenTarget.Y, BackgroundColorWhenTarget.Z);
-			SetBlocksValueColor(fcsLightList, "Color", lcd.FontColor) ;
+			ccolor=new Color(BackgroundColorWhenTarget.X, BackgroundColorWhenTarget.Y, BackgroundColorWhenTarget.Z);
+			SetBlocksValueColor(fcsLightList, "Color", ccolor) ;
 		}
 		else{
 		// mod by kaien
-			lcd.FontColor=new Color(BackgroundColorWhenTLock.X, BackgroundColorWhenTLock.Y, BackgroundColorWhenTLock.Z);
-			SetBlocksValueColor(fcsLightList, "Color", lcd.FontColor) ;
+			ccolor=new Color(BackgroundColorWhenTLock.X, BackgroundColorWhenTLock.Y, BackgroundColorWhenTLock.Z);
+			SetBlocksValueColor(fcsLightList, "Color", ccolor) ;
 		}
+	foreach(IMyTextSurface lcd in InfoLCD){
+		lcd.FontColor=ccolor;
 		//lcd.ShowPublicTextOnScreen();
 		lcd.WriteText(info);
+	}
+	foreach(IMyTextSurface lcd in LightLCD){
+		lcd.BackgroundColor=ccolor;
 	}
 }
 
@@ -1043,9 +1053,11 @@ integral = lastInput = 0;
 
 // ==== 获取飞船方块 ====
 List<IMyTextSurface> InfoLCD = new List<IMyTextSurface>();
+List<IMyTextSurface> LightLCD = new List<IMyTextSurface>();
 void GetBlocks(){
 	//获取LCD
 	GridTerminalSystem.GetBlocksOfType(InfoLCD, b => (LCDNameTag == "" ? (LCDNameTag == "ALL" ? true : false) : ((IMyTerminalBlock)b).CustomName.Contains(LCDNameTag)));
+	GridTerminalSystem.GetBlocksOfType(LightLCD, b => ((IMyTerminalBlock)b).CustomName.Contains(LightLCDNameTag));
 	
 	//获取其他方块
 	List<IMyTerminalBlock> BK = new List<IMyTerminalBlock>();

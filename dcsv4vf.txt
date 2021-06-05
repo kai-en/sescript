@@ -141,6 +141,9 @@ if (sl_bs != 0 && t - sl_bs > 180) aeroSpeedLevel = 0;
 sl_fs = 0;
 sl_bs = 0;
 }
+bool isSteeringAccumulate = false;
+Vector3D steeringAccumulation = Vector3D.Zero;
+long saIgnoreStart = -1;
 
 float ft = 0f;
 Vector3D mySpeedToMe = Vector3D.Zero;
@@ -428,15 +431,23 @@ break;
 case "VFTDOWN":
 VFTransformNew(false);
 break;
+case "SM":
+isSM = !isSM;
+break;
+case "BST":
+useOffGrid = !useOffGrid;
+break;
+case "STEER":
+isSteeringAccumulate = !isSteeringAccumulate;
+steeringAccumulation = Vector3D.Zero;
+saIgnoreStart = -1;
+break;
 default:
 if (sonCode == null) break;
 if(arguments!=null && arguments != "") {
 ParseMaintainSpeed(arguments);
 lastReceivingTime=t;
 }
-break;
-case "SM":
-isSM = !isSM;
 break;
 }
 
@@ -563,11 +574,11 @@ diff += angleWhenWalk;
 }
 if (!isFcsAiming && !isSM && !tuc) {
 SetGyroPitch(diff * AimRatio * 60);
-SetGyroYaw((msc.RotationIndicator.Y) * 30);
+if(!isSteeringAccumulate)SetGyroYaw((msc.RotationIndicator.Y) * 30);
 } else {
 // rix = -Y riy = X
 SetGyroPitch((-msc.RotationIndicator.X) * 30);
-SetGyroYaw((msc.RotationIndicator.Y) * 30);
+if(!isSteeringAccumulate)SetGyroYaw((msc.RotationIndicator.Y) * 30);
 }
 
 needGyroOverride = true;
@@ -714,6 +725,8 @@ DimSpeedAll(maintainSpeedToMe,refLookAtMatrix);
 if(LockTargetAiming && LockTargetPosition!=Vector3D.Zero) needGyroOverride = true;
 
 if((flyByOn || dockingOn) && notDocked()) needGyroOverride = true;
+
+if(isSteeringAccumulate) needGyroOverride = true;
 SetGyroOverride(needGyroOverride);
 
 Main_RT(arguments, updateType); // calc thrustNeedDir need to be in front of main_vt
@@ -892,7 +905,7 @@ r.setMode(vftrMode);
 
 if (mySpeedToMe.Z < -60)
 wingrMode = 1;
-if (mySpeedToMe.Z > -30)
+else if (mySpeedToMe.Z > -30)
 wingrMode = 0;
 
 if (isDown)wingrMode = 1;
@@ -996,7 +1009,27 @@ inputVec = Cockpit.MoveIndicator;
 inputRoll = Cockpit.RollIndicator;
 isUnderControl = true;
 }
+
 if(isUnderControl) {
+
+if (isSteeringAccumulate) {
+double r2sRate = 0.002;
+steeringAccumulation += new Vector3D(0, msc.RotationIndicator.Y * r2sRate, 0);
+if(saIgnoreStart == -1 && steeringAccumulation.Length() < 0.5 && msc.RotationIndicator.Length()<0.5) {
+saIgnoreStart = t;
+}
+if (steeringAccumulation.Length() > 0.5 || msc.RotationIndicator.Length() > 0.5) {
+saIgnoreStart = -1;
+}
+if (saIgnoreStart != -1 && t > saIgnoreStart + 90) {
+isSteeringAccumulate = false;
+}
+
+Vector3D nowA = msc.GetShipVelocities().AngularVelocity;
+SetGyroYaw(steeringAccumulation.Y + nowA.Y * 100);
+SetGyroPitch(-msc.RotationIndicator.X);
+SetGyroRoll(-msc.RollIndicator);
+}
 
 if(inputVec.Z>0.1) {
 aeroSLp(false);
@@ -1056,7 +1089,7 @@ resetThrusters(false);
 
 
 if ( inputVec.Y > 0.5) {
-if (lastUpT == 0 && Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2 && MeVelocity.Length() < 30) {
+if (lastUpT == 0 && Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2) {
 lastUpT = t;
 }
 setAhhOn(false);
@@ -1235,8 +1268,8 @@ string br = "\n";
 string info = "";
 info += " Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (approachIdx > 0 ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + (avoidOn?"Avoid":"") +br;
 info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") + (t - lastSendingTime<120 && t%60<30 ?"=>":"") + (t - lastReceivingTime<120 && t%60<30?"<=":"") + br;
-info += "Speed level: " + aeroSpeedLevel + " AHH: " + ahhOn + " " + Math.Round(ahh,1) + '\n';
-info += " Missile-Auto: " + autoFireMissile + br;
+info += " Speed level: " + aeroSpeedLevel + " AHH: " + ahhOn + " " + Math.Round(ahh,1) + " Steer: " + (isSteeringAccumulate?"On":"Off") +  '\n';
+info += " Boosters: " + (useOffGrid?"On":"Off") + " Missile-Auto: " + autoFireMissile + br;
 info += " Location " + distanceInfo + br;
 if (gcTargetPanel != null) {
 info += " Target: " + gcTargetPanel.GetPublicTitle() + "\n";
@@ -1453,24 +1486,25 @@ Head = getBlockByName(HeadNameTag) as IMyShipController;
 //tryAddVftr("Hinge landgear", 0, toRa(-45F), toRa(-45F), 0, landrList);
 
 //cvl-3x
-// tryAddVftr("Hinge Wing", toRa(30F), 0, 0, 0, wingrList);
-// tryAddVftr("Hinge Land", toRa(-1F), toRa(-60F), toRa(-60F), 0, landrList);
+tryAddVftr("Wing-L", toRa(30F), 0, 0, 0, wingrList);
+tryAddVftr("Wing-R", toRa(-30F), 0, 0, 0, wingrList);
+tryAddVftr("Hinge Land", toRa(-1F), toRa(-60F), toRa(-60F), 0, landrList);
 
 // U2
-tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
-tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
-tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
-tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
-tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
-tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
+// tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
+// tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
+// tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
+// tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
+// tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
+// tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
 
-tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
-tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
-tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
-tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+// tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
+// tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+// tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
+// tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
 
-tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
-tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
+// tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
+// tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
 if (Cockpit is IMyTextSurfaceProvider) {
@@ -1783,7 +1817,7 @@ int approachIdx = 0;
 void resetApproachIdx() {
 approachIdx = 0;
 if (shipMatrix == MatrixD.Zero) return;
-if (myToShipPosition.Length() > 500) return;
+if (myToShipPosition.Length() > 200) return;
 double n = 99999;
 for(int i = 0; i < dockingList.Count; i++) {
 var v = dockingList[i];
@@ -2256,7 +2290,7 @@ Vector3D tmp = needSpeedToMe;
 Vector3D apDiff;
 double rate = 0.1;
 
-if ((flyByOn && approachIdx == 0) || force) {
+if (((flyByOn||dockingOn) && approachIdx == 0) || force) {
 long nKey = 0;
 double nDis = 0;
 int count = 0;
@@ -2276,12 +2310,23 @@ needSpeedToMe -= avoidSpeedToMe;
 }
 }
 
+if (shipPosition!=Vector3D.Zero) {
+Vector3D thatPos = shipPosition;
+apDiff = thatPos - myPosition;
+if (apDiff.Length() < 190) {
+Vector3D avoidSpeedToMe = Vector3D.TransformNormal(apDiff * rate * 10 * ((190-apDiff.Length())/apDiff.Length()), refLookAtMatrix);
+needSpeedToMe -= avoidSpeedToMe;
+if (needSpeedToMe.Length()<5) needSpeedToMe *= 5/ needSpeedToMe.Length();
+}
+}
+
+if (!dockingOn) {
 double elevation = 0;
 bool getted = Cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevation);
 if (getted) {
 var naturalGravityNormal = Vector3D.Normalize(naturalGravity);
 apDiff = naturalGravityNormal * elevation;
-if (apDiff.Length() < 5000) {
+if (apDiff.Length() < 5000 && 500 > elevation) {
 Vector3D avoidSpeedToMe = Vector3D.TransformNormal(naturalGravityNormal * (500 - elevation) * rate, refLookAtMatrix);
 avoidSpeedToMe = trimSpeed(avoidSpeedToMe);
 needSpeedToMe -= avoidSpeedToMe;
@@ -2294,6 +2339,7 @@ if (apDiff.Length() < 2000) {
 Vector3D avoidSpeedToMe = Vector3D.TransformNormal(Vector3D.Normalize(apDiff) * 100, refLookAtMatrix);
 avoidSpeedToMe = trimSpeed(avoidSpeedToMe);
 needSpeedToMe -= avoidSpeedToMe;
+}
 }
 }
 
@@ -2531,6 +2577,7 @@ PlayActionList(connectors, "OnOff_Off");
 PlayActionList(spotlights, "OnOff_On");
 flyByOn = true;
 callComputer(fighterFcs, "ALLON");
+aeroSpeedLevel = 0;
 }
 
 void startDocking(){
@@ -2548,6 +2595,7 @@ flyByOn = false;
 resetApproachIdx();
 callComputer(fighterFcs, "ALLOFF");
 dockingOn = true;
+aeroSpeedLevel = 0;
 }
 
 Dictionary<long, Vector3D> avoidMap = new Dictionary<long, Vector3D>();
@@ -2804,113 +2852,46 @@ if (attackMode) {
 shipSpeed = flyByAimSpeed;
 }
 
-bool isClose = Math.Abs(myToShipPosition.X) < shipWidth && Math.Abs(myToShipPosition.Y) < shipHeight && Math.Abs(myToShipPosition.Z) < shipLength && (approachIdx == 0);
 MatrixD shipLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(0,0,0), shipMatrix.Forward, shipMatrix.Up);
 
+double nearRange = 500;
+
 Vector3D shipSpeedBaseShip = Vector3D.TransformNormal(shipSpeed, shipLookAtMatrix);
-Vector3D diffPositionBaseShip =  Vector3D.TransformNormal(targetPosition - MePosition, shipLookAtMatrix);
+Vector3D diffPositionBaseShip =  Vector3D.TransformNormal(diffPosition, shipLookAtMatrix);
 
-if (isClose) {
-Vector3D m2s = MePosition - shipPosition;
-m2s = Vector3D.TransformNormal(m2s, shipLookAtMatrix);
-m2s = new Vector3D(m2s.X / shipWidth, m2s.Y / shipHeight, m2s.Z / shipLength);
-m2s = Vector3D.TransformNormal(m2s, shipMatrix);
-Base6Directions.Direction myToShipDir = shipMatrix.GetClosestDirection(m2s);
-
-switch (myToShipDir)
-{
-case Base6Directions.Direction.Forward:
-diffPositionBaseShip.Z = Math.Min(diffPositionBaseShip.Z, 0);
-break;
-case Base6Directions.Direction.Backward:
-diffPositionBaseShip.Z = Math.Max(diffPositionBaseShip.Z, 0);
-break;
-case Base6Directions.Direction.Left:
-diffPositionBaseShip.X = Math.Min(diffPositionBaseShip.X, 0);
-break;
-case Base6Directions.Direction.Right:
-diffPositionBaseShip.X = Math.Max(diffPositionBaseShip.X, 0);
-break;
-case Base6Directions.Direction.Down:
-diffPositionBaseShip.Y = Math.Min(diffPositionBaseShip.Y, 0);
-break;
-case Base6Directions.Direction.Up:
-diffPositionBaseShip.Y = Math.Max(diffPositionBaseShip.Y, 0);
-break;
-}
-
-} else {
-}
-
-// 根据6向推重比（8成），算减速距离，超过减速距离就一直加速，直到触发速度限制（配合计算伴飞朝向时，在距离远时使子船头指向需要加速的方向）
-Vector3D absDiff = Vector3D.TransformNormal(diffPositionBaseShip, shipMatrix);
+// 
+Vector3D absDiff = diffPosition;
 diffToMe = Vector3D.TransformNormal(absDiff, refLookAtMatrix);
 Vector3D shipSpeedToMe = Vector3D.TransformNormal(shipSpeed, refLookAtMatrix);
-double speedLimit = 800;
-if (isBig) speedLimit = 80;
-double avaSpeed = speedLimit;
-double[] tstmA = new double[3]{0,0,0};
-for(int dimIdx = 0; dimIdx < 3; dimIdx++) {
-// 遍历3个维度
-double dimDiff=0;
-double dimSpeedDiff = 0;
-double dimSpeed=0;
-if (dimIdx == 0) {
-dimDiff = diffToMe.X;
-dimSpeed = mySpeedToMe.X;
-dimSpeedDiff = mySpeedToMe.X - shipSpeedToMe.X;
-}else if (dimIdx == 1) {
-dimDiff = diffToMe.Y;
-dimSpeed = mySpeedToMe.Y;
-dimSpeedDiff = mySpeedToMe.Y - shipSpeedToMe.Y;
-} else {
-dimDiff = diffToMe.Z;
-dimSpeed = mySpeedToMe.Z;
-dimSpeedDiff = mySpeedToMe.Z - shipSpeedToMe.Z ;
-}
-double tw = 0;
-if (dimDiff < 0) tw = twRate[dimIdx*2];
-else tw = twRate[dimIdx*2+1];
-tw = tw * 0.8;
 
-double diffTime = Math.Abs(dimSpeedDiff / tw);
-double decMinDis = dimSpeedDiff * diffTime * 0.5;
-float slideRatio = 10f;
-double targetSpeedDiff=0;
-double nearRange = 500;
-if (Math.Abs(dimDiff) < nearRange || isTurning) {
-targetSpeedDiff = dimDiff * 0.025 - dimSpeedDiff;
-} else if (Math.Abs(dimDiff) > Math.Abs(decMinDis) * slideRatio + nearRange ) {
-// 单向距离足够减速，单向加速
-targetSpeedDiff = dimSpeedDiff + dimDiff;
-double dimSpeedLimit = 0;
-dimSpeedLimit = avaSpeed;
-if (Math.Abs(dimSpeed) > dimSpeedLimit) {
-// 最高dimSpeedLimit接近
-targetSpeedDiff = 0;
-}
-}
-else if (Math.Abs(dimDiff) > Math.Abs(decMinDis) * slideRatio * 0.2 + nearRange) {
-targetSpeedDiff = 0;
-}
-else if (Math.Abs(dimDiff) > nearRange){
-// 单向距离不够减速，进入减速周期, 全力减速
-targetSpeedDiff = -dimSpeedDiff * 10;
-}
-tstmA[dimIdx] = targetSpeedDiff;
-}
 
-Vector3D aSpeed ;
-if (!dockingOn && approachIdx == 0){
-aSpeed = new Vector3D(tstmA[0],tstmA[1],tstmA[2]);
-aSpeed = trimSpeed(aSpeed);
-MatrixD refWorldMatrix = Cockpit.WorldMatrix;
-aSpeed = Vector3D.TransformNormal(aSpeed, refWorldMatrix);
-maintainSpeed = MeVelocity + aSpeed;
+
+
+// method 2
+double aRate = 0.1;
+if (diffPosition.Length() < nearRange) {
+maintainSpeed = diffPosition * aRate + shipSpeed;
 } else {
-aSpeed = new Vector3D(adjustSpeed(diffPositionBaseShip.X), adjustSpeed(diffPositionBaseShip.Y), adjustSpeed(diffPositionBaseShip.Z));
-Vector3D mSpeedBaseShip = shipSpeedBaseShip + aSpeed;
-maintainSpeed = Vector3D.TransformNormal(mSpeedBaseShip, shipMatrix);
+double a = twRate[5];//use front tw as only tw
+double d = (targetPosition - MePosition).Length();
+double t = (MeVelocity-shipSpeed).Length() / a;
+double MAX_SPEED = 95;
+double sd = 0.5 * a * t * t;
+Vector3D needSpeed = (targetPosition - MePosition) * aRate + shipSpeed;
+Vector3D nsn = Vector3D.Normalize(needSpeed);
+Vector3D msn = Vector3D.Normalize(MeVelocity);
+double dot = Vector3D.Dot(nsn, msn);
+if ((d - nearRange) > sd) {
+if ((d - nearRange) < sd * 3  && (MeVelocity.Length()>MAX_SPEED && dot > 0.95)) {
+// keep speed
+maintainSpeed = MeVelocity; 
+} else {
+maintainSpeed = (targetPosition - MePosition) * aRate + shipSpeed;
+}
+} else {
+// slow down to ship speed
+maintainSpeed = shipSpeed;
+}
 }
 
 }
@@ -2950,7 +2931,7 @@ testP = DkMvTarget;
 }
 
 bool canProceed = false;
-if ((myToShipPosition - testP).Length() < delta || approachIdx == 0) canProceed = true;
+if ((myToShipPosition - testP).Length() < delta) canProceed = true;
 
 if (canProceed == true && isDkMv == false) {
 
@@ -3026,6 +3007,7 @@ bool isSetup = false;
 
 List<IMyShipController> referenceList = new List<IMyShipController>();
 List<IMyThrust> offGridThrust = new List<IMyThrust>();
+bool useOffGrid = true;
 
 IMyShipController thisReferenceBlock = null;
 Vector3D lastSpeedVector = new Vector3D(0,0,0);
@@ -3146,7 +3128,7 @@ foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-if (scale > maxThrustDotProduct)
+if (scale > maxThrustDotProduct && useOffGrid)
 {
 thrustMax += thisThrust.MaxEffectiveThrust * scale;
 }
@@ -3160,7 +3142,7 @@ foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-if (scale > maxThrustDotProduct)
+if (scale > maxThrustDotProduct && useOffGrid)
 {
 SetThrusterOverride(thisThrust, (float)percent * scale);
 }else {
@@ -3451,7 +3433,6 @@ targetAngleRear = 0;
 }
 
 if (legMode == 3) {
-debugInfo = "ws: " + walkSeq;
 for (int i = 0; i < 3; i++) {
 processWalkAngle(i);
 }

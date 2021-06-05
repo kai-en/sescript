@@ -821,7 +821,7 @@ public class RotorBase
 	// ------- 攻击并搜索最近的目标 -------
 	public void AttackCloestTarget(List<Target> targetList, int mode)
 	{
-		debugInfo = "act";
+		//debugInfo = "act";
                 if (this.Weapons.Count == 0 && this.AimBlock is IMyShipController && !((this.AimBlock as IMyShipController).IsUnderControl) && this.FireTimers.Count == 0) {
                    Target FCS_T = null;
                    foreach(var t in targetList) {
@@ -831,7 +831,7 @@ public class RotorBase
                       this.Attention(1,0);
                       return;
                    }
-                   debugInfo += "\n"+FCS_T.Position;
+                   //debugInfo += "\n"+FCS_T.Position;
                    this.AimAtTarget(FCS_T.Position);
                    //CODING
                    return;
@@ -847,12 +847,14 @@ public class RotorBase
 double dot = 1;
 // a b k filter direction use ra and raD
 if (msc != null && raD != 1) {
-this.debugInfo = "ra: " + this.ra;
+//this.debugInfo = "\nra: " + this.ra;
 Vector3D mid = msc.WorldMatrix.Right * Math.Sin(this.ra) + msc.WorldMatrix.Forward * Math.Cos(this.ra);
 Vector3D tar = Vector3D.Normalize(targetList[i].Position - this.Position);
-this.debugInfo += "\n dirYN: " + (Vector3D.Dot(mid, tar));
+//this.debugInfo += "\n dirYN: " + (Vector3D.Dot(mid, tar));
 dot = Vector3D.Dot(mid, tar);
 if ( dot < this.raD) continue;
+}else {
+//this.debugInfo = "\n\n";
 }
 double compose = distance / 900 + (1- dot);
 			if(targetList[i].EntityId != 0 && compose <= currentDis){
@@ -996,7 +998,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		}
 		Vector3D ng = Vector3D.Zero;
 		if (msc != null) ng = msc.GetNaturalGravity();
-		debugInfo += "\nbs: " + bs;
+		//debugInfo += "\nbs: " + bs;
 		Vector3D HitPoint = HitPointCaculate(this.Position, thisV, thisA, Position + this.AimBlock.WorldMatrix.Up * (OFFSET_Y + RANDOM_Y * 0.001 * R_D.Next(-1000, 1000)), Velocity, Acceleration, bs, ba, bm, FireTimers.Count > 0 ? 1F : gravityRate, ng, bulletMaxRange, curvationRate);
                         Vector3D tp2me = Position - this.Position;
 		Vector3D TargetPositionToMe = new Vector3D(0,0,-1);
@@ -1023,7 +1025,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		var tpToRc = Vector3D.TransformNormal(targetPositionToReal, rcLookAt);
 		double aa=0, ea=0;
 		Vector3D.GetAzimuthAndElevation(tpToRc, out aa, out ea);
-		//debugInfo += "\n" + aa + " " + ea;
+		debugInfo = "\n" + aa + " " + ea;
 		if (this.AimBlock.CustomName.Contains("[Arm]")) ea += Math.PI * 0.5;
 
 		bool isFireZone = angleDeltaAbs(this.RotorXs[0].Angle, hori) > horiD;
@@ -1430,13 +1432,13 @@ var tranmt = MatrixD.CreateLookAt(new Vector3D(), forward, -gd);
 // 1.3 转换座标
 var tp2 = Vector3D.TransformNormal(tp, tranmt);
 var tv2 = Vector3D.TransformNormal(tv, tranmt);
-debugString = displayVector3D(tp2);
-debugString += "\n" + displayVector3D(tv2);
+//debugString = displayVector3D(tp2);
+//debugString += "\n" + displayVector3D(tv2);
 
 // 2 求 avx
 double avx = tv2.X;
 if (Math.Abs(avx) > aV) return Vector3D.Zero; // 炮速赶不上tv2.X 无法追踪
-debugString += "\navx: " + avx;
+//debugString += "\navx: " + avx;
 
 // 3 无视g 先算一个avy avz
 // 3.1 假设减掉tvYZ, Z轴剩余速度有avzd, 则Y轴需要的剩余速度为 (tpy/tpz)*avzd
@@ -1464,10 +1466,10 @@ double avy = tv2.Y + (tp2.Y/tp2.Z) * x;
 double zdelta = avz - tv2.Z;
 double n = tp2.Z / zdelta;
 if (n < 0) return Vector3D.Zero; // Z轴追及时间为负, 无法追踪
-debugString += "\naVyz: " + aVyz;
-debugString += "\navy: " + avy;
-debugString += "\navz: " + avz;
-debugString += "\nn: " + n;
+//debugString += "\naVyz: " + aVyz;
+//debugString += "\navy: " + avy;
+//debugString += "\navz: " + avz;
+//debugString += "\nn: " + n;
 
 // 4 循环逼近多次(这个方程应该有解, 但这里采取逼近法简化)(缺陷3) 加速度的问题 主要是计算avyg分量应该取多少
 double avyg = 0;
@@ -1488,9 +1490,9 @@ if (nn > n) n = nn;
 else n = (nn + n) /2;
 if (n < 0) return Vector3D.Zero; // Z轴追及时间为负, 无法追踪
 
-debugString += "\navy: " + avyp;
-debugString += "\navz: " + avz;
-debugString += "\nn: " + n;
+//debugString += "\navy: " + avyp;
+//debugString += "\navz: " + avz;
+//debugString += "\nn: " + n;
 
 }
 
@@ -1498,7 +1500,7 @@ debugString += "\nn: " + n;
 avyp *= 0.98;
 Vector3D av2m = new Vector3D(avx, avyp, avz);
 Vector3D av = Vector3.Transform(av2m, Matrix.Transpose(tranmt));
-debugString += "\nav: " + displayVector3D(av);
+//debugString += "\nav: " + displayVector3D(av);
 return av;
 }
 
@@ -1535,7 +1537,7 @@ mainTargetId = tmpL;
 cfgTarget.Get("TargetCount", ref tmpL);
 
 int targetCount = (int)tmpL;
-debugInfo = "target count: " + targetCount;
+debugInfo += "\ntarget count: " + targetCount;
 for (int i = 0; i < targetCount; i++) {
 Target nt = new Target();
 cfgTarget.Get("EntityId" + i, ref tmpL);
