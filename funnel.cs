@@ -567,6 +567,7 @@ checkFcsTarget(out targetPanelPosition, out targetPanelVelocity);
             #region Guidance #RFC#
             void STD_GUIDANCE(FUNNEL ThisFunnel, bool isClear, int idx, Vector3D targetPanelPosition, Vector3D targetPanelVelocity)
             {
+	    if (ThisFunnel.GYRO == null) return;
                 var ENEMY_POS = new Vector3D();
 	    // a b K
 	    bool targetPanelHasTarget = targetPanelPosition != Vector3D.Zero;
@@ -972,7 +973,10 @@ am = hrn;
 percent = 0;
 if (Vector3D.Dot(am, ThisFunnel.GYRO.WorldMatrix.Up) > 0.99) {
 foreach(var gun in ThisFunnel.GUNS) {
+if (gun == null) continue;
+try{
 gun.ApplyAction("ShootOnce");
+}catch(Exception e){}
 }
 }
 } // 攻击模式end
@@ -980,12 +984,15 @@ gun.ApplyAction("ShootOnce");
 
 // 设置推力
 foreach(var t in ThisFunnel.THRUSTERS) {
+if (t == null) continue;
+try{
 if (percent == 0) {
 t.Enabled = false;
 }else {
 t.Enabled = true;
 }
 t.ThrustOverridePercentage = (float)percent;
+}catch(Exception e){}
 }
 
 var missileLookAt = MatrixD.CreateLookAt(new Vector3D(), ThisFunnel.GYRO.WorldMatrix.Up, ThisFunnel.GYRO.WorldMatrix.Backward);

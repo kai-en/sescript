@@ -236,7 +236,8 @@ void Main(string arguments)
 	if(MyShip == null || MyShip.Cockpit == null){ 
 		//这里一定要用Cockpit来判断MyShip是否初始化成功，class的初始化虽然在Cockpit未找到的时候return了，不会因为使用Cockpit去处理推进器陀螺仪而报错，但MyShip不再是null了。
 		Echo("Cockpit Not Found!");
-		GetBlocks();return;
+		//GetBlocks();
+		return;
 	}
 	
 	//报告飞船状态到Echo中
@@ -548,6 +549,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 			Target MyTarget = new Target(FoundTarget);
 			MyTargetList.Add(MyTarget);
 			if (fcsSound != null) fcsSound.Play();
+			debugInfo = "lock t1";
 			TurnBlocksOnOff(lockBlockList, true);
 		}
 	}
@@ -2160,7 +2162,6 @@ foreach(var i in StaticWeapons) {
 
                         OtherTargetList.Add(nt);
 	}catch(Exception ex){}
-	debugInfo = "wc turret " + StaticWeapons.Count;
 	foreach(var tu in StaticWeapons){
                     //var e = api.GetWeaponTarget(tu);
                     if (api == null) continue;
@@ -2171,7 +2172,6 @@ foreach(var i in StaticWeapons) {
 		    var ee = e ?? new MyDetectedEntityInfo();
                     if (ee.EntityId == 0) continue;
 		    if (OtherTargetList.Any(et => et.EntityId == ee.EntityId)) continue;
-		    debugInfo += "\ngot one ";
                         Target nt = new Target();
                     		nt.Name = ee.Name;
 			nt.EntityId = ee.EntityId;
