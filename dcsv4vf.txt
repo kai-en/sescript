@@ -2966,6 +2966,9 @@ var tarPosDir = Vector3D.Normalize(approachPos - MePosition);
 var tarVecDir = Vector3D.Normalize(MeVelocity - shipSpeed);
 var nextPosDir = Vector3D.Normalize(nextPos - approachPos);
 bool canUse = Vector3D.Dot(tarPosDir, tarVecDir) > 0.99;
+if (flyByOn) {
+canUse = canUse & Vector3D.Dot(tarPosDir, nextPosDir) > 0.3;
+}
 if (dockingOn) {
 canUse = canUse & Vector3D.Dot(tarPosDir, nextPosDir) > 0.99;
 }
