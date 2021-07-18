@@ -978,7 +978,7 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                     NEW_MISSILE.GYRO = Key_Gyro;
 
                     Vector3D GyroPos = Key_Gyro.GetPosition();
-                    double Distance = 5;
+                    double Distance = 3;
 
                     //Sorts And Selects Turrets
                     List<IMyTerminalBlock> TempTurrets = TURRETS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < 100000);

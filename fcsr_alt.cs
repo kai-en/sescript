@@ -254,6 +254,7 @@ void Main(string arguments)
 
 	if(isOnOff && mode != 1){
 		foreach(RotorBase R in FCSR){
+		R.debugInfo = "";
 			R.UpdateMotionInfo();//更新运动信息
 			if(TargetList.Count > 0){
 				R.AttackCloestTarget(TargetList, mode);
@@ -266,6 +267,7 @@ void Main(string arguments)
 		}
 	}else{
 		foreach(RotorBase R in FCSR){
+		R.debugInfo = "";
                                     if (isOnOff) R.Attention(1, mode);
                                     else R.Attention(1, 99);
 		}
@@ -548,7 +550,7 @@ public class RotorBase
 					if (Math.Abs(dot) > 0.9) {
 						RotorYs.Add(block as IMyMotorStator);
 						RotorYField.Add(1*NagtiveRotor);
-						debugInfo = block.CustomName;
+						//debugInfo = block.CustomName;
 					} else {
 						RotorXs.Add(block as IMyMotorStator);
 						RotorXField.Add(1*NagtiveRotor);
@@ -879,27 +881,7 @@ double compose = distance / 900 + (1- dot);
 			foreach(IMySensorBlock sensor in this.Sensors){
 				if(sensor.IsActive){sensorActive = true;}
 			}
-			bool rx = false;
-			for(int i = 0; i < this.RotorXs.Count; i ++){
-			            var a = this.RotorXs[i].Angle;
-				if (this.RotorXs.Count == 2 && angleDeltaAbs(a , vert) < vertD) {
-					rx = true;
-				}else
-				if (this.RotorXs.Count == 1 && angleDeltaAbs(a , hori) < horiD) {
-					rx = true;
-				}
-			}
-			bool ry = false;
-			for(int i = 0; i < this.RotorYs.Count; i ++){
-			            var a = this.RotorYs[i].Angle;
-				if (this.RotorYs.Count == 2 && angleDeltaAbs(a , vert) < vertD) {
-					ry = true;
-				}else
-				if (this.RotorYs.Count == 1 && angleDeltaAbs(a , hori) < horiD) {
-					ry = true;
-				}
-			}
-			sensorActive = sensorActive || (rx&&ry);
+			//debugInfo += "\nsa:" + sensorActive;
 			MatrixD refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), this.AimBlock.WorldMatrix.Forward, this.AimBlock.WorldMatrix.Up);
 			Vector3D TargetPositionToMe = Vector3D.TransformNormal(MyAttackTarget.Position - this.Position, refLookAtMatrix);
 			//存在自定义开火定时块就执行自定义开火
@@ -1025,10 +1007,16 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		var tpToRc = Vector3D.TransformNormal(targetPositionToReal, rcLookAt);
 		double aa=0, ea=0;
 		Vector3D.GetAzimuthAndElevation(tpToRc, out aa, out ea);
-		debugInfo = "\n" + aa + " " + ea;
+		debugInfo += "\naaea: " + Math.Round(aa,2) + " " + Math.Round(ea,2);
 		if (this.AimBlock.CustomName.Contains("[Arm]")) ea += Math.PI * 0.5;
 
-		bool isFireZone = angleDeltaAbs(this.RotorXs[0].Angle, hori) > horiD;
+			bool rx = false;
+			bool ry = false;
+			rx = angleDeltaAbs(aa, hori) < horiD;
+			ry = ea-vert < -vertD;
+			debugInfo += "\nrxry: " + rx + " " + ry;
+		bool isFireZone = !(rx && ry);
+
 		double fireRange = ShootDistance;
 		if (isRocket) fireRange = ShootDistance2;
 		if(FireTimers.Count>0) fireRange = ShootDistance3;
@@ -1039,6 +1027,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		aa = (float)onX * this.RotorXField[0];
 		ea = (float)onY * this.RotorYField[0];
 		}
+		debugInfo+="\naae2: " + Math.Round(aa) + " " + Math.Round(ea);
 
 		for(int i = 0; i < this.RotorXs.Count; i ++){
 			var a = (float)(-aa*this.RotorXField[i]) - this.RotorXs[i].Angle;
@@ -1107,7 +1096,7 @@ float gravityRate, Vector3D ng, double bulletMaxRange, double curvationRate)
 		var ret = GravityHitPointCaculate(Target_Position - Me_Position, Target_Velocity - Me_Velocity, ng * gravityRate, Bullet_InitialSpeed, bulletMaxRange, curvationRate, out debugString);
 		if (ret == Vector3D.Zero) return Vector3D.Zero;
 		ret += Me_Position;
-		debugInfo += "\nghpc\n" + debugString + "\n";
+		//debugInfo += "\nghpc\n" + debugString + "\n";
 		return ret;
 	}
 	//迭代算法   
@@ -1537,7 +1526,7 @@ mainTargetId = tmpL;
 cfgTarget.Get("TargetCount", ref tmpL);
 
 int targetCount = (int)tmpL;
-debugInfo += "\ntarget count: " + targetCount;
+//debugInfo += "\ntarget count: " + targetCount;
 for (int i = 0; i < targetCount; i++) {
 Target nt = new Target();
 cfgTarget.Get("EntityId" + i, ref tmpL);

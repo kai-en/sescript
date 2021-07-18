@@ -24,7 +24,6 @@ soundBlockNameTag=Sound Block fcs
 shipLength=30
 commandAllTic = 100
 commandWaitTic = 0
-limitInnerRotor=true
 ScanRange=3000
 
 custom data sample for mother ship
@@ -42,6 +41,7 @@ macAV=0.005
 isBase=true
 maxTargetCount=1
 ScanRange=6000
+limitInnerRotor=false
 
 mother ship commands
 
@@ -108,7 +108,7 @@ double droneAttackRange = 0;
 bool isPrinted = false;
 bool isPtdTurnOn = false;
 long ptdSeparatedStart = 0;
-bool limitInnerRotor = true;
+bool limitInnerRotor = false;
 bool isAeroDynamic=false;
 float angleWhenDown= 0F; //default 0 , vf -0.65F
 float angleWhenWalk= 0F; //default 0.1F
@@ -435,7 +435,7 @@ case "SM":
 isSM = !isSM;
 break;
 case "BST":
-useOffGrid = !useOffGrid;
+useBst = !useBst;
 break;
 case "STEER":
 isSteeringAccumulate = !isSteeringAccumulate;
@@ -1269,7 +1269,7 @@ string info = "";
 info += " Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (approachIdx > 0 ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + (avoidOn?"Avoid":"") +br;
 info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") + (t - lastSendingTime<120 && t%60<30 ?"=>":"") + (t - lastReceivingTime<120 && t%60<30?"<=":"") + br;
 info += " Speed level: " + aeroSpeedLevel + " AHH: " + ahhOn + " " + Math.Round(ahh,1) + " Steer: " + (isSteeringAccumulate?"On":"Off") +  '\n';
-info += " Boosters: " + (useOffGrid?"On":"Off") + " Missile-Auto: " + autoFireMissile + br;
+info += " Boosters: " + (useBst?"On":"Off") + " Missile-Auto: " + autoFireMissile + br;
 info += " Location " + distanceInfo + br;
 if (gcTargetPanel != null) {
 info += " Target: " + gcTargetPanel.GetPublicTitle() + "\n";
@@ -1485,10 +1485,11 @@ Head = getBlockByName(HeadNameTag) as IMyShipController;
 //tryAddVftr("wing-p", 0, toRa(28F), toRa(28F), 0, wingrList);
 //tryAddVftr("Hinge landgear", 0, toRa(-45F), toRa(-45F), 0, landrList);
 
-//cvl-3x
-tryAddVftr("Wing-L", toRa(30F), 0, 0, 0, wingrList);
-tryAddVftr("Wing-R", toRa(-30F), 0, 0, 0, wingrList);
-tryAddVftr("Hinge Land", toRa(-1F), toRa(-60F), toRa(-60F), 0, landrList);
+//cc-7T
+tryAddVftr("Hinge Land", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
+tryAddVftr("Wing-L", toRa(-89F), 0, 0, 0, landrList);
+tryAddVftr("Wing-R", toRa(-89F), 0, 0, 0, landrList);
+tryAddVftr("Hinge Connector", toRa(89F), 0, 0, 0, landrList);
 
 // U2
 // tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
@@ -3032,7 +3033,7 @@ bool isSetup = false;
 
 List<IMyShipController> referenceList = new List<IMyShipController>();
 List<IMyThrust> offGridThrust = new List<IMyThrust>();
-bool useOffGrid = true;
+bool useBst = true;
 
 IMyShipController thisReferenceBlock = null;
 Vector3D lastSpeedVector = new Vector3D(0,0,0);
@@ -3151,7 +3152,8 @@ foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-if (scale > maxThrustDotProduct && useOffGrid)
+bool iH = isHy(thisThrust);
+if (scale > maxThrustDotProduct && (!iH || useBst))
 {
 thrustMax += thisThrust.MaxEffectiveThrust * scale;
 }
@@ -3165,7 +3167,8 @@ foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-if (scale > maxThrustDotProduct && useOffGrid)
+bool iH = isHy(thisThrust);
+if (scale > maxThrustDotProduct && (!iH || useBst))
 {
 SetThrusterOverride(thisThrust, (float)percent * scale);
 }else {
@@ -3369,7 +3372,7 @@ if(rotorLeft.Count == 0)
 List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(blocks, x => x.CustomName.Contains(rotorLeftName));
 if(blocks.Count > 0)
-rotorLeft = sortByRelativePosition(blocks,"X",true);
+rotorLeft = sortByRelativePosition(blocks,"X",!limitInnerRotor);
 else
 noLevel1 = true;
 // 
@@ -3377,18 +3380,15 @@ var tmp = getBlockByName("Rotor Leg L2");
 if (tmp != null) rotorLeft.Add(new List<IMyTerminalBlock>(){tmp});
 tmp = getBlockByName("Rotor Leg L1");
 if (tmp != null) rotorLeft.Add(new List<IMyTerminalBlock>(){tmp});
-}
 
-if(rotorRight.Count == 0)
-{
-List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(blocks, x => x.CustomName.Contains(rotorRightName));
 if(blocks.Count > 0)
-rotorRight = sortByRelativePosition(blocks,"X",false);
-var tmp = getBlockByName("Rotor Leg R2");
+rotorRight = sortByRelativePosition(blocks,"X",limitInnerRotor);
+tmp = getBlockByName("Rotor Leg R2");
 if (tmp != null) rotorRight.Add(new List<IMyTerminalBlock>(){tmp});
 tmp = getBlockByName("Rotor Leg R1");
 if (tmp != null) rotorRight.Add(new List<IMyTerminalBlock>(){tmp});
+
 }
 
 if (t<10) {
@@ -3462,7 +3462,10 @@ processWalkAngle(i);
 }
 
 for(int i = 0; i < rotorLeft.Count; i++){
-List<IMyTerminalBlock> rl = rotorLeft[i], rr = rotorRight[i];
+List<IMyTerminalBlock> rl = rotorLeft[i];
+List<IMyTerminalBlock> rr = new List<IMyTerminalBlock>();
+if (i < rotorRight.Count) rr = rotorRight[i];
+
 var ta = targetAngleLeft;
 
 float tal, tar;
@@ -3473,15 +3476,15 @@ tal = tar = ta;
 //processWalkAngle(out tal, out tar, tmpi);
 //}
 // roll deprecated
-if (! limitInnerRotor && naturalGravityLength > 0.01f && isAeroDynamic && aeroSpeedLevel>0) {
-if(i==0 || i == 1) {
-float rolldiff = MathHelper.Clamp(inputRoll * 0.1f, -0.1f*(float)Math.PI, 0.1f*(float)Math.PI);
-tal += rolldiff;
-tar -= rolldiff;
-if (i == 0) {
-}
-}
-}
+// if (! limitInnerRotor && naturalGravityLength > 0.01f && isAeroDynamic && aeroSpeedLevel>0) {
+// if(i==0 || i == 1) {
+// float rolldiff = MathHelper.Clamp(inputRoll * 0.1f, -0.1f*(float)Math.PI, 0.1f*(float)Math.PI);
+// tal += rolldiff;
+// tar -= rolldiff;
+// if (i == 0) {
+// }
+// }
+// }
 
 float unmanlimit=1f;
 for (int j = 0; j < rl.Count; j++) {
@@ -3493,6 +3496,7 @@ fa =  (float)vtolPIDList[i*j*2].Filter(tal-((IMyMotorStator)rl[j]).Angle, 2)*unm
 fa = (float)vtolPIDList[i*j*2].Filter(tal-modangle(((IMyMotorStator)rl[j]).Angle), 2)*unmanlimit;
 }
 rl[j].SetValueFloat("Velocity", fa);
+if (rr.Count > j)
 rr[j].SetValueFloat("Velocity", (float)vtolPIDList[i*j*2+1].Filter(-tar-modangle(((IMyMotorStator)rr[j]).Angle), 2)*unmanlimit);
 }
 }
@@ -3832,3 +3836,6 @@ isDkMv = true;
 approachIdx = dockingList.Count - 1;
 }
 
+bool isHy(IMyTerminalBlock b) {
+return b.CustomName.Contains("Hydrogen");
+}
