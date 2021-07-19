@@ -472,6 +472,7 @@ public class RotorBase
 	public double bulletMaxSpeedConf = 0;
 	public double bulletMaxRange = 900;
 	public float gravityRate = 0;
+	public float eaRate = 1F;
 	public double curvationRate = 0.2;
 	public bool isAutoFire = true;
 	public double PID_P = Aim_PID_P;
@@ -533,6 +534,7 @@ public class RotorBase
 		cfg.Get("TARGET_TYPE", ref TARGET_TYPE);
 		cfg.Get("OFFSET_Y", ref OFFSET_Y);
 		cfg.Get("RANDOM_Y", ref RANDOM_Y);
+		cfg.Get("EA_RATE", ref eaRate);
 
 		//获得转子
 		bool haveHinge = false;
@@ -1007,6 +1009,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		var tpToRc = Vector3D.TransformNormal(targetPositionToReal, rcLookAt);
 		double aa=0, ea=0;
 		Vector3D.GetAzimuthAndElevation(tpToRc, out aa, out ea);
+		ea*=eaRate;
 		debugInfo += "\naaea: " + Math.Round(aa,2) + " " + Math.Round(ea,2);
 		if (this.AimBlock.CustomName.Contains("[Arm]")) ea += Math.PI * 0.5;
 
