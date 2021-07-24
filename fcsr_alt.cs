@@ -813,10 +813,13 @@ public class RotorBase
 	}
 
 	public double angleDeltaAbs (double a, double b) {
-	       var t = Math.Abs(a - b);
-	       if ( t > Math.PI) {
-	       	  t = Math.Abs(t - MathHelper.TwoPi);
+	       if (a > Math.PI) {
+	       	  a  -= MathHelper.TwoPi;
 	       }
+	       if (a < -Math.PI) {
+	       	  a += MathHelper.TwoPi;
+	       }
+	       var t = Math.Abs(a - b);
 	       return t;
 	}
 	
@@ -1013,6 +1016,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 			bool rx = false;
 			bool ry = false;
 			rx = angleDeltaAbs(aa, hori) < horiD;
+			rx = rx || angleDeltaAbs(aa + Math.PI, hori) < horiD;
 			ry = ea-vert < -vertD;
 			debugInfo += "\nrxry: " + rx + " " + ry;
 		bool isFireZone = !(rx && ry);
