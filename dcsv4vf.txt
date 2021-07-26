@@ -554,7 +554,7 @@ bool isFcsAiming = LockTargetAiming && LockTargetPosition!=Vector3D.Zero;
 if(ng.Length() > 0.001 && !isFcsAiming) {
 var diff = diffX;
 if (diff != 0) {
-SetGyroRoll(diff * AimRatio * 60 * -1);
+SetGyroRoll(diff * AimRatio * -1);
 }
 diff = diffZ;
 if(isDown && legMode == 1) {
@@ -564,12 +564,12 @@ if(isDown && legMode == 3) {
 diff += angleWhenWalk;
 }
 if (!isFcsAiming && !isSM && !tuc) {
-SetGyroPitch(diff * AimRatio * 60);
-if(!isSteeringAccumulate)SetGyroYaw((msc.RotationIndicator.Y) * 30);
+SetGyroPitch(diff * AimRatio);
+if(!isSteeringAccumulate)SetGyroYaw((msc.RotationIndicator.Y));
 } else {
 // rix = -Y riy = X
-SetGyroPitch((-msc.RotationIndicator.X) * 30);
-if(!isSteeringAccumulate)SetGyroYaw((msc.RotationIndicator.Y) * 30);
+SetGyroPitch((-msc.RotationIndicator.X) * 0.5);
+if(!isSteeringAccumulate)SetGyroYaw((msc.RotationIndicator.Y));
 }
 
 needGyroOverride = true;
@@ -701,10 +701,10 @@ Vector3D d = Vector3D.Normalize(maintainSpeedToMe);
 if (d.Z > 0.5) {
 d = new Vector3D(1,0,0);
 }
-SetGyroYaw(AimRatio*d.X*60);
+SetGyroYaw(AimRatio*d.X);
 if (naturalGravityLength>0){
 } else {
-SetGyroPitch(AimRatio*d.Y*60);
+SetGyroPitch(AimRatio*d.Y);
 }
 d.Z=0;
 needGyroOverride = true;
@@ -1017,7 +1017,7 @@ isSteeringAccumulate = false;
 }
 
 Vector3D nowA = msc.GetShipVelocities().AngularVelocity;
-SetGyroYaw(steeringAccumulation.Y + nowA.Y * 100);
+SetGyroYaw((steeringAccumulation.Y + nowA.Y * 100) * 0.01);
 SetGyroPitch(-msc.RotationIndicator.X);
 SetGyroRoll(-msc.RollIndicator);
 }
@@ -1166,7 +1166,6 @@ var forward = msc.WorldMatrix.Forward;
 diffX = diffGravity(left, naturalGravity, forward);
 diffZ = diffGravity(forward, naturalGravity, -left);
 
-
 // add before end
 }
 else
@@ -1209,7 +1208,7 @@ if (leftOrRight > Math.PI / 2) {
 diff = -diff;
 }
 
-if (Math.Abs(diff) > 0.0001f) {
+if (Math.Abs(diff) > 0.00001f) {
 return diff;
 }else {
 return 0;
@@ -1484,20 +1483,20 @@ tryAddVftr("Hinge Connector", toRa(89F), 0, 0, 0, landrList);
 tryAddVftr("Hinge Drill", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
 
 // U2
-tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
-tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
-tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
-tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
-tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
-tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
+//tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
+//tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
+//tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
+//tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
+//tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
+//tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
 
-tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
-tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
-tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
-tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+//tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
+//tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+//tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
+//tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
 
-tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
-tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
+//tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
+//tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
 if (Cockpit is IMyTextSurfaceProvider) {
@@ -1726,8 +1725,11 @@ Gyroscopes[i].ApplyAction("Override");
 }
 }
 
+float gyroDZ = 0.01F;
+
 void SetGyroYaw(double yawRate)
 {
+if (Math.Abs(yawRate) > gyroDZ) yawRate *=60;
 if (legMode < 2 || Head == null) {
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
@@ -1743,6 +1745,7 @@ Gyroscopes[i].SetValue(gyroYawFieldHead[i], (float)yawRate * gyroYawFactorHead[i
 
 void SetGyroPitch(double pitchRate)
 {
+if (Math.Abs(pitchRate) > gyroDZ) pitchRate *=60;
 if (legMode < 2 || Head == null) {
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
@@ -1758,6 +1761,7 @@ Gyroscopes[i].SetValue(gyroPitchFieldHead[i], (float)pitchRate * gyroPitchFactor
 
 void SetGyroRoll(double rollRate)
 {
+if (Math.Abs(rollRate) > gyroDZ) rollRate *=60;
 if (legMode < 2 || Head == null) {
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
@@ -2389,8 +2393,8 @@ Vector3D direction;
 Vector3D.CreateFromAzimuthAndElevation(homingTurret.Azimuth, homingTurret.Elevation, out direction);
 Vector3D worldDirection = Vector3D.TransformNormal(direction, homingTurret.WorldMatrix);
 Vector3D myDirection = Vector3D.TransformNormal(worldDirection, refLookAtMatrix);
-SetGyroYaw(60 * AimRatio * myDirection.X);
-SetGyroPitch(20 * AimRatio * myDirection.Y);
+SetGyroYaw(AimRatio * myDirection.X);
+SetGyroPitch(0.3* AimRatio * myDirection.Y);
 SetGyroOverride(true);
 } else
 {
@@ -2412,14 +2416,14 @@ d = Vector3D.TransformNormal(t2m, refLookAtMatrix);
 }
 sd = d;
 }
-SetGyroYaw(AimRatio*sd.X*60);
+SetGyroYaw(AimRatio*sd.X);
 if (isAeroDynamic && maintainSpeedToMeAA.Y > 50) {
 var b = Math.Abs(maintainSpeedToMeAA.Z);
 if (b < 10) b = 10;
 var dy = (float)Math.Atan2(maintainSpeedToMeAA.Y, b);
 sd.Y += dy;
 }
-SetGyroPitch(AimRatio*sd.Y*20);
+SetGyroPitch(AimRatio*sd.Y*0.2);
 sd.Z=0;
 if (sd.Length()>isTurningLimit) isTurning=true;
 
@@ -2439,9 +2443,9 @@ var sideRoll = maintainSpeedToMeAA.X * 0.001f; // radio
 if (sideRoll > 0.05f) sideRoll = 0.05f;
 if (sideRoll < -0.05f) sideRoll = -0.05f;
 if(!isBig) diff += sideRoll;
-sr = -1*diff*60;
+sr = -1*diff;
 } else {
-sr = -AimRatio*30*shipRollToMe.X;
+sr = -AimRatio*0.5*shipRollToMe.X;
 }
 SetGyroRoll(sr);
 if (sr > isTurningLimit) isTurning=true;
@@ -2495,9 +2499,9 @@ shipRollToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Backward, 
 break;
 }
 
-SetGyroYaw(AimRatio*30*shipDirectionToMe.X);
-SetGyroPitch(AimRatio*10*shipDirectionToMe.Y);
-SetGyroRoll(-AimRatio*30*shipRollToMe.X);
+SetGyroYaw(AimRatio*0.5*shipDirectionToMe.X);
+SetGyroPitch(AimRatio*0.1*shipDirectionToMe.Y);
+SetGyroRoll(-AimRatio*0.5*shipRollToMe.X);
 SetGyroOverride(true);
 
 }
@@ -2927,7 +2931,6 @@ testP = DkMvTarget;
 }
 
 bool canProceed = false;
-debugInfo = "dis " + Math.Round((myToShipPosition - testP).Length(), 2);
 if ((myToShipPosition - testP).Length() < delta) canProceed = true;
 
 if (canProceed == true && isDkMv == false) {
@@ -3121,6 +3124,7 @@ thrustNeed = Vector3D.Reject(thrustNeed, msc.WorldMatrix.Left); // tn y + z
 needA_G = Vector3D.TransformNormal(thrustNeed,refLookAtMatrix) / mass; //
 // dead zone
 float dz = 5F;
+if(flyByOn||dockingOn) dz=1F;
 if(ngtome.Length() > 1.5) {
 var ngtomefb = ngtome;
 ngtomefb.X = 0;
@@ -3159,8 +3163,6 @@ if (thrustMax < 1) thrustMax = 1;
 var percent = thrustNeed.Length() / thrustMax;
 if (percent > 1)percent = 1;
 if (thrustMax < 1) percent = 0; // thrustMax dir wrong
-if (percent < 0.02) percent = 0;
-else percent -=0.02;
 foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
@@ -3425,6 +3427,7 @@ if(notDocked()){
 Vector3D needA = needA_G;
  if (Math.Abs(needA.Y) < 0.1 && needA.Length()> 0.1) needA.Y = 0.1;
 double dz = 5;
+if(flyByOn||dockingOn)dz=1F;
 if (needA.Y >= 0.1 ) // 
 {
 tl = (float)Math.Atan2(needA.Z, needA.Y);

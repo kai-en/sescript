@@ -21,7 +21,7 @@ double aero_liftrate = 0.1;
 bool isPn = false;
 
 static bool autoFireMissile = false;
-static bool isTrackVelocity = false;
+static bool isTrackVelocity = true;
 static long lastAutoFire = 1000;
 static long AUTO_FIRE_INTERVAL = 600;
 static long AUTO_FIRE_MAX = 4;
@@ -89,13 +89,16 @@ IMyTerminalBlock pgtimer = null;
                 public List<IMyThrust> THRUSTERS = new List<IMyThrust>(); //Multiple
                 public IMyTerminalBlock POWER;
                 public List<IMyTerminalBlock> WARHEADS = new List<IMyTerminalBlock>(); //Multiple
-	    public List<IMyTerminalBlock> SPOTLIST;
-	    public List<IMyTerminalBlock> LANDINGLIST;
+	    public List<IMyTerminalBlock> SPOTLIST= new List<IMyTerminalBlock>();
+	    public List<IMyTerminalBlock> LANDINGLIST= new List<IMyTerminalBlock>();
 
                 //Permanent Missile Details
                 public double MissileAccel = 10;
                 public double MissileMass = 0;
-                public double MISSILE_MASS = 0;
+                public double MISSILE_MASS = 5136.4;
+                public int THRUSTER_COUNT = 4;
+                public bool IS_SIDE = false;
+                public double THRUST_PERCENT = 1;
                 public double MissileThrust = 0;
                 public bool IsLargeGrid = false;
                 public double FuseDistance = 2;
@@ -541,6 +544,7 @@ Color unfullColor = new Color(255, 255, 183, 255);
                 foreach (IMyThrust thruster in ThisMissile.THRUSTERS) {
                     ((IMyTerminalBlock)thruster).ApplyAction("OnOff_On");
                     double ThisThrusterThrust = thruster.MaxThrust;
+	        ThisThrusterThrust *= ThisMissile.THRUST_PERCENT;
                     thruster.ThrustOverride = (float)ThisThrusterThrust;
                 }
 
@@ -732,11 +736,7 @@ targetPanelHasTarget = targetPanelPosition!=Vector3D.Zero;
                 double ThrustPower = RdavUtils.Vector_Projection_Scalar(MissileForwards, Vector3D.Normalize(LateralAccelerationComponent)); //TESTTESTTEST
                 ThrustPower = This_Missile.IsLargeGrid ? MathHelper.Clamp(ThrustPower, 0.9, 1) : ThrustPower;
 
-	    var thrusterLowerLimit = 0.4f;
-	    //float thrusterLowerLimit = 0.9F;
-	    if ((TargetPosition - MissilePosition).Length() < 1000) thrusterLowerLimit = 0.4F; // a b k 
-                ThrustPower = MathHelper.Clamp(ThrustPower, thrusterLowerLimit, 1); //for improved thrust performance on the get-go
-                ThrustPower = 1;
+                ThrustPower = This_Missile.THRUST_PERCENT;
                 foreach (IMyThrust thruster in This_Missile.THRUSTERS)
                 {
                     if (thruster.ThrustOverridePercentage !=  ThrustPower) //12 increment inequality to help conserve on performance
@@ -756,19 +756,27 @@ targetPanelHasTarget = targetPanelPosition!=Vector3D.Zero;
                 //Guides To Target Using Gyros
                 // am = Vector3D.Normalize(LateralAccelerationComponent + GravityComp);
 		
+var FDIR = This_Missile.GYRO.WorldMatrix.Up;
+if (This_Missile.IS_SIDE) FDIR = This_Missile.GYRO.WorldMatrix.Forward;
+var UDIR = This_Missile.GYRO.WorldMatrix.Backward;
+if (This_Missile.IS_SIDE) UDIR = This_Missile.GYRO.WorldMatrix.Up;
 
 if(true) {
 // 新算法
 // 4 推力 / 质量 = 可以提供的加速度的长度 sdl
 
-double sdl = This_Missile.THRUSTERS[0].MaxEffectiveThrust * This_Missile.THRUSTERS.Count / This_Missile.MISSILE_MASS;
+double thrust = This_Missile.THRUSTERS[0].MaxEffectiveThrust * This_Missile.THRUSTERS.Count;
+thrust *= This_Missile.THRUST_PERCENT;
+
+double sdl = thrust / This_Missile.MISSILE_MASS;
 
 // 1 求不需要的速度
-//debugInfo = "TR: " + targetRange.Length() + "\n";
+debugInfo = "TR: " + targetRange.Length();
+debugInfo += "\nIS_SIDE: " + This_Missile.IS_SIDE;
 Vector3D tarN = Vector3D.Normalize(targetRange);
-//debugInfo += "TV: " + targetV.Length() + "\n";
+//debugInfo += "\nTV: " + targetV.Length();
 Vector3D rv = Vector3D.Reject(targetV, tarN);
-//debugInfo += "RV: " + rv.Length() + "\n";
+//debugInfo += "\nRV: " + rv.Length();
 //Vector3D ra = Vector3D.Reject(TargetAcc, tarN);
 
 // 1.1 拦截方式
@@ -809,9 +817,9 @@ Vector3D rd = rdo - RC.GetNaturalGravity();
 // 3.1 aerodynamic
 if (isAeroDynamic) {
 var vN = Vector3D.Normalize(MissileVelocity);
-var aero_a = Vector3D.Reject (This_Missile.GYRO.WorldMatrix.Up, vN);
+var aero_a = Vector3D.Reject (FDIR, vN);
 aero_a = Vector3D.Reject(aero_a, This_Missile.GYRO.WorldMatrix.Left);
-var aero_dot = Vector3D.Dot(This_Missile.GYRO.WorldMatrix.Up, vN) ;
+var aero_dot = Vector3D.Dot(FDIR, vN) ;
 if ( aero_dot > 0.7 || aero_dot < 0) aero_a = Vector3D.Zero;
 var lift = aero_a * MissileVelocity.Length() * aero_liftrate;
 rd -= lift;
@@ -870,9 +878,9 @@ Vector3D rd = rdo - RC.GetNaturalGravity();
 // 3.1 aerodynamic
 if (isAeroDynamic) {
 var vN = Vector3D.Normalize(MissileVelocity);
-var aero_a = Vector3D.Reject (This_Missile.GYRO.WorldMatrix.Up, vN);
+var aero_a = Vector3D.Reject (FDIR, vN);
 aero_a = Vector3D.Reject(aero_a, This_Missile.GYRO.WorldMatrix.Left);
-var aero_dot = Vector3D.Dot(This_Missile.GYRO.WorldMatrix.Up, vN) ;
+var aero_dot = Vector3D.Dot(FDIR, vN) ;
 if ( aero_dot > 0.7 || aero_dot < 0) aero_a = Vector3D.Zero;
 var lift = aero_a * MissileVelocity.Length() * aero_liftrate;
 rd -= lift;
@@ -909,14 +917,14 @@ This_Missile.nearest = targetRange.Length();
 am = nam;
 }
 
-var missileLookAt = MatrixD.CreateLookAt(new Vector3D(), This_Missile.GYRO.WorldMatrix.Up, This_Missile.GYRO.WorldMatrix.Backward);
+var missileLookAt = MatrixD.CreateLookAt(new Vector3D(), FDIR, UDIR);
 var amToMe = Vector3D.TransformNormal(am, missileLookAt);
-var rr = Vector3D.Normalize(Vector3D.Reject(This_Missile.GYRO.WorldMatrix.Up, Vector3D.Normalize(RC.GetNaturalGravity())));
+var rr = Vector3D.Normalize(Vector3D.Reject(FDIR, Vector3D.Normalize(RC.GetNaturalGravity())));
 var rangle = 1 - Vector3D.Dot(rr, tarN);
-//debugInfo += "RA: " + rangle + "\n";
+//debugInfo += "\nRA: " + rangle;
 
-//debugInfo += "amToMe: " + displayVector3D(amToMe) + "\n";
-//debugInfo += This_Missile.nearest + "\n";
+debugInfo += "\namToMe: " + displayVector3D(amToMe);
+//debugInfo += "\nnearest" + This_Missile.nearest;
 
 
 }
@@ -995,6 +1003,12 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                 {
                     MISSILE NEW_MISSILE = new MISSILE();
                     NEW_MISSILE.GYRO = Key_Gyro;
+			CustomConfiguration cfg = new CustomConfiguration(NEW_MISSILE.GYRO);
+			cfg.Load();
+			cfg.Get("MISSILE_MASS", ref NEW_MISSILE.MISSILE_MASS);
+			cfg.Get("THRUSTER_COUNT", ref NEW_MISSILE.THRUSTER_COUNT);
+			cfg.Get("IS_SIDE", ref NEW_MISSILE.IS_SIDE);
+			cfg.Get("THRUST_PERCENT", ref NEW_MISSILE.THRUST_PERCENT);
 
                     Vector3D GyroPos = Key_Gyro.GetPosition();
                     double Distance = 3;
@@ -1009,31 +1023,32 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
 
                     //Sorts And Selects Merges
                     List<IMyTerminalBlock> TempMerges = MERGES.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < 1.51);
-                    TempMerges.Sort((x, y) => (compareXY(x, y, Key_Gyro)));
+                    TempMerges.Sort((x, y) => (compareP(x, y, Key_Gyro)));
 
                     //Sorts And Selects Thrusters
-                    NEW_MISSILE.THRUSTERS = THRUSTERS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
+                    //NEW_MISSILE.THRUSTERS = THRUSTERS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
 
                     //Sorts And Selects Warheads
-                    NEW_MISSILE.WARHEADS = WARHEADS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
+	        List<IMyTerminalBlock> TempWarhead = WARHEADS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
+	        TempWarhead.Sort((x, y) => (compareP(x, y, Key_Gyro)));
+	        if (TempWarhead.Count > 0)
+                    NEW_MISSILE.WARHEADS.Add(TempWarhead[0]);
 
                     // a b K
                     List<IMyThrust> TempThrusters = THRUSTERS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
-                    //TempThrusters.Sort((x, y) => (compareXY(x, y, Key_Gyro)));
-	        //NEW_MISSILE.THRUSTERS = new List<IMyThrust>(){TempThrusters[0]};
-	        NEW_MISSILE.THRUSTERS = TempThrusters.Where(t => filterClose(t, Key_Gyro)).ToList();
-	        // if(TempThrusters[0].Position.X != Key_Gyro.Position.X || TempThrusters[0].Position.Y != Key_Gyro.Position.Y) {
-		// Lstrundata = "mismatch thruster " + TempThrusters[0].Position.X + " " + Key_Gyro.Position.X +" " +  TempThrusters[0].Position.Y + " " +  Key_Gyro.Position.Y;
-		// return false;
-	        // }
+                    TempThrusters.Sort((x, y) => (compareP(x, y, Key_Gyro)));
+	        List<IMyThrust> T2Thrusters = new List<IMyThrust>();
+	        int TCount = NEW_MISSILE.THRUSTER_COUNT < TempThrusters.Count ? NEW_MISSILE.THRUSTER_COUNT :  TempThrusters.Count ;
+	        for(int i = 0; i < TCount; i++) {
+		T2Thrusters.Add(TempThrusters[i]);
+	        }
+	        NEW_MISSILE.THRUSTERS = T2Thrusters;
 
-                    List<IMyTerminalBlock> TempWarheads = WARHEADS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
-	        //TempWarheads.Sort((x, y) => (compareXY(x, y, Key_Gyro)));
-	        //NEW_MISSILE.WARHEADS = new List<IMyTerminalBlock>(){TempWarheads[0]};
-	        NEW_MISSILE.WARHEADS = TempWarheads.Where(t => filterClose(t, Key_Gyro)).ToList();
 
                     List<IMyTerminalBlock> TempSpots = SPOTS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
-	        NEW_MISSILE.SPOTLIST = TempSpots.Where(t => filterClose(t, Key_Gyro)).ToList();
+	        TempSpots.Sort((x, y) => (compareP(x, y, Key_Gyro)));
+	        if(TempSpots.Count > 0)
+	        NEW_MISSILE.SPOTLIST.Add(TempSpots[0]);
 
                     if (TempMerges.Count > 0) {
                     List<IMyTerminalBlock> LANDS = new List<IMyTerminalBlock>();
@@ -1068,10 +1083,6 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
 		}
                         NEW_MISSILE.POWER = TempPower[0];
                         NEW_MISSILE.MERGE = TempMerges[0];
-			NEW_MISSILE.MISSILE_MASS = 5316.4;
-			CustomConfiguration cfg = new CustomConfiguration(NEW_MISSILE.GYRO);
-			cfg.Load();
-			cfg.Get("MISSILE_MASS", ref NEW_MISSILE.MISSILE_MASS);
                         MISSILES.Add(NEW_MISSILE);
                         Lstrundata = "Launched Missile:" + MISSILES.Count;
                         return true;
@@ -1082,6 +1093,10 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
             #endregion
 
 	// a b K
+	int compareP(IMyTerminalBlock a, IMyTerminalBlock b, IMyTerminalBlock s) {
+	    return (a.GetPosition() - s.GetPosition()).Length().CompareTo((b.GetPosition() - s.GetPosition()).Length());
+	}
+	
 	int compareXY(IMyTerminalBlock a, IMyTerminalBlock b, IMyTerminalBlock s) {
 	    if (a.CubeGrid != s.CubeGrid) {
 	    return 100000000;
@@ -1445,7 +1460,10 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                 //Applies To Scenario
                 GYRO.Pitch = (float)MathHelper.Clamp((-TRANS_VECT.X) * GAIN , -30, 30);
 		//GYRO.Pitch = (float)MathHelper.Clamp( missile.pidE.Filter(-TRANS_VECT.X, 2) , -30, 30);
-                //GYRO.Yaw = (float)MathHelper.Clamp(((-TRANS_VECT.Y)) * GAIN, -30, 30);
+
+		if (missile.IS_SIDE)
+                GYRO.Yaw = (float)MathHelper.Clamp(((-TRANS_VECT.Y)) * GAIN, -30, 30);
+		else	
                 GYRO.Roll = (float)MathHelper.Clamp(((-TRANS_VECT.Z)) * GAIN , -30, 30);
 		//GYRO.Roll = (float)MathHelper.Clamp( missile.pidA.Filter(-TRANS_VECT.Z, 2) , -1000, 1000);
 
@@ -1454,8 +1472,14 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
 	    var ng = RC.GetNaturalGravity();
 	    if (ng.Length() > 0.01 && isClear) {
 	       MatrixD gyroMat = GYRO.WorldMatrix;
-	       var diff = diffGravity(gyroMat.Left, ng, gyroMat.Up);
+	       double diff;
+	       if (missile.IS_SIDE) {
+	       diff = diffGravity(gyroMat.Left, ng, gyroMat.Forward);
+	       GYRO.Roll = (float) missile.pidR.Filter(diff,2);
+	       } else {
+	       diff = diffGravity(gyroMat.Left, ng, gyroMat.Up);
 	       GYRO.Yaw =(float) missile.pidR.Filter(-diff,2);
+	       }
 	    } 
                 GYRO.GyroOverride = true;
             }
