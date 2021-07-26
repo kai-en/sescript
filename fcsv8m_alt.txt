@@ -108,7 +108,7 @@ static double AimPID_D = 10; //微分系数：增加这个系数会减少瞄准�
 bool IsUnlockWhenLockBack = false; //是否在精确锁定点运动到目标背面后解除精确锁定
 bool IsAimDeviation = true; //是否在预瞄时瞄准实际激光跟踪点而不是目标中心（由于某些飞船结构复杂，其中心可能是空心的，而激光跟踪点一定是存在方块的位置）
 
-Vector3I BackgroundColorWhenIdle = new Vector3I(0,76,255); //待命时LCD背景色
+Vector3I BackgroundColorWhenIdle = new Vector3I(0,76,256); //待命时LCD背景色
 Vector3I BackgroundColorWhenSearch = new Vector3I(255,255,76); //搜索时LCD背景色
 Vector3I BackgroundColorWhenTarget = new Vector3I(255,76,0); //锁定时LCD背景色
 Vector3I BackgroundColorWhenTLock = new Vector3I(255,0,0); //精确锁定时LCD背景色

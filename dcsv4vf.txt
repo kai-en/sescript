@@ -247,15 +247,6 @@ void setAhhOn(bool v) {
 ahhOn = continueAhhOn = v;
 return;
 
-//ahhOn = v;
-//if (isAeroDynamic) return;
-//if (ahhOn == false) {
-//continueAhhOn = false;
-//continueAhhStart = 0;
-//} else {
-//if (continueAhhStart == 0) continueAhhStart = t;
-//else if ( t > continueAhhStart + 180 ) continueAhhOn = true;
-//}
 }
 bool useAhh = true;
 double ahh = 0;
@@ -269,7 +260,7 @@ static double INPUT_RATE = 5;
 
 Program()
 {
-//Runtime.UpdateFrequency = UpdateFrequency.Update1;
+
 }
 
 void Main(string arguments, UpdateType updateType)
@@ -1258,7 +1249,7 @@ Echo("Head: " + Head.CustomName + "\n");
 }
 Echo("WMI Rotor Thruster\nManager... " + RunningSymbol() + "\n");
 Echo($"Gyros :{Gyroscopes.Count}");
-Echo($"Off-Grid Thrusters: {offGridThrust.Count}");
+Echo($"Off-Grid Thrusters: {offGridThrust.Count} {thrusters.Count}");
 string dampenerStatus = dampenersOn ? "Enabled" : "Disabled";
 Echo($"Dampeners: {dampenerStatus}");
 Echo($"Location: {distanceInfo}");
@@ -1493,20 +1484,20 @@ tryAddVftr("Hinge Connector", toRa(89F), 0, 0, 0, landrList);
 tryAddVftr("Hinge Drill", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
 
 // U2
-// tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
-// tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
-// tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
-// tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
-// tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
-// tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
+tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
+tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
+tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
+tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
+tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
+tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
 
-// tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
-// tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
-// tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
-// tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
+tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
+tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
 
-// tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
-// tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
+tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
+tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
 if (Cockpit is IMyTextSurfaceProvider) {
@@ -2245,7 +2236,7 @@ if (maxAllF == 0)percent = 0;
 else percent = (float) needF / maxAllF;
 dr+="\nPer: " + percent+" "+(incThrusters.Count+decThrusters.Count);
 float zF = 0F;
- zF = 0.000001F;
+// zF = 0.000001F;
 
 if (percent == 0) {
 for (int i = 0; i < incThrusters.Count; i++) {
@@ -2355,7 +2346,7 @@ RefreshMaintainSpeed();
 if (!flyByOn && !dockingOn) return;
 if(shipMatrix == MatrixD.Zero) return;
 maintainSpeedToMeAA = calcSpeedToMeAndAvoid(maintainSpeed);
-inputVec_RT=maintainSpeedToMeAA*0.1;//
+inputVec_RT=maintainSpeedToMeAA*0.1;
 
 // ¼ÆËã×ªÏò
 isTurning = false;
@@ -2936,6 +2927,7 @@ testP = DkMvTarget;
 }
 
 bool canProceed = false;
+debugInfo = "dis " + Math.Round((myToShipPosition - testP).Length(), 2);
 if ((myToShipPosition - testP).Length() < delta) canProceed = true;
 
 if (canProceed == true && isDkMv == false) {
@@ -3146,6 +3138,7 @@ needA_G = Vector3D.Zero;
 needA_G -= dz * Vector3D.Normalize(needA_G);
 }
 }
+if (needA_G.Length() < 0.02) needA_G = Vector3D.Zero;
 
 double thrustMax = 0;
 var thrustNeedDir = Vector3D.Normalize(thrustNeed);
@@ -3162,8 +3155,12 @@ thrustMax += thisThrust.MaxEffectiveThrust * scale;
 }
 Vector3D thrustNeedL2 = Vector3D.Zero;
 if (thrustNeed.Length() > thrustMax) thrustNeedL2 = thrustNeed - thrustNeedDir * thrustMax;
-if (thrustMax == 0) thrustMax = 1;
-var percent = (float)MathHelper.Clamp(thrustNeed.Length() / thrustMax, 0, 1);
+if (thrustMax < 1) thrustMax = 1;
+var percent = thrustNeed.Length() / thrustMax;
+if (percent > 1)percent = 1;
+if (thrustMax < 1) percent = 0; // thrustMax dir wrong
+if (percent < 0.02) percent = 0;
+else percent -=0.02;
 foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
@@ -3171,9 +3168,9 @@ float scale = -(float)thrustDirection.Dot(thrustNeedDir);
 bool iH = isHy(thisThrust);
 if (scale > maxThrustDotProduct && (!iH || useBst))
 {
-SetThrusterOverride(thisThrust, (float)percent * scale);
+SetOffThrusterOverride(thisThrust, (float)percent * scale);
 }else {
-SetThrusterOverride(thisThrust, 0f);
+SetOffThrusterOverride(thisThrust, 0f);
 }//
 
 }
@@ -3188,7 +3185,7 @@ manageL2T(new Vector3D(tn2_x,tn2_y,tn2_z), mass);
 // END 
 } else {
 foreach (IMyThrust thisThrust in offGridThrust) {
-SetThrusterOverride(thisThrust, 0f);
+SetOffThrusterOverride(thisThrust, 0f);
 }
 
 manageL2T(Vector3D.Zero, msc.CalculateShipMass().PhysicalMass);
@@ -3258,18 +3255,17 @@ return thisController;
 return SCs[0];
 }
 
-void SetThrusterOverride(IMyThrust thruster, float percent)
+void SetOffThrusterOverride(IMyThrust thruster, float percent)
 {
 IMyThrust t = thruster;
 if(percent < 0) percent = 0;
 if(percent>0){
 t.ThrustOverridePercentage = percent;
+t.Enabled=true;
 } else {
-
-t.ThrustOverridePercentage = 0.000001f;
-
+// CODING todo
+t.Enabled=false;
 }
-t.Enabled = true;
 }
 void SetThrusterListOverride<T>(List<T> thrusterList, float percent) where T:class, IMyTerminalBlock
 {
