@@ -21,7 +21,7 @@ double aero_liftrate = 0.1;
 bool isPn = false;
 
 static bool autoFireMissile = false;
-static bool isTrackVelocity = true;
+static bool isTrackVelocity = false;
 static long lastAutoFire = 1000;
 static long AUTO_FIRE_INTERVAL = 600;
 static long AUTO_FIRE_MAX = 4;
@@ -538,16 +538,35 @@ Color unfullColor = new Color(255, 255, 183, 255);
                 var MERGE_A = ThisMissile.MERGE;
                 (MERGE_A as IMyShipMergeBlock).Enabled = false;
 
-                yield return true;
-                yield return true;
-
-                // 
                 foreach (IMyThrust thruster in ThisMissile.THRUSTERS) {
                     ((IMyTerminalBlock)thruster).ApplyAction("OnOff_On");
                     double ThisThrusterThrust = thruster.MaxThrust;
                     thruster.ThrustOverride = (float)ThisThrusterThrust;
                 }
-                // for (int i = 0; i < 5; i++) yield return true;
+
+		var POWER_A = ThisMissile.POWER;
+
+		yield return true;
+
+		if (ThisMissile.POWER != null && ThisMissile.POWER is IMyBatteryBlock)
+                {
+                    POWER_A.ApplyAction("OnOff_Off");
+                    //POWER_A.SetValue("Recharge", false);
+                    //POWER_A.SetValue("Discharge", true);
+                    ThisMissile.MissileMass += POWER_A.Mass;
+                }
+		yield return true;
+
+                if (ThisMissile.POWER != null && ThisMissile.POWER is IMyBatteryBlock)
+                {
+                    POWER_A.ApplyAction("OnOff_On");
+                    //POWER_A.SetValue("Recharge", false);
+                    //POWER_A.SetValue("Discharge", true);
+                    ThisMissile.MissileMass += POWER_A.Mass;
+                }
+
+                // 
+                //for (int i = 0; i < 5; i++) yield return true;
 
 
                 pgtimer?.ApplyAction("TriggerNow");

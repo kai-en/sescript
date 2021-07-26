@@ -126,6 +126,9 @@ static int aeroACS = -180;
 static int aeroAMP = 0;
 static string debugInfo = "";
 static string initInfo = "";
+static List<Vector3D> ignorePosList = new List<Vector3D>();
+static List<long> ignoreList = new List<long>();
+const double ignoreDistance = 10;
 
 
 //List<IMyTerminalBlock> TURRETS = new List<IMyTerminalBlock>();
@@ -156,6 +159,18 @@ void Main(string arguments)
 	if(arguments == "Attention"){
 		AttentionMode += 1;
 		if(AttentionMode > 3){AttentionMode = 1;}
+	}
+	if(arguments == "IgnoreAll"){
+		     // coding
+		     foreach(var t in TargetList){
+		     		 ignoreList.Add(t.EntityId);
+				 ignorePosList.Add(t.Position);
+		     }
+	}
+	if(arguments == "ClearIgnore"){
+		     // coding
+		     ignoreList = new List<long>();
+		     ignorePosList = new List<Vector3D>();
 	}
 	
 	try {
@@ -837,13 +852,18 @@ public class RotorBase
                    }
                    //debugInfo += "\n"+FCS_T.Position;
                    this.AimAtTarget(FCS_T.Position);
-                   //CODING
                    return;
                 }
 
 		double currentDis = double.MaxValue;
 		Target MyAttackTarget = new Target();
 		for(int i = 0; i < targetList.Count; i ++){
+			if (ignoreList.Contains(targetList[i].EntityId)) continue;
+			bool isIgnorePos = false;
+			foreach(var ig in ignorePosList) {
+				    if ((ig - targetList[i].Position).Length() < ignoreDistance) isIgnorePos = true;
+			}
+			if(isIgnorePos) continue;
 			if (this.TARGET_TYPE == "Focus") {
 			   if (!targetList[i].isFCS && targetList[i].type != "Focus") continue;
 			}

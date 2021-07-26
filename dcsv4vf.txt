@@ -1490,6 +1490,7 @@ tryAddVftr("Hinge Land", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
 tryAddVftr("Wing-L", toRa(-89F), 0, 0, 0, landrList);
 tryAddVftr("Wing-R", toRa(-89F), 0, 0, 0, landrList);
 tryAddVftr("Hinge Connector", toRa(89F), 0, 0, 0, landrList);
+tryAddVftr("Hinge Drill", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
 
 // U2
 // tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
