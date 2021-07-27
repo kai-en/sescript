@@ -781,6 +781,8 @@ Vector3D rv = Vector3D.Reject(targetV, tarN);
 var otv = This_Missile.TargetVelocity;
 if (otv.Length() > 10 && isTrackVelocity && targetRange.Length() > 500) {
 var rrd = Vector3D.Reject(targetRange, Vector3D.Normalize(otv));
+if (rrd.Length() < 100) rrd = Vector3D.Zero;
+else rrd -= Vector3D.Normalize(rrd) * 100;
 var rrv = rrd * 0.3; // rr rate
 if (rrv.Length() > 90) { //
 rrv = Vector3D.Normalize(rrv) * 90;
