@@ -779,7 +779,8 @@ Vector3D rv = Vector3D.Reject(targetV, tarN);
 
 // 1.1 拦截方式
 var otv = This_Missile.TargetVelocity;
-if (otv.Length() > 10 && isTrackVelocity && targetRange.Length() > 500) {
+double trackMinDis = 200;
+if (otv.Length() > 10 && isTrackVelocity && targetRange.Length() > trackMinDis) {
 var rrd = Vector3D.Reject(targetRange, Vector3D.Normalize(otv));
 if (rrd.Length() < 100) rrd = Vector3D.Zero;
 else rrd -= Vector3D.Normalize(rrd) * 100;
