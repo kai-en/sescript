@@ -156,8 +156,8 @@ RadarSurface radarSurface;
 readonly MyIni generalIni = new MyIni(); 
 readonly MyIni textSurfaceIni = new MyIni();
 
-List<IMyTerminalBlock> droneRadarList = new List<IMyTerminalBlock>();
 string droneRadarName = "radardrone";
+IEnumerator<bool> LaunchStateMachine;
 
 
 #endregion 
@@ -182,12 +182,29 @@ msc = reference;
 refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), msc.WorldMatrix.Forward, msc.WorldMatrix.Up);
 MePosition = msc.GetPosition();
 
-if (t % 10 == 0){
-List<IMyTerminalBlock> tmp = getBlockListByName<IMyTerminalBlock>(droneRadarName, false, false);
-droneRadarList.AddRange(tmp);
+t++;
 }
 
-t++;
+public IEnumerable<bool> DroneLaunchHandler()
+{
+        List<IMyProgrammableBlock> droneRadarList = getBlockListByName<IMyProgrammableBlock>(droneRadarName, false, false);
+        if (droneRadarList.Count == 0) yield return false;
+        List<IMyShipMergeBlock> mergeList = getBlockListByName<IMyShipMergeBlock>("Drone", false, false);
+        if (mergeList.Count == 0) yield return false;
+        List<IMyProgrammableBlock> droneDcsList = getBlockListByName<IMyProgrammableBlock>("dcsdrone", false, false);
+        if (droneRadarList.Count == 0) yield return false;
+        if (droneDcsList.Count == 0) yield return false;
+
+
+        var droneRadar = droneRadarList[0];
+        mergeList.Sort((x, y) => (x.GetPosition() - droneRadar.GetPosition()).Length().CompareTo((y.GetPosition() - droneRadar.GetPosition()).Length()));
+        var merge=mergeList[0];
+        merge.Enabled=false;
+        yield return true;
+        yield return true;
+        PlayAction((IMyTerminalBlock)droneRadar, "Run", "TurnOn");
+        for (int i = 0; i < 30; i++)    yield return true;
+        PlayAction((IMyTerminalBlock)droneDcsList[0], "Run", "RADAR:FLYBYON");
 }
 
 void Main(string arg, UpdateType updateSource) 
@@ -242,12 +259,20 @@ void Main(string arg, UpdateType updateSource)
 	    droneCodeList.Clear();
 	    droneSelectRow = -1;
 	} else if (arg.Equals("ActivateDrone")) {
-	    foreach(var c in droneRadarList) {
-	    PlayAction(c, "Run", "TurnOn");
-	    }
-	    droneRadarList = new List<IMyTerminalBlock>();
+	    if (LaunchStateMachine == null) {
+	        LaunchStateMachine = DroneLaunchHandler().GetEnumerator();
+                }
 	}
-	updateMotion();
+                if (LaunchStateMachine != null)
+                {
+                    if (!LaunchStateMachine.MoveNext() || !LaunchStateMachine.Current)
+                    {
+                        LaunchStateMachine.Dispose();
+                        LaunchStateMachine = null;
+                    }
+                }
+
+                updateMotion();
 
     runtimeTracker.AddRuntime(); 
  

@@ -394,7 +394,6 @@ return Vector3D.TransformNormal(direction, turret.WorldMatrix);
 Vector3D CalculateTurretViewVector(IMyTerminalBlock rotorA, IMyTerminalBlock rotorE, IMyTerminalBlock refObj)
 {
 Vector3D direction;
-//CODING
 var a = ((IMyMotorStator)rotorA).Angle;
 var e = ((IMyMotorStator)rotorE).Angle;
 Vector3D.CreateFromAzimuthAndElevation(a, e, out direction);
@@ -549,7 +548,6 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 			Target MyTarget = new Target(FoundTarget);
 			MyTargetList.Add(MyTarget);
 			if (fcsSound != null) fcsSound.Play();
-			debugInfo = "lock t1";
 			TurnBlocksOnOff(lockBlockList, true);
 		}
 	}
@@ -576,7 +574,7 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 				}
 			}
 			Vector3D targetPosition = Vector3D.Zero;
-                                    bool isUnderControl = MyShip.Cockpit.IsUnderControl || (MyShip.homingTurret!=null && MyShip.homingTurret.IsUnderControl) || (rotorLidarList.Count>0&&rotorLidarList[0].IsUnderControl); //CODING
+                                    bool isUnderControl = MyShip.Cockpit.IsUnderControl || (MyShip.homingTurret!=null && MyShip.homingTurret.IsUnderControl) || (rotorLidarList.Count>0&&rotorLidarList[0].IsUnderControl); 
 			if (tHas && TrackTarget.EntityId == targetEntity.EntityId && !isUnderControl) {
 				Vector3D HitPoint = targetEntity.Position;
 				MatrixD TargetMainMatrix = TrackTarget.Orientation;   
@@ -1394,7 +1392,6 @@ public class Ship
 	public MyDetectedEntityInfo PulseScanSingle(List<Vector3D> Points, long EntityId = 0){
 		int sc = 0;
 		int x = 0;//这样做是为了减少不必要的运算量
-		// CODING
 		List<IMyCameraBlock> cameraListSorted = this.Cameras.OrderBy(c=>c.AvailableScanRange).ToList();
 		cameraListSorted.Reverse();
 		foreach(Vector3D p in Points){
@@ -1527,7 +1524,20 @@ public class Ship
 				if(!FoundTarget.IsEmpty() && FoundTarget.EntityId == Tgt.EntityId){
 					return FoundTarget;
 				}
-				
+
+                                                // 如果没有设置offset, 现在设置 
+                                                MatrixD tmm = Tgt.Orientation;   
+                                                MatrixD tlam = MatrixD.CreateLookAt(new Vector3D(), tmm.Forward, tmm.Up);
+
+					var hpt = Tgt.HitPosition;
+					if (hpt == Vector3D.Zero) Tgt.trackOffset = Vector3D.Zero;
+					else
+					Tgt.trackOffset = Vector3D.TransformNormal(hpt - Tgt.Position, tlam);
+		posmove = Vector3D.TransformNormal(Tgt.trackOffset, Tgt.Orientation);
+                        buff = Vector3D.Normalize(Tgt.Position + posmove - this.Position) * 10;
+		
+		lidarHitPoint = Tgt.Position + posmove + (t - Tgt.TimeStamp)*Tgt.Velocity/60 + buff; 
+
 				//常规未找到，继续遍历摄像头进行搜索
 				if(FoundTarget.IsEmpty() || FoundTarget.EntityId != Tgt.EntityId){
 					for(int i = 0; i < RightAngleCameras.Count; i ++){
