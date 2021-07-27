@@ -154,7 +154,12 @@ bool isSetup = false;
  
 RadarSurface radarSurface; 
 readonly MyIni generalIni = new MyIni(); 
-readonly MyIni textSurfaceIni = new MyIni(); 
+readonly MyIni textSurfaceIni = new MyIni();
+
+List<IMyTerminalBlock> droneRadarList = new List<IMyTerminalBlock>();
+string droneRadarName = "radardrone";
+
+
 #endregion 
  
 #region Main Routine 
@@ -169,7 +174,6 @@ Program()
     broadcastListener.SetMessageCallback(IGC_TAG);
     }
  
- 
 }
 
 void updateMotion(){
@@ -177,9 +181,15 @@ msc = reference;
 
 refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), msc.WorldMatrix.Forward, msc.WorldMatrix.Up);
 MePosition = msc.GetPosition();
+
+if (t % 10 == 0){
+List<IMyTerminalBlock> tmp = getBlockListByName<IMyTerminalBlock>(droneRadarName, false, false);
+droneRadarList.AddRange(tmp);
+}
+
 t++;
 }
- 
+
 void Main(string arg, UpdateType updateSource) 
 {
 	if (!inited) {
@@ -231,6 +241,11 @@ void Main(string arg, UpdateType updateSource)
 	} else if (arg.Equals("RCLEAR")) {
 	    droneCodeList.Clear();
 	    droneSelectRow = -1;
+	} else if (arg.Equals("ActivateDrone")) {
+	    foreach(var c in droneRadarList) {
+	    PlayAction(c, "Run", "TurnOn");
+	    }
+	    droneRadarList = new List<IMyTerminalBlock>();
 	}
 	updateMotion();
 
@@ -1736,6 +1751,22 @@ GridTerminalSystem.GetBlocksOfType<T>(blocks, b => (
 );
 if (blocks.Count > 0) return blocks[0];
 return null;
+}
+
+List<T> getBlockListByName<T>(string name, bool sameGrid = true, bool sameName = false)
+where T:class,IMyTerminalBlock
+{
+List<T> blocks = new List<T>();
+
+GridTerminalSystem.GetBlocksOfType<T>(blocks, b => (
+!sameGrid || (sameGrid && b.CubeGrid == Me.CubeGrid) 
+) && (
+(sameName && b.CustomName == name)||
+(!sameName && b.CustomName.Contains(name))
+)
+);
+
+return blocks;
 }
 
 void init() {
