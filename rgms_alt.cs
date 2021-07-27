@@ -99,6 +99,7 @@ IMyTerminalBlock pgtimer = null;
                 public int THRUSTER_COUNT = 4;
                 public bool IS_SIDE = false;
                 public double THRUST_PERCENT = 1;
+                public int MISSILE_TTL=6000;
                 public double MissileThrust = 0;
                 public bool IsLargeGrid = false;
                 public double FuseDistance = 2;
@@ -388,6 +389,17 @@ Echo(debugInfo);
 	    // autoFire
                 autoFireProcess();
 
+	    bool targetPanelHasTarget = false;
+	    Vector3D targetPanelPosition = Vector3D.Zero;
+	    Vector3D targetPanelVelocity = Vector3D.Zero;
+
+            
+if (fcsComputer != null && targetPanelPosition == Vector3D.Zero) {
+checkFcsTarget(out targetPanelPosition, out targetPanelVelocity);
+targetPanelHasTarget = targetPanelPosition!=Vector3D.Zero;
+
+}
+
                 //Runs Guidance Block (foreach missile)
                 //---------------------------------------
                 for (int i = 0; i < MISSILES.Count; i++)
@@ -404,7 +416,7 @@ Echo(debugInfo);
                         if ((ThisMissile.GYRO.GetPosition() - Me.GetPosition()).Length() > ThisShipSize)
                         { ThisMissile.IS_CLEAR = true; }
                     }
-                    STD_GUIDANCE(ThisMissile, ThisMissile.IS_CLEAR); 
+                    STD_GUIDANCE(ThisMissile, ThisMissile.IS_CLEAR, targetPanelPosition, targetPanelVelocity, targetPanelHasTarget); 
 
                     //Disposes If Out Of Range Or Destroyed (misses a beat on one missile)
                     bool Isgyroout = ThisMissile.GYRO.CubeGrid.GetCubeBlock(ThisMissile.GYRO.Position) == null;
@@ -597,8 +609,13 @@ Color unfullColor = new Color(255, 255, 183, 255);
             /*=================================================                           
              RdavNav             
              ---------------------------------------     */
-            void STD_GUIDANCE(MISSILE This_Missile, bool isClear)
+            void STD_GUIDANCE(MISSILE This_Missile, bool isClear, Vector3D targetPanelPosition, Vector3D targetPanelVelocity, bool targetPanelHasTarget)
             {
+                This_Missile.MISSILE_TTL --;
+                if (This_Missile.MISSILE_TTL <=0) {
+                foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).IsArmed = true; }
+                foreach (var item in This_Missile.WARHEADS){ (item as IMyWarhead).Detonate();}
+                }
 
                 //Targeting Module
                 //-----------------------------------------------
@@ -609,26 +626,7 @@ Color unfullColor = new Color(255, 255, 183, 255);
 
                 //Logical Determination Of Enemy Position
 	    // a b K
-	    bool targetPanelHasTarget = false;
-	    Vector3D targetPanelPosition = Vector3D.Zero;
-	    Vector3D targetPanelVelocity = Vector3D.Zero;
 
-	    if(gcTargetPanel != null) {
-	    var panelInfo = gcTargetPanel.GetPublicTitle();
-	    // [T:-3400.63210157891:-14844.4586962264:-13932.3639607262:0.002283879:0.002356248:0.001983097
-	    var tokens = panelInfo.Split(':');
-	    if (panelInfo.StartsWith("[T:") && tokens.Length >= 7) {
-	       targetPanelPosition = new Vector3D(Convert.ToDouble(tokens[1]),Convert.ToDouble(tokens[2]),Convert.ToDouble(tokens[3]));
-	       targetPanelVelocity = new Vector3D(Convert.ToDouble(tokens[4]),Convert.ToDouble(tokens[5]),Convert.ToDouble(tokens[6]));
-	       targetPanelHasTarget = true;
-	    }
-                }
-            
-if (fcsComputer != null && targetPanelPosition == Vector3D.Zero) {
-checkFcsTarget(out targetPanelPosition, out targetPanelVelocity);
-targetPanelHasTarget = targetPanelPosition!=Vector3D.Zero;
-
-}
 
 	    bool usePanel = false;
 	    
@@ -781,7 +779,7 @@ Vector3D rv = Vector3D.Reject(targetV, tarN);
 
 // 1.1 拦截方式
 var otv = This_Missile.TargetVelocity;
-if (otv.Length() > 10 && isTrackVelocity) {
+if (otv.Length() > 10 && isTrackVelocity && targetRange.Length() > 500) {
 var rrd = Vector3D.Reject(targetRange, Vector3D.Normalize(otv));
 var rrv = rrd * 0.3; // rr rate
 if (rrv.Length() > 90) { //
