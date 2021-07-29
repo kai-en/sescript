@@ -21,7 +21,6 @@ dockingForward=FORWARD
 dockingUp=UP
 dockingApproach=DOWN
 soundBlockNameTag=Sound Block fcs
-shipLength=30
 commandAllTic = 100
 commandWaitTic = 0
 ScanRange=3000
@@ -67,7 +66,6 @@ string DCSLCDNameTag = "DCS_LCD";
 string GyroscopesNameTag = "";
 string soundBlockNameTag = "FCSFoundSound";
 string homingTurretName = "R_FORWARD_OC";
-string gcTargetPanelName = "LCD Panel GC Target";
 double ScanRange = 2000;
 string fighterFcsName = "Programmable block fcs";
 
@@ -75,9 +73,6 @@ bool useTurretAsAimer = false;
 string liFcsSearchGroupName = "Li-fcs-search-G";
 string liFcsLockGroupName = "Li-fcs-lock-G";
 int AimOnConfig = 1;
-double shipWidth = 100;
-double shipHeight = 40;
-double shipLength = 180;
 int flyByAttackRoundTime = 20000;
 
 Vector3D flyByAimPosition = new Vector3D(0,0,0);
@@ -220,10 +215,6 @@ string RGMSNameTag = "Programmable block rgms";
 IMyTerminalBlock fighterFcsr = null;
 IMyTerminalBlock rgms = null;
 
-List<IMyCameraBlock> cameraList = new List<IMyCameraBlock>();
-double fme = 100;
-List<IMyTerminalBlock> lcdBackList = new List<IMyTerminalBlock>();
-
 // new down mode
 Vector3D downStartPos = Vector3D.Zero;
 int lastDownT = 0;
@@ -254,6 +245,10 @@ double ahh = 0;
 // suspect mode
 bool susMode = false;
 int lastNoHighSpeed = 0;
+
+// smoke
+List<IMyUserControllableGun> smokeList = new List<IMyUserControllableGun>();
+int smokeInterval = -1;
 
 // input
 static double INPUT_RATE = 5;
@@ -723,6 +718,11 @@ SetGyroOverride(needGyroOverride);
 Main_RT(arguments, updateType); // calc thrustNeedDir need to be in front of main_vt
 
 Main_VT();
+
+if (smokeInterval > 0 && t % smokeInterval == 0) {
+PlayActionList(smokeList.OfType<IMyTerminalBlock>().ToList(),"ShootOnce");
+}
+// End Main
 }
 
 Vector3D dummyP;
@@ -965,6 +965,14 @@ myToShipPosition = Vector3D.TransformNormal(MePosition - shipPosition, shipLookA
 }
 
 MeVelocity = msc.GetShipVelocities().LinearVelocity;
+if (MeVelocity.Length() < 40){
+smokeInterval = -1;
+} else {
+var tmpddd = Vector3D.Dot(Vector3D.Normalize(MeVelocity), msc.WorldMatrix.Forward);
+tmpddd = 1 - tmpddd;
+if (tmpddd <= 0) tmpddd = 0.00001;
+smokeInterval = (int)((MeVelocity.Length()) / (tmpddd * 40));
+}
 mySpeedToMe = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
 MeAcceleration = (MeVelocity-MeLastVelocity)*60;
 
@@ -1241,7 +1249,7 @@ blocks[i].GetActionWithName(action).Apply(blocks[i]);
 void ShowLCD()
 {
 // Echo status:
-Echo("DCS v4-vf");
+Echo("DCS v5.6");
 Echo(debugInfo);
 if(Head != null) {
 Echo("Head: " + Head.CustomName + "\n");
@@ -1483,20 +1491,20 @@ tryAddVftr("Hinge Connector", toRa(89F), 0, 0, 0, landrList);
 tryAddVftr("Hinge Drill", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
 
 // U2
-//tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
-//tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
-//tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
-//tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
-//tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
-//tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
+// tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
+// tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
+// tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
+// tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
+// tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
+// tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
 
-//tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
-//tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
-//tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
-//tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+// tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
+// tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+// tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
+// tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
 
-//tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
-//tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
+// tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
+// tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
 if (Cockpit is IMyTextSurfaceProvider) {
@@ -1547,16 +1555,14 @@ InitSpeedControl();
 
 GridTerminalSystem.GetBlocksOfType<IMySensorBlock> (sensors, b=>b.CubeGrid==Me.CubeGrid);
 
-GridTerminalSystem.GetBlocksOfType<IMyCameraBlock> (cameraList,b=>b.CubeGrid==Me.CubeGrid);
-cameraList.ForEach(delegate(IMyCameraBlock cam){cam.ApplyAction("OnOff_On");cam.EnableRaycast = true;});
-findByGroup("LCD-Back-G",lcdBackList);
-
 if (isBase && Cockpit.GetNaturalGravity().Length() > 0.01f){
 downStartPos = Cockpit.GetPosition();
 isDown = true;
 }
 
 initL2T();
+
+GridTerminalSystem.GetBlocksOfType<IMyUserControllableGun> (smokeList, b=>b.CustomName.Contains("Smoke"));
 
 init = true;
 }
@@ -2125,9 +2131,6 @@ cfg.Get("dockingList", ref tmps);
 parseV3L(tmps, dockingList);
 cfg.Get("lndList", ref tmps);
 parseV3L(tmps, lndList);
-cfg.Get("shipWidth", ref shipWidth);
-cfg.Get("shipHeight", ref shipHeight);
-cfg.Get("shipLength", ref shipLength);
 }
 
 void parseV3L (string tmps, List<Vector3D> l) {
@@ -2166,13 +2169,6 @@ blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyReflectorLight>(blocks);
 FilterSameGrid(Me.CubeGrid, ref blocks);
 spotlights = blocks;
-
-gcTargetPanel = getBlockByName(gcTargetPanelName, false, true) as IMyTextPanel;
-for (int i = 0 ; i < maxTargetCount; i ++) {
-var panel = getBlockByName(gcTargetPanelName+i, false, true);
-if (panel == null) break;
-gcTargetPanelList.Add(panel as IMyTextPanel);
-}
 
 }
 

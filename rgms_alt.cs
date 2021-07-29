@@ -1,3 +1,4 @@
+static int SMOKE_DENSITY = 4; // larger means less smoke
 static int rgms_no = 0;
 // static float missileGravityRate = 5F;
 double GUILD_RATE = 0.3;
@@ -91,6 +92,7 @@ IMyTerminalBlock pgtimer = null;
                 public List<IMyTerminalBlock> WARHEADS = new List<IMyTerminalBlock>(); //Multiple
 	    public List<IMyTerminalBlock> SPOTLIST= new List<IMyTerminalBlock>();
 	    public List<IMyTerminalBlock> LANDINGLIST= new List<IMyTerminalBlock>();
+                public IMyTerminalBlock SMOKE;
 
                 //Permanent Missile Details
                 public double MissileAccel = 10;
@@ -679,6 +681,8 @@ Color unfullColor = new Color(255, 255, 183, 255);
 	        This_Missile.TargetVelocity = targetPanelVelocity;
                     This_Missile.TargetVelocityPanel = targetPanelVelocity;
 	    }
+                if (This_Missile.MISSILE_TTL % SMOKE_DENSITY == 0)
+                PlayAction(This_Missile.SMOKE, "ShootOnce");
                 if(isClear == false) {
                     TargetPosition = RC.GetPosition() + RC.WorldMatrix.Up* 100000D;
                     if (isClearDown)
@@ -940,11 +944,16 @@ debugInfo += "\namToMe: " + displayVector3D(amToMe);
                 This_Missile.PREV_Pitch = Pitch;
 
                 //Detonates warheads in close proximity
-                if ((TargetPosition - MissilePosition).LengthSquared() < 20 * 20 && This_Missile.WARHEADS.Count > 0) //Arms
-                { foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).IsArmed = true; } }
-	    bool targetNeer = (TargetPosition - MissilePosition).LengthSquared() < This_Missile.FuseDistance * This_Missile.FuseDistance;
+                bool targetNeer = false;
+                if ((TargetPosition - MissilePosition).Length() < 40 && This_Missile.WARHEADS.Count > 0) //Arms
+                { foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).IsArmed = true; } targetNeer = true; }
 	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 4*4 ;
-                if ((targetGetFar)&& This_Missile.WARHEADS.Count > 0) //A mighty earth shattering kaboom
+                if (targetGetFar){
+                foreach (var item in This_Missile.WARHEADS){ (item as IMyWarhead).StartCountdown();}
+                }
+                bool missileStop = Vector3D.Dot(Vector3D.Normalize(MissileVelocity), Vector3D.Normalize(lastVelocity))<0.8;
+                missileStop = missileStop && targetNeer;
+                if ((missileStop)&& This_Missile.WARHEADS.Count > 0) //A mighty earth shattering kaboom
                 {
 		foreach (var item in This_Missile.WARHEADS){ (item as IMyWarhead).Detonate();}
                 }
@@ -1057,6 +1066,12 @@ debugInfo += "\namToMe: " + displayVector3D(amToMe);
                     List<IMyTerminalBlock> TempLands = LANDS.FindAll(b => (b.GetPosition() - TempMerges[0].GetPosition()).Length() < 1.26);
 	        NEW_MISSILE.LANDINGLIST = TempLands;
                     }
+
+                    List<IMyTerminalBlock> TempSmokes = new List<IMyTerminalBlock>();
+                    GridTerminalSystem.GetBlocksOfType<IMyUserControllableGun>(TempSmokes, b => b.CustomName.Contains(MissileTag));
+	        TempSmokes.Sort((x, y) => (compareP(x, y, Key_Gyro)));
+	        if(TempSmokes.Count > 0)
+	        NEW_MISSILE.SMOKE = TempSmokes[0];
 
                     //Checks All Key Blocks Are Present
                     bool HasTurret = TempTurrets.Count > 0;
@@ -1516,6 +1531,12 @@ void PlayActionList(List<IMyTerminalBlock> blocks, String action) {
 		var a = blocks[i].GetActionWithName(action);
 		if (a!=null) a.Apply(blocks[i]);
 	}
+}
+void PlayAction(IMyTerminalBlock b, String action) {
+    if(b == null) return;
+
+		var a = b.GetActionWithName(action);
+		if (a!=null) a.Apply(b);
 }
 
 string displayVector3D(Vector3D tar) {

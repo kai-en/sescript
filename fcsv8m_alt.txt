@@ -1109,7 +1109,7 @@ void GetBlocks(){
 	
 	//if(WeaponsNameTag[0] == ""){
 		BK_Temp = new List<IMyTerminalBlock>();
-		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CubeGrid == Me.CubeGrid && b is IMyUserControllableGun && !(b is IMyLargeTurretBase) && (WeaponsNameTag[1] == "ALL" ? true : WeaponsNameTag[1] == "" ? false : b.CustomName.Contains(WeaponsNameTag[1])));
+		GridTerminalSystem.GetBlocksOfType(BK_Temp, b => b.CubeGrid == Me.CubeGrid && b is IMyUserControllableGun && !(b is IMyLargeTurretBase) && (WeaponsNameTag[1] == "ALL" ? notIgnoreName(b.CustomName) : WeaponsNameTag[1] == "" ? false : b.CustomName.Contains(WeaponsNameTag[1])));
 		BK.AddList(BK_Temp);
 	//}
 
@@ -2353,4 +2353,8 @@ public class WcPbApi
         _getWeaponAzimuthMatrix?.Invoke(weapon, weaponId) ?? Matrix.Zero;
     public Matrix GetWeaponElevationMatrix(Sandbox.ModAPI.Ingame.IMyTerminalBlock weapon, int weaponId) =>
         _getWeaponElevationMatrix?.Invoke(weapon, weaponId) ?? Matrix.Zero;
+}
+
+bool notIgnoreName(string n){
+return !n.Contains("Smoke");
 }
