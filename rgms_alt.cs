@@ -160,7 +160,7 @@ List<Vector3D> LTVs = new List<Vector3D>();
                 this.h1 = h;
                 this.gts = gts;
                 List<IMyMotorStator> h2clist = new List<IMyMotorStator>();
-                gts.GetBlocksOfType<IMyMotorStator>(h2clist, h2 => h2.CustomName.Contains("MS 2") && (h2.GetPosition() - h.GetPosition()).Length() < 1.6);
+                gts.GetBlocksOfType<IMyMotorStator>(h2clist, h2 => h2.CustomName.Contains("[MS 2]") && (h2.GetPosition() - h.GetPosition()).Length() < 1.1);
                 if (h2clist.Count == 0) throw new Exception("Refueler init error");
                 this.h2 = h2clist[0];
               }
@@ -276,7 +276,7 @@ List<Vector3D> LTVs = new List<Vector3D>();
                 {fcsComputer = TempCollection4[0];}
 
                 List<IMyMotorStator> TempCollection5 = new List<IMyMotorStator>();
-                GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(TempCollection5, a => a.CustomName.Contains("MS 1") );
+                GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(TempCollection5, a => a.CustomName.Contains("[MS 1]") );
                 TempCollection5 = TempCollection5.OrderBy(g=>{
 	    var rcmt = RC.WorldMatrix;
 	    var tranmt = MatrixD.CreateLookAt(new Vector3D(), rcmt.Forward, rcmt.Up);
@@ -1032,7 +1032,7 @@ debugInfo += "\namToMe: " + displayVector3D(amToMe);
                     TempPower.Sort((x, y) => (x.GetPosition() - Key_Gyro.GetPosition()).LengthSquared().CompareTo((y.GetPosition() - Key_Gyro.GetPosition()).LengthSquared()));
 
                     //Sorts And Selects Merges
-                    List<IMyTerminalBlock> TempMerges = MERGES.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < 1.51);
+                    List<IMyTerminalBlock> TempMerges = MERGES.FindAll(b => (b.GetPosition() - GyroPos).Length() < 2);
                     TempMerges.Sort((x, y) => (compareP(x, y, Key_Gyro)));
 
                     //Sorts And Selects Thrusters

@@ -2390,7 +2390,7 @@ Vector3D.CreateFromAzimuthAndElevation(homingTurret.Azimuth, homingTurret.Elevat
 Vector3D worldDirection = Vector3D.TransformNormal(direction, homingTurret.WorldMatrix);
 Vector3D myDirection = Vector3D.TransformNormal(worldDirection, refLookAtMatrix);
 SetGyroYaw(AimRatio * myDirection.X);
-SetGyroPitch(0.3* AimRatio * myDirection.Y);
+SetGyroPitch(AimRatio * myDirection.Y);
 SetGyroOverride(true);
 } else
 {
@@ -2495,9 +2495,9 @@ shipRollToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Backward, 
 break;
 }
 
-SetGyroYaw(AimRatio*0.5*shipDirectionToMe.X);
-SetGyroPitch(AimRatio*0.1*shipDirectionToMe.Y);
-SetGyroRoll(-AimRatio*0.5*shipRollToMe.X);
+SetGyroYaw(AimRatio*shipDirectionToMe.X);
+SetGyroPitch(AimRatio*shipDirectionToMe.Y);
+SetGyroRoll(-AimRatio*shipRollToMe.X);
 SetGyroOverride(true);
 
 }

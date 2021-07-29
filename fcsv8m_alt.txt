@@ -1058,6 +1058,7 @@ void GetBlocks(){
 	//获取LCD
 	GridTerminalSystem.GetBlocksOfType(InfoLCD, b => (LCDNameTag == "" ? (LCDNameTag == "ALL" ? true : false) : ((IMyTerminalBlock)b).CustomName.Contains(LCDNameTag)));
 	GridTerminalSystem.GetBlocksOfType(LightLCD, b => ((IMyTerminalBlock)b).CustomName.Contains(LightLCDNameTag));
+            LightLCD.Add(Me.GetSurface(0));
 	
 	//获取其他方块
 	List<IMyTerminalBlock> BK = new List<IMyTerminalBlock>();
