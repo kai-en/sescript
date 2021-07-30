@@ -170,6 +170,7 @@ List<Vector3D> LTVs = new List<Vector3D>();
                 gts.GetBlocksOfType<IMyShipMergeBlock>(mclist, m => m.CustomName.Contains(MissileTag) && (m.GetPosition() - h1.GetPosition()).Length() < 1.6);
                 if (mclist.Count == 0) return;
                 this.m = mclist[0];
+                debugInfo += "\n" + Math.Round((this.m.GetPosition() - h1.GetPosition()).Length(), 2);
                 status = 1;
                 pStart = timestamp;
               }
@@ -440,6 +441,7 @@ targetPanelHasTarget = targetPanelPosition!=Vector3D.Zero;
                     }
                 }
 
+                debugInfo = "refueler";
                 foreach(var r in refuelerList) {
                   r.process();
                 }
@@ -474,10 +476,10 @@ Color unfullColor = new Color(255, 255, 183, 255);
             float persizeH = surfaceSize.Y * 0.7f;
             if (count < 4) {
               persize = 0.25f * surfaceSize.X;
-            } else if (count < 8) {
+            } else if (count < 16) {
               persize = (1f / count) * surfaceSize.X;
             } else {
-              persize = 0.125f * surfaceSize.X;
+              persize = 0.0625f * surfaceSize.X;
             }
 
             for (int i = 0; i < count; i++) {
@@ -773,8 +775,8 @@ thrust *= This_Missile.THRUST_PERCENT;
 double sdl = thrust / This_Missile.MISSILE_MASS;
 
 // 1 求不需要的速度
-debugInfo = "TR: " + targetRange.Length();
-debugInfo += "\nIS_SIDE: " + This_Missile.IS_SIDE;
+//debugInfo = "TR: " + targetRange.Length();
+//debugInfo += "\nIS_SIDE: " + This_Missile.IS_SIDE;
 Vector3D tarN = Vector3D.Normalize(targetRange);
 //debugInfo += "\nTV: " + targetV.Length();
 Vector3D rv = Vector3D.Reject(targetV, tarN);
@@ -928,7 +930,7 @@ var rr = Vector3D.Normalize(Vector3D.Reject(FDIR, Vector3D.Normalize(RC.GetNatur
 var rangle = 1 - Vector3D.Dot(rr, tarN);
 //debugInfo += "\nRA: " + rangle;
 
-debugInfo += "\namToMe: " + displayVector3D(amToMe);
+//debugInfo += "\namToMe: " + displayVector3D(amToMe);
 //debugInfo += "\nnearest" + This_Missile.nearest;
 
 
@@ -1774,3 +1776,5 @@ LTVs.Add(tmpV);
 }
 
 // (/ (sqrt 5) 2)
+
+// (sqrt (+ (* 1.5 1.5) (* 0.5 0.5)))
