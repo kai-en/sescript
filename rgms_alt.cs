@@ -191,17 +191,17 @@ List<Vector3D> LTVs = new List<Vector3D>();
                   if(this.m.Enabled) {
                     this.m.Enabled = false;
                   }
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 25) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 27) * 60) {
                   if(!this.m.Enabled) {
                     this.m.Enabled = true;
                   }
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 26) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 30) * 60) {
                   if (this.h2.IsAttached) {
                     this.h2.ApplyAction("Detach");
                   }
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 31) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 36) * 60) {
                   this.h1.SetValueFloat("Velocity", (float)-5);
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 32) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 38) * 60) {
                   status = 2;
                 }
               }
@@ -537,7 +537,7 @@ Color unfullColor = new Color(255, 255, 183, 255);
             fColor = fullColor;
             } else if (status == 1) {
               float t = (float) (timestamp - refueler.pStart);
-              persent = t/((MISSILE_BUILD_TIME + 32) * 60);
+              persent = t/((MISSILE_BUILD_TIME + 39) * 60);
             }
             var fSize = new Vector2 (persize * 0.33f - 2, (persizeH * 0.7f - 2) * persent);
 	sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", size: fSize, color: fColor);
