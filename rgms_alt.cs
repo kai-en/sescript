@@ -1,4 +1,5 @@
-static int SMOKE_DENSITY = 4; // larger means less smoke
+static int SMOKE_DENSITY = 8; // larger means less smoke
+static double REFUELER_MERGE_DISTANCE=1.81;
 static int rgms_no = 0;
 // static float missileGravityRate = 5F;
 double GUILD_RATE = 0.3;
@@ -160,16 +161,16 @@ List<Vector3D> LTVs = new List<Vector3D>();
                 this.h1 = h;
                 this.gts = gts;
                 List<IMyMotorStator> h2clist = new List<IMyMotorStator>();
-                gts.GetBlocksOfType<IMyMotorStator>(h2clist, h2 => h2.CustomName.Contains("[MS 2]") && (h2.GetPosition() - h.GetPosition()).Length() < 1.1);
+                gts.GetBlocksOfType<IMyMotorStator>(h2clist, h2 => h2.CustomName.Contains("[MS 2]") && (h2.GetPosition() - h.GetPosition()).Length() < 0.6);
                 if (h2clist.Count == 0) throw new Exception("Refueler init error");
                 this.h2 = h2clist[0];
               }
               
-              private void checkStart() {
-                List<IMyShipMergeBlock> mclist = new List<IMyShipMergeBlock>();
-                gts.GetBlocksOfType<IMyShipMergeBlock>(mclist, m => m.CustomName.Contains(MissileTag) && (m.GetPosition() - h1.GetPosition()).Length() < 1.6);
+              private void checkStart(List<IMyShipMergeBlock> mclist) {
                 if (mclist.Count == 0) return;
-                this.m = mclist[0];
+	  var matchlist = mclist.Where(x=>(x.GetPosition()-h1.GetPosition()).Length() < REFUELER_MERGE_DISTANCE).ToList();
+	  if(matchlist.Count==0) return;
+                this.m = matchlist[0];
                 debugInfo += "\n" + Math.Round((this.m.GetPosition() - h1.GetPosition()).Length(), 2);
                 status = 1;
                 pStart = timestamp;
@@ -179,25 +180,25 @@ List<Vector3D> LTVs = new List<Vector3D>();
                 if (timestamp < pStart + (MISSILE_BUILD_TIME + 3) * 60) {
                 } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 8) * 60) {
                   this.h1.SetValueFloat("Velocity", (float)5);
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 9) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 14) * 60) {
                   if (!this.h2.IsAttached) {
                     this.h2.ApplyAction("Attach");
                   }
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 19) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 24) * 60) {
                   if(this.m.Enabled) {
                     this.m.Enabled = false;
                   }
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 20) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 25) * 60) {
                   if(!this.m.Enabled) {
                     this.m.Enabled = true;
                   }
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 21) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 26) * 60) {
                   if (this.h2.IsAttached) {
                     this.h2.ApplyAction("Detach");
                   }
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 26) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 31) * 60) {
                   this.h1.SetValueFloat("Velocity", (float)-5);
-                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 27) * 60) {
+                } else if (timestamp < pStart + (MISSILE_BUILD_TIME + 32) * 60) {
                   status = 2;
                 }
               }
@@ -209,10 +210,10 @@ List<Vector3D> LTVs = new List<Vector3D>();
                 }
               }
               
-              public void process() {
+              public void process(List<IMyShipMergeBlock> mcList) {
                 switch(status) {
                 case(0):
-                checkStart();
+                checkStart(mcList);
                 break;
                 case(1):
                 doingRefuel();
@@ -442,8 +443,12 @@ targetPanelHasTarget = targetPanelPosition!=Vector3D.Zero;
                 }
 
                 debugInfo = "refueler";
+                  List<IMyShipMergeBlock> mcList = new List<IMyShipMergeBlock>();
+	if (timestamp % 4 ==0)
+                GridTerminalSystem.GetBlocksOfType<IMyShipMergeBlock>(mcList, m => m.CustomName.Contains(MissileTag));
+
                 foreach(var r in refuelerList) {
-                  r.process();
+                  r.process(mcList);
                 }
                 drawMissile();
             }
@@ -524,7 +529,7 @@ Color unfullColor = new Color(255, 255, 183, 255);
             fColor = fullColor;
             } else if (status == 1) {
               float t = (float) (timestamp - refueler.pStart);
-              persent = t/((MISSILE_BUILD_TIME + 27) * 60);
+              persent = t/((MISSILE_BUILD_TIME + 32) * 60);
             }
             var fSize = new Vector2 (persize * 0.33f - 2, (persizeH * 0.7f - 2) * persent);
 	sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", size: fSize, color: fColor);
@@ -981,15 +986,16 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                 List<IMyTerminalBlock> MERGES = new List<IMyTerminalBlock>();
                 GridTerminalSystem.GetBlocksOfType<IMyShipMergeBlock>(MERGES, b => {
                 if (!b.CustomName.Contains(MissileTag)) return false;
-                bool found = false;
-                foreach(var r in refuelerList) {
-                  if (r.m != b) continue;
-                  found = true;
-                  if(r.status != 2) break;
-                  return true;
-                }
-                if (found) return false;
-                else return true;
+	  return true;
+                // bool found = false;
+                // foreach(var r in refuelerList) {
+                //   if (r.m != b) continue;
+                //   found = true;
+                //   if(r.status != 2) break;
+                //   return true;
+                // }
+                // if (found) return false;
+                // else return true;
                 });
                 List<IMyTerminalBlock> BATTERIES = new List<IMyTerminalBlock>();
                 GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(BATTERIES, b => b.CustomName.Contains(MissileTag) && (b is IMyBatteryBlock || b is IMyReactor));
@@ -1036,6 +1042,18 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                     //Sorts And Selects Merges
                     List<IMyTerminalBlock> TempMerges = MERGES.FindAll(b => (b.GetPosition() - GyroPos).Length() < 2);
                     TempMerges.Sort((x, y) => (compareP(x, y, Key_Gyro)));
+	      bool isRefueling = false;
+	      if (TempMerges.Count > 0) {
+	      var thismerge = TempMerges[0];
+	      if (((IMyShipMergeBlock)thismerge).Enabled == false) continue;
+	       foreach(var r in refuelerList) {
+               if (r.m != thismerge) continue;
+               if(r.status != 2) {
+	       isRefueling = true;
+	       break;
+	 }
+               }
+	      }
 
                     //Sorts And Selects Thrusters
                     //NEW_MISSILE.THRUSTERS = THRUSTERS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
@@ -1090,10 +1108,11 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                         "\nHas Turret: " + HasTurret +
                         "\nHas Power: " + HasPower +
                         "\nHasMerge: " + HasMerge +
-                        "\nHasThruster: " + HasThruster;
+                        "\nHasThruster: " + HasThruster +
+                        "\nRefueled: " + (!isRefueling);
 
                     //Assigns and Exits Loop
-                    if (HasTurret && HasPower && HasMerge && HasThruster)
+                    if (HasTurret && HasPower && HasMerge && HasThruster &&(!isRefueling))
                     {
 		if(TempTurrets.Count>0){
 		  // a b K
@@ -1777,4 +1796,5 @@ LTVs.Add(tmpV);
 
 // (/ (sqrt 5) 2)
 
-// (sqrt (+ (* 1.5 1.5) (* 0.5 0.5)))
+// (sqrt (+ (* 1 1) (* 1.5 1.5)))
+// (sqrt (+ (* 1 1) (* 1.5 1.5) 1))

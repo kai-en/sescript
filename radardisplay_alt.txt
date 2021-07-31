@@ -203,7 +203,7 @@ public IEnumerable<bool> DroneLaunchHandler()
         yield return true;
         yield return true;
         PlayAction((IMyTerminalBlock)droneRadar, "Run", "TurnOn");
-        for (int i = 0; i < 30; i++)    yield return true;
+        for (int i = 0; i < 60; i++)    yield return true;
         PlayAction((IMyTerminalBlock)droneDcsList[0], "Run", "RADAR:FLYBYON");
 }
 

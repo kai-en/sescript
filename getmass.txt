@@ -50,3 +50,4 @@ Echo("mass: " + msc.CalculateShipMass().PhysicalMass);
 // (- 2273.8 323)
 // (- 961.2 323) MISSILE_MASS=638.2
 // (- 1826.2 323)1503.2
+// (- 391 323)
