@@ -7,6 +7,9 @@ double ATAN_BASE = 0.5;
 double APID_P = 10;
 double APID_D = 1.0;
 
+static string WELDER_GROUP_NAME="Welder-Missile-G";
+List<IMyTerminalBlock> welderList = new List<IMyTerminalBlock>();
+
 //double MISSILE_MASS = 3398.8;
 //double MISSILE_MASS = 5316.4;
 //double MISSILE_MASS = 1989;
@@ -309,6 +312,10 @@ List<Vector3D> LTVs = new List<Vector3D>();
                 List<IMyTerminalBlock> tList = new List<IMyTerminalBlock>();
                 GridTerminalSystem.GetBlocksOfType<IMyTimerBlock> (tList, b => ((IMyTerminalBlock)b).CustomName.Contains("PG-"));
                 if (tList.Count > 0) pgtimer = tList[0];
+
+	var group = GridTerminalSystem.GetBlockGroupWithName(WELDER_GROUP_NAME);
+	if (group != null) group.GetBlocks(welderList);
+
             }
             #endregion
 
@@ -360,6 +367,7 @@ Echo(debugInfo);
                 //-----------------------------------------
                 if (argument == "Fire" && LaunchStateMachine == null)
                 {
+		PlayActionList(welderList, "OnOff_Off");
                     LaunchStateMachine = MissileLaunchHandler().GetEnumerator();
                 }
 	    else if ( argument.Contains(":")) {
