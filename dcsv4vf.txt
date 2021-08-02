@@ -1,11 +1,11 @@
 /*
-Kaien's drone control system V5.5
+Kaien's drone control system V5.6
 ?id=1406061291
 
 last update:
-v5.5.0 20210606
+v5.6.0 20210802
 -----------------
-BST STEER and ...
+Smoke and gyroDZ
 ...
 
 custom data sample for son ship:
@@ -1484,27 +1484,27 @@ Head = getBlockByName(HeadNameTag) as IMyShipController;
 //tryAddVftr("Hinge landgear", 0, toRa(-45F), toRa(-45F), 0, landrList);
 
 //cc-7T
-// tryAddVftr("Hinge Land", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
-// tryAddVftr("Wing-L", toRa(-89F), 0, 0, 0, landrList);
-// tryAddVftr("Wing-R", toRa(-89F), 0, 0, 0, landrList);
-// tryAddVftr("Hinge Connector", toRa(89F), 0, 0, 0, landrList);
-// tryAddVftr("Hinge Drill", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
+tryAddVftr("Hinge Land", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
+tryAddVftr("Wing-L", toRa(-89F), 0, 0, 0, landrList);
+tryAddVftr("Wing-R", toRa(-89F), 0, 0, 0, landrList);
+tryAddVftr("Hinge Connector", toRa(89F), 0, 0, 0, landrList);
+tryAddVftr("Hinge Drill", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
 
 // U2
-tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
-tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
-tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
-tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
-tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
-tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
+// tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
+// tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
+// tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
+// tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
+// tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
+// tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
 
-tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
-tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
-tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
-tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+// tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
+// tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+// tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
+// tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
 
-tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
-tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
+// tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
+// tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
 if (Cockpit is IMyTextSurfaceProvider) {
@@ -1732,10 +1732,14 @@ Gyroscopes[i].ApplyAction("Override");
 }
 
 float gyroDZ = 0.01F;
+double rateAdjust(double r) {
+return r*r*r*(60/(gyroDZ*gyroDZ));
+}
 
 void SetGyroYaw(double yawRate)
 {
 if (Math.Abs(yawRate) > gyroDZ) yawRate *=60;
+else yawRate = rateAdjust(yawRate);
 if (legMode < 2 || Head == null) {
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
@@ -1752,6 +1756,7 @@ Gyroscopes[i].SetValue(gyroYawFieldHead[i], (float)yawRate * gyroYawFactorHead[i
 void SetGyroPitch(double pitchRate)
 {
 if (Math.Abs(pitchRate) > gyroDZ) pitchRate *=60;
+else pitchRate = rateAdjust(pitchRate);
 if (legMode < 2 || Head == null) {
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
@@ -1768,6 +1773,7 @@ Gyroscopes[i].SetValue(gyroPitchFieldHead[i], (float)pitchRate * gyroPitchFactor
 void SetGyroRoll(double rollRate)
 {
 if (Math.Abs(rollRate) > gyroDZ) rollRate *=60;
+else rollRate = rateAdjust(rollRate);
 if (legMode < 2 || Head == null) {
 for (int i = 0; i < Gyroscopes.Count; i++)
 {
