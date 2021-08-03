@@ -2,12 +2,11 @@ static double STDBY_DISTANCE = 200;
 static int f_no = 0;
 double GUILD_RATE = 0.3;
 double ATAN_BASE = 0.1;
-double APID_P = 3;
+double APID_P = 1;
 double APID_D = 1.0;
 
 double F_MASS = 1428.8;
 double LaunchDist = 20;
-int dropTime = 0;
 bool isClearDown=false;
 	    
 string debugInfo = "";
@@ -47,6 +46,7 @@ Random rnd = new Random();
             //Classes
             class FUNNEL
             {
+                public bool inited = false;
                 //Terminal Blocks On Each Funnel
                 public IMyTerminalBlock GYRO;
                 public IMyTerminalBlock TURRET;
@@ -291,9 +291,18 @@ checkFcsTarget(out targetPanelPosition, out targetPanelVelocity);
                 yield return true;
                 yield return true; //Safety Tick
 
-	    for (int i = 0; i < dropTime; i++) {
+                foreach(var t in ThisFunnel.THRUSTERS) {
+                t.Enabled=true;
+                t.ThrustOverridePercentage = 1f;
+                }
+
+                int dropTime = 0;
+                if (ng.Length()<0.01) dropTime = 3;
+
+	    for (int i = 0; i < dropTime*60; i++) {
 	    	yield return true;
 	    }
+                ThisFunnel.inited=true;
 
                 //Launches Missile & Gathers Next Scanner
                 PREP_FOR_LAUNCH(FUNNELS.Count - 1);
@@ -568,6 +577,7 @@ checkFcsTarget(out targetPanelPosition, out targetPanelVelocity);
             void STD_GUIDANCE(FUNNEL ThisFunnel, bool isClear, int idx, Vector3D targetPanelPosition, Vector3D targetPanelVelocity)
             {
 	    if (ThisFunnel.GYRO == null) return;
+                if(!ThisFunnel.inited) return;
                 var ENEMY_POS = new Vector3D();
 	    // a b K
 	    bool targetPanelHasTarget = targetPanelPosition != Vector3D.Zero;
@@ -1106,6 +1116,8 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                 { return; }
 
                 //Applies To Scenario
+                double amrate = 1D;
+                if (missile.allowAttack) amrate = 10D;
                 GYRO.Pitch = (float)MathHelper.Clamp((modAngle(-TRANS_VECT.X)) * GAIN , -30, 30);
 		//GYRO.Pitch = (float)MathHelper.Clamp( missile.pidE.Filter(-TRANS_VECT.X, 2) , -30, 30);
                 //GYRO.Yaw = (float)MathHelper.Clamp(((-TRANS_VECT.Y)) * GAIN, -30, 30);
