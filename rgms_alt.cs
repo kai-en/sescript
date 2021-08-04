@@ -960,7 +960,7 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
 
                 //Detonates warheads in close proximity
                 bool targetNeer = false;
-                if ((TargetPosition - MissilePosition).Length() < 40 && This_Missile.WARHEADS.Count > 0) //Arms
+                if ((TargetPosition - MissilePosition).Length() < 140 && This_Missile.WARHEADS.Count > 0) //Arms
                 { foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).IsArmed = true; } targetNeer = true; }
 	    bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 4*4 ;
                 if (targetGetFar){
