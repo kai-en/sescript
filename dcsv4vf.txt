@@ -1562,7 +1562,7 @@ isDown = true;
 
 initL2T();
 
-GridTerminalSystem.GetBlocksOfType<IMyUserControllableGun> (smokeList, b=>b.CustomName.Contains("Smoke"));
+GridTerminalSystem.GetBlocksOfType<IMyUserControllableGun> (smokeList, b=>b.CustomName.Contains("Smoke") && (!ignoreTag(b.CustomName)));
 
 init = true;
 }
