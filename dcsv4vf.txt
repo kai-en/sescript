@@ -3172,7 +3172,7 @@ float scale = -(float)thrustDirection.Dot(thrustNeedDir);
 bool iH = isHy(thisThrust);
 if (scale > maxThrustDotProduct && (!iH || useBst))
 {
-SetOffThrusterOverride(thisThrust, (float)percent * scale);
+SetOffThrusterOverride(thisThrust, (float)percent ); // CODING
 }else {
 SetOffThrusterOverride(thisThrust, 0f);
 }//

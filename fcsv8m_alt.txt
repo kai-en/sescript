@@ -73,7 +73,7 @@ static Vector3D asteroidPosition = Vector3D.Zero;
 double SearchDistance = 5000;//常规搜索距离
 
 double PulseDistance = 3000;//脉冲搜索距离
-double PulseRadius = 15;//脉冲搜索的区域半径，扫描区域是以正前方设定的距离点为中心，上下左右分别延伸出一个半径的区域
+double PulseRadius = 2;//脉冲搜索的区域半径，扫描区域是以正前方设定的距离点为中心，上下左右分别延伸出一个半径的区域
 double PulseInterval = 1; //脉冲搜索扫描区域的扫描线终点的间隔
 //注意：脉冲搜索区域半径不要太大，脉冲搜索间隔不要太小，否则可能程序复杂而中断
 
@@ -267,7 +267,7 @@ void Main(string arguments)
 		case("Weapon"):NeedWeaponMode += 1; if(NeedWeaponMode > 1){NeedWeaponMode = 0;}; break;
 		case("Fire"):NeedAutoFire = !NeedAutoFire; break;
 		case("Speed"):NeedSpeedMatch = !NeedSpeedMatch; break;
-		case("Pulse"):ShipPulseScan(); return;
+		//case("Pulse"):ShipPulseScan(); return;
 		case("Roll"):NeedManeuverRoll = !NeedManeuverRoll; break;
 		// a b k
 		case("AimFire"):
@@ -601,15 +601,15 @@ GPS:Radar - Huge unknown object:12352:2175:6850: - {X:122.5 Y:60 Z:280}
 }
 
 // 脉冲搜索并转入锁定
-void ShipPulseScan(){
-Vector3D CenterPoint = MyShip.Cockpit.GetPosition() + MyShip.Cockpit.WorldMatrix.Forward*SearchDistance;
-	foreach(IMyCameraBlock c in MyShip.Cameras){
-		if(c.IsActive){
-			CenterPoint = c.GetPosition() + c.WorldMatrix.Forward*SearchDistance;
-		}
-	}
-ShipPulseScan(CenterPoint);
-}
+// void ShipPulseScan(){
+// Vector3D CenterPoint = MyShip.Cockpit.GetPosition() + MyShip.Cockpit.WorldMatrix.Forward*SearchDistance;
+// 	foreach(IMyCameraBlock c in MyShip.Cameras){
+// 		if(c.IsActive){
+// 			CenterPoint = c.GetPosition() + c.WorldMatrix.Forward*SearchDistance;
+// 		}
+// 	}
+// ShipPulseScan(CenterPoint);
+// }
 void ShipPulseScan(Vector3D CenterPoint){
 	List<Vector3D> Points = new List<Vector3D>();
 	Points.Add(CenterPoint);
