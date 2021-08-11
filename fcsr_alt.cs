@@ -1,3 +1,4 @@
+static bool isHoming = false; // 超出射程是否归位
 static bool isOnOff = true; //是否开机 舰船true 可变战机手臂 false
 static bool OnlyAttackUpPlane = false; //自动选择目标时是否只选择转子基座炮塔的上半球面里的目标（当目标低于该炮塔时不选择这个目标） 舰船一般true 可变战机一般false
 /*
@@ -476,8 +477,12 @@ public class RotorBase
 	public CustomConfiguration cfg;
 	public float hori;
 	public float horiD;
+	public float hori2;
+	public float horiD2;
 	public float vert;
 	public float vertD;
+	public float vert2;
+	public float vertD2;
 	public float offX = 0;
 	public float offY = 1F;
 	public float onX = 0;
@@ -521,10 +526,18 @@ public class RotorBase
 		vert = toRa(vert);
 		cfg.Get("vertD", ref vertD);
 		vertD = toRa(vertD);
+		cfg.Get("vert2", ref vert2);
+		vert2 = toRa(vert2);
+		cfg.Get("vertD2", ref vertD2);
+		vertD2 = toRa(vertD2);
 		cfg.Get("hori", ref hori);
 		hori = toRa(hori);
 		cfg.Get("horiD", ref horiD);
 		horiD = toRa(horiD);
+		cfg.Get("hori2", ref hori2);
+		hori2 = toRa(hori2);
+		cfg.Get("horiD2", ref horiD2);
+		horiD2 = toRa(horiD2);
 		cfg.Get("offX", ref offX);
 		offX = toRa(offX);
 		cfg.Get("offY", ref offY);
@@ -837,6 +850,7 @@ public class RotorBase
 	       	  a += MathHelper.TwoPi;
 	       }
 	       var t = Math.Abs(a - b);
+                   if (t > Math.PI) t = Math.Abs(t - MathHelper.TwoPi);
 	       return t;
 	}
 	
@@ -1033,16 +1047,18 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		double aa=0, ea=0;
 		Vector3D.GetAzimuthAndElevation(tpToRc, out aa, out ea);
 		ea*=eaRate;
-		debugInfo += "\naaea: " + Math.Round(aa,2) + " " + Math.Round(ea,2);
+		//debugInfo += "\naaea: " + Math.Round(aa,2) + " " + Math.Round(ea,2);
 		if (this.AimBlock.CustomName.Contains("[Arm]")) ea += Math.PI * 0.5;
 
 			bool rx = false;
 			bool ry = false;
 			rx = angleDeltaAbs(aa, hori) < horiD;
 			rx = rx || angleDeltaAbs(aa + Math.PI, hori) < horiD;
+			bool rx2 = angleDeltaAbs(aa, hori2) < horiD2;
+                                    bool ry2 = ea-vert2 < -vertD2;
 			ry = ea-vert < -vertD;
-			debugInfo += "\nrxry: " + rx + " " + ry;
-		bool isFireZone = !(rx && ry);
+			//debugInfo += "\nrxry: " + rx + " " + ry;
+		bool isFireZone = !(rx && ry) && !(rx2 && ry2);
 
 		double fireRange = ShootDistance;
 		if (isRocket) fireRange = ShootDistance2;
@@ -1050,11 +1066,11 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		if (bulletMaxRange != 0) fireRange = bulletMaxRange;
                         isFireZone = isFireZone && tp2me.Length() < fireRange;
                         if (isStraight) isFireZone = true;
-		if (!isFireZone) {
+		if (!isFireZone && isHoming) {
 		aa = (float)onX * this.RotorXField[0];
 		ea = (float)onY * this.RotorYField[0];
 		}
-		debugInfo+="\naae2: " + Math.Round(aa) + " " + Math.Round(ea);
+		//debugInfo+="\naae2: " + Math.Round(aa) + " " + Math.Round(ea);
 
 		for(int i = 0; i < this.RotorXs.Count; i ++){
 			var a = (float)(-aa*this.RotorXField[i]) - this.RotorXs[i].Angle;
@@ -1075,7 +1091,7 @@ return Math.Round(tar.X, 2) + ", " + Math.Round(tar.Y, 2) + ", " + Math.Round(ta
 		Vector3D V_A = HitPoint - this.Position;
 		Vector3D V_B = this.AimBlock.WorldMatrix.Forward;
 		double Angle = Math.Acos(Vector3D.Dot(V_A,V_B)/(V_A.Length() * V_B.Length())) * 180 / Math.PI;
-		if(Angle <= AimRatio) return true;
+		if(Angle <= AimRatio && isFireZone) return true;
 		return false;
 	}
 	
