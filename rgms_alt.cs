@@ -171,7 +171,7 @@ List<Vector3D> LTVs = new List<Vector3D>();
               
               private void checkStart(List<IMyShipMergeBlock> mclist) {
                 if (mclist.Count == 0) return;
-	  var matchlist = mclist.Where(x=>(x.GetPosition()-h1.GetPosition()).Length() < REFUELER_MERGE_DISTANCE).ToList();
+	  var matchlist = mclist.Where(x=>(x.GetPosition()-h1.GetPosition()).Length() < REFUELER_MERGE_DISTANCE && x.Enabled).ToList();
 	  if(matchlist.Count==0) return;
                 this.m = matchlist[0];
                 debugInfo += "\n" + Math.Round((this.m.GetPosition() - h1.GetPosition()).Length(), 2);
