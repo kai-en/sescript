@@ -253,6 +253,9 @@ int smokeInterval = -1;
 // input
 static double INPUT_RATE = 5;
 
+// ctnNA
+int ctnNA = 0;
+
 Program()
 {
 
@@ -3445,6 +3448,13 @@ if (naturalGravityLength < 0.01f && tl == 0 && needA.Y < 2 && legMode < 2) tl = 
 else if (naturalGravityLength > 0.01f && isAeroDynamic &&
 (aeroSpeedLevel>0 || (flyByOn&& mstm.Z<-10))
 ) tl = -(float)Math.PI * 0.45f;
+
+if (needA.Length() < dz) {
+if (ctnNA == 0) ctnNA = t;
+else if (t - ctnNA > 60) tl = -0.5f*(float)Math.PI;
+} else {
+ctnNA = 0;
+}
 
 forwardMoveIndicator = tl; 
 VTA = tl;

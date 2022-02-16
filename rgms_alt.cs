@@ -1,6 +1,17 @@
+//using Sandbox.ModAPI.Ingame;
+//using SpaceEngineers.Game.ModAPI.Ingame;
+
+
+
+
+
+
+
+
 static int SMOKE_DENSITY = 8; // larger means less smoke
 static double REFUELER_MERGE_DISTANCE=1.81;
-static int rgms_no = 0;
+static double REFUELER_HINGE_DISTANCE = 1.23;
+//static int rgms_no = 0;
 // static float missileGravityRate = 5F;
 double GUILD_RATE = 0.3;
 double ATAN_BASE = 0.5;
@@ -74,7 +85,7 @@ IMyTerminalBlock pgtimer = null;
             //CHANGE MISSILE TAG HERE:
             //Changes The prefix tag that the missile uses
             //Note that the instructions will not update to this tag 
-            static string MissileTag = "#A#"+rgms_no;
+            static string MissileTag = "#A#";
 
             //-------------- Don't Touch Anything Beneath This Line --------------------
 
@@ -103,6 +114,7 @@ IMyTerminalBlock pgtimer = null;
                 public double MissileMass = 0;
                 public double MISSILE_MASS = 5136.4;
                 public int THRUSTER_COUNT = 4;
+                public string MISSILE_TAG = "#A#0";
                 public bool IS_SIDE = false;
                 public double THRUST_PERCENT = 1;
                 public int MISSILE_TTL=6000;
@@ -143,7 +155,9 @@ IMyTerminalBlock pgtimer = null;
             IMyLargeTurretBase Turret;
 	// a b K
 	IMyTextPanel gcTargetPanel = null;
-	String gcTargetPanelName="LCD Panel GC Target"+rgms_no;
+	String gcTargetPanelName="LCD Panel GC Target"
+    //+rgms_no
+    ;
 	IMyTerminalBlock fcsComputer = null;
 	String fcsComputerName="fcs";
 List<Vector3D> LTPs = new List<Vector3D>();
@@ -155,6 +169,7 @@ List<Vector3D> LTVs = new List<Vector3D>();
             IMyShipController RC;
             class Refueler {
               public IMyMotorStator h1;
+    public string MISSILE_TAG = "#A#0";
               public IMyMotorStator h2;
               public IMyShipMergeBlock m;
               public IMyGridTerminalSystem gts;
@@ -162,16 +177,19 @@ List<Vector3D> LTVs = new List<Vector3D>();
               public long pStart = 0;
               public Refueler(IMyMotorStator h, IMyGridTerminalSystem gts) {
                 this.h1 = h;
-                this.gts = gts;
+        CustomConfiguration cfg = new CustomConfiguration(this.h1);
+        cfg.Load();
+        cfg.Get("MISSILE_TAG", ref this.MISSILE_TAG);
+        this.gts = gts;
                 List<IMyMotorStator> h2clist = new List<IMyMotorStator>();
-                gts.GetBlocksOfType<IMyMotorStator>(h2clist, h2 => h2.CustomName.Contains("[MS 2]") && (h2.GetPosition() - h.GetPosition()).Length() < 0.6);
+                gts.GetBlocksOfType<IMyMotorStator>(h2clist, h2 => h2.CustomName.Contains("[MS 2]") && (h2.GetPosition() - h.GetPosition()).Length() < REFUELER_HINGE_DISTANCE);
                 if (h2clist.Count == 0) throw new Exception("Refueler init error");
                 this.h2 = h2clist[0];
               }
               
               private void checkStart(List<IMyShipMergeBlock> mclist) {
                 if (mclist.Count == 0) return;
-	  var matchlist = mclist.Where(x=>(x.GetPosition()-h1.GetPosition()).Length() < REFUELER_MERGE_DISTANCE && x.Enabled).ToList();
+	  var matchlist = mclist.Where(x=>(x.GetPosition()-h1.GetPosition()).Length() < REFUELER_MERGE_DISTANCE && x.Enabled && x.CustomName.Contains(this.MISSILE_TAG)).ToList();
 	  if(matchlist.Count==0) return;
                 this.m = matchlist[0];
                 debugInfo += "\n" + Math.Round((this.m.GetPosition() - h1.GetPosition()).Length(), 2);
@@ -270,6 +288,7 @@ List<Vector3D> LTVs = new List<Vector3D>();
                 GridTerminalSystem.GetBlocksOfType<IMyShipController>(TempCollection3, b => b.CustomName.Contains("Reference"));
                 if (TempCollection3.Count > 0)
                 {RC = TempCollection3[0] as IMyShipController;}
+                else return;
 
 	    // a b K
                 List<IMyTerminalBlock> TempCollection4 = new List<IMyTerminalBlock>();
@@ -560,9 +579,9 @@ Color unfullColor = new Color(255, 255, 183, 255);
                 yield return INIT_NEXT_MISSILE();
 
 	    // a b K
-	    for (int i = 0; i < (rgms_no % 2) * 30; i++) {
-	    	yield return true;
-	    }
+	    //for (int i = 0; i < (rgms_no % 2) * 30; i++) {
+	    //	yield return true;
+	    //}
 
                 //Disables Merge Block
                 MISSILE ThisMissile = MISSILES[MISSILES.Count - 1];
@@ -1035,6 +1054,7 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
 			cfg.Get("THRUSTER_COUNT", ref NEW_MISSILE.THRUSTER_COUNT);
 			cfg.Get("IS_SIDE", ref NEW_MISSILE.IS_SIDE);
 			cfg.Get("THRUST_PERCENT", ref NEW_MISSILE.THRUST_PERCENT);
+            cfg.Get("MISSILE_TAG", ref NEW_MISSILE.MISSILE_TAG);
 
                     Vector3D GyroPos = Key_Gyro.GetPosition();
                     double Distance = 3;
@@ -1044,11 +1064,11 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                     TempTurrets.Sort((x, y) => (x.GetPosition() - Key_Gyro.GetPosition()).LengthSquared().CompareTo((y.GetPosition() - Key_Gyro.GetPosition()).LengthSquared()));
 
                     //Sorts And Selects Batteries
-                    List<IMyTerminalBlock> TempPower = BATTERIES.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
+                    List<IMyTerminalBlock> TempPower = BATTERIES.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance && b.CustomName.Contains(NEW_MISSILE.MISSILE_TAG));
                     TempPower.Sort((x, y) => (x.GetPosition() - Key_Gyro.GetPosition()).LengthSquared().CompareTo((y.GetPosition() - Key_Gyro.GetPosition()).LengthSquared()));
 
                     //Sorts And Selects Merges
-                    List<IMyTerminalBlock> TempMerges = MERGES.FindAll(b => (b.GetPosition() - GyroPos).Length() < 2);
+                    List<IMyTerminalBlock> TempMerges = MERGES.FindAll(b => (b.GetPosition() - GyroPos).Length() < 2 && b.CustomName.Contains(NEW_MISSILE.MISSILE_TAG));
                     TempMerges.Sort((x, y) => (compareP(x, y, Key_Gyro)));
 	      bool isRefueling = false;
 	      if (TempMerges.Count > 0) {
@@ -1067,13 +1087,13 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
                     //NEW_MISSILE.THRUSTERS = THRUSTERS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
 
                     //Sorts And Selects Warheads
-	        List<IMyTerminalBlock> TempWarhead = WARHEADS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
+	        List<IMyTerminalBlock> TempWarhead = WARHEADS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance && b.CustomName.Contains(NEW_MISSILE.MISSILE_TAG));
 	        TempWarhead.Sort((x, y) => (compareP(x, y, Key_Gyro)));
 	        if (TempWarhead.Count > 0)
                     NEW_MISSILE.WARHEADS.Add(TempWarhead[0]);
 
                     // a b K
-                    List<IMyThrust> TempThrusters = THRUSTERS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
+                    List<IMyThrust> TempThrusters = THRUSTERS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance && b.CustomName.Contains(NEW_MISSILE.MISSILE_TAG));
                     TempThrusters.Sort((x, y) => (compareP(x, y, Key_Gyro)));
 	        List<IMyThrust> T2Thrusters = new List<IMyThrust>();
 	        int TCount = NEW_MISSILE.THRUSTER_COUNT < TempThrusters.Count ? NEW_MISSILE.THRUSTER_COUNT :  TempThrusters.Count ;
@@ -1083,20 +1103,20 @@ var rangle = 1 - Vector3D.Dot(rr, tarN);
 	        NEW_MISSILE.THRUSTERS = T2Thrusters;
 
 
-                    List<IMyTerminalBlock> TempSpots = SPOTS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance);
+                    List<IMyTerminalBlock> TempSpots = SPOTS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance && b.CustomName.Contains(NEW_MISSILE.MISSILE_TAG));
 	        TempSpots.Sort((x, y) => (compareP(x, y, Key_Gyro)));
 	        if(TempSpots.Count > 0)
 	        NEW_MISSILE.SPOTLIST.Add(TempSpots[0]);
 
-                    if (TempMerges.Count > 0) {
-                    List<IMyTerminalBlock> LANDS = new List<IMyTerminalBlock>();
-                    GridTerminalSystem.GetBlocksOfType<IMyLandingGear>(LANDS, b => b.CustomName.Contains(MissileTag));
-                    List<IMyTerminalBlock> TempLands = LANDS.FindAll(b => (b.GetPosition() - TempMerges[0].GetPosition()).Length() < 1.26);
-	        NEW_MISSILE.LANDINGLIST = TempLands;
-                    }
+            //        if (TempMerges.Count > 0) {
+            //        List<IMyTerminalBlock> LANDS = new List<IMyTerminalBlock>();
+            //        GridTerminalSystem.GetBlocksOfType<IMyLandingGear>(LANDS, b => b.CustomName.Contains(MissileTag));
+            //        List<IMyTerminalBlock> TempLands = LANDS.FindAll(b => (b.GetPosition() - TempMerges[0].GetPosition()).Length() < 1.26);
+	        //NEW_MISSILE.LANDINGLIST = TempLands;
+            //        }
 
                     List<IMyTerminalBlock> TempSmokes = new List<IMyTerminalBlock>();
-                    GridTerminalSystem.GetBlocksOfType<IMyUserControllableGun>(TempSmokes, b => b.CustomName.Contains(MissileTag));
+                    GridTerminalSystem.GetBlocksOfType<IMyUserControllableGun>(TempSmokes,  b => b.CustomName.Contains(NEW_MISSILE.MISSILE_TAG));
 	        TempSmokes.Sort((x, y) => (compareP(x, y, Key_Gyro)));
 	        if(TempSmokes.Count > 0)
 	        NEW_MISSILE.SMOKE = TempSmokes[0];

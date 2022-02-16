@@ -915,6 +915,7 @@ void EchoShip(){
 	ec += "Gyroscopes:" + MyShip.Gyroscopes.Count() + "\n";
 	ec += "Thrusts:" + MyShip.Thrusts.Count() + "\n";
 	ec += "Weapons:" + (MyShip.Guns.Count() + MyShip.Rockets.Count()) + "\n";
+	ec += "AutoWeapons:" + MyShip.AutoWeapons.Count() + "\n";
 	ec += "MaxTargetCount:" + maxTargetCount + "\n";
 	ec += "System Runing " + (t%60 <= 45 ? (t%60 <= 30 ? (t%60 <= 15 ? "\\" : "|") : "/"): "---") + "\n";
 	Echo(ec);
@@ -2124,14 +2125,15 @@ public static WcPbApi api = null;
 public List<IMyTerminalBlock> StaticWeapons = new List<IMyTerminalBlock>();
 public List<MyDefinitionId> WeaponDefinitions = new List<MyDefinitionId>();
 public List<string> definitionSubIds = new List<string>();
-
+public bool WcPbApiAva = true;
 
 void GetOtherTargetList() {
-                     if (api == null && t > 120) {
+                     if (api == null && t > 120 && WcPbApiAva) {
                      api = new WcPbApi();
                      try{api.Activate(Me);}catch(Exception ex){
 		     //initInfo += "\napi error" + ex;
 		     api=null;
+		     WcPbApiAva=false;
 		     };
     StaticWeapons.Clear();
     WeaponDefinitions.Clear();
