@@ -1,3 +1,21 @@
+using Sandbox.ModAPI.Ingame;
+using Sandbox.ModAPI.Interfaces;
+using SpaceEngineers.Game.ModAPI.Ingame;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using VRage.Game;
+using VRage.Game.ModAPI.Ingame;
+using VRageMath;
+
+namespace kradar_p
+{
+    partial class Program : MyGridProgram
+    {
+#region ingamescript
+
 /*
 Kaien's drone control system V5.6
 ?id=1406061291
@@ -57,7 +75,6 @@ WEAPON1
 WEAPON2
   :switch to rocket launcher
 */
-
 
 string CockpitNameTag = "Cockpit";
 string HeadNameTag = "VF_HEAD";
@@ -260,7 +277,7 @@ Program()
 
 void Main(string arguments, UpdateType updateType)
 {
-debugInfo = "";
+if(!debugFix && t % debugInterval == 0)debugInfo = "";
 Runtime.UpdateFrequency = UpdateFrequency.Update1;
 if ((updateType & UpdateType.Update1) != 0) {
 arguments = "";
@@ -277,7 +294,6 @@ GetBlocks(arguments);
 t++;
 return;
 }
-
 if ((updateType & UpdateType.Update1) !=0)
   NavigationInfoUpdata(true);
 List<IMyTerminalBlock> welderList;
@@ -490,8 +506,6 @@ cp.WritePublicTitle("");
 
 }
 }
-
-ShowLCD();
 NavigationInfoUpdata(false);
 if (inputVec != null)inputVec_RT = inputVec;
 else inputVec_RT = Vector3D.Zero;
@@ -505,14 +519,13 @@ inputVec_RT += avoidSpeed * 0.1;
 if(notDocked()) {
 if ( dockingOn && dockable() ) {
 PlayActionList(landingGears, "Lock");
+ShowLCD();
 return;
 }
 } else {
 if (dockingOn ) {
 PlayActionList(thrusters, "OnOff_Off");
-for (int i = 0; i < offGridThrust.Count; i++) {
-offGridThrust[i].Enabled=false;
-}
+offGridThrustLL.ForEach(l=>l.ForEach(t=>t.Enabled=false));
 SetGyroOverride(false);
 PlayActionList(spotlights, "OnOff_Off");
 }
@@ -523,7 +536,6 @@ bool needGyroOverride = false;
 if (sonCode != null) {
 if(notDocked()) MaintainSpeed();
 }
-
 // auto balance in gravity
 var ng = naturalGravity;
 bool isAssist = isDown || isLaunch || isSM || continueAhhOn;
@@ -538,11 +550,9 @@ resetThrusters();
 }
 
 if ((!(flyByOn||dockingOn) && ng.Length() > 0.001f && dampenersOn) || isAssist) {
-if (
-//!suc ||
-isAssist) {
+if (isAssist) {
 
-//
+
 bool isFcsAiming = LockTargetAiming && LockTargetPosition!=Vector3D.Zero;
 if(ng.Length() > 0.001 && !isFcsAiming) {
 var diff = diffX;
@@ -627,7 +637,6 @@ string dsdr = DimSpeed(needA, upThrusters, downThrusters, ref thrusterPercentY, 
 lastSpeedY = m2m.Y;
 }
 }
-
 if(!(flyByOn||dockingOn||isSM) && dampenersOn){
 // auto forward
 if(Math.Abs(inputVec.Z) < 0.1 && Math.Abs(aeroSpeedLevel)>0 ){
@@ -689,7 +698,7 @@ Vector3D dummySpeed = (dummyT - MePosition)/10D;
 Vector3D maintainSpeedToMe = Vector3D.TransformNormal(dummySpeed - Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
 inputVec_RT = maintainSpeedToMe;
  if (maintainSpeedToMe.Length() > 50){
-// hign speed dir
+// high speed dir
 Vector3D d = Vector3D.Normalize(maintainSpeedToMe);
 if (d.Z > 0.5) {
 d = new Vector3D(1,0,0);
@@ -720,6 +729,8 @@ Main_VT();
 if (smokeInterval > 0 && t % smokeInterval == 0) {
 PlayActionList(smokeList.OfType<IMyTerminalBlock>().ToList(),"ShootOnce");
 }
+
+ShowLCD();
 // End Main
 }
 
@@ -1070,19 +1081,6 @@ wantUD = true;
 }
 }
 
-//if (useAhh && !wantUD && !(flyByOn || dockingOn)) {
-//
-//if (!ahhOn) {
-//double h = 0;
-//if (msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h)) {
-//ahh = h;
-//setAhhOn(true);
-//}
-//} else {
-//setAhhOn(true);
-//}
-//}
-// coding
 
 if (wantUD) {
 setAhhOn(false);
@@ -1261,7 +1259,7 @@ Echo("Head: " + Head.CustomName + "\n");
 }
 Echo("WMI Rotor Thruster\nManager... " + RunningSymbol() + "\n");
 Echo($"Gyros :{Gyroscopes.Count}");
-Echo($"Off-Grid Thrusters: {offGridThrust.Count} {thrusters.Count}");
+Echo($"Off-Grid Thrusters: {offGridThrustLL.Sum(l=>l.Count)} {thrusters.Count}");
 string dampenerStatus = dampenersOn ? "Enabled" : "Disabled";
 Echo($"Dampeners: {dampenerStatus}");
 Echo($"Location: {distanceInfo}");
@@ -1478,7 +1476,7 @@ approachIdx = dockingList.Count - 1;
 }
 Cockpit = getBlockByName(CockpitNameTag) as IMyShipController;
 if(Cockpit == null)
-{Echo(CockpitNameTag  + "未找到"); return;}
+{Echo(CockpitNameTag  + "RC not found"); return;}
 setDampenersOverride(Cockpit, true);
 refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);
 
@@ -1515,7 +1513,7 @@ if (tmp != null) LCD.Add(tmp);
 }
 
 if(LCD.Count < 1)
-{debugInfo = DCSLCDNameTag  + " not found";}
+{errorInfo = DCSLCDNameTag  + " not found";}
 
 Gyroscopes = new List<IMyTerminalBlock>();
 if(GyroscopesNameTag != "")
@@ -1529,7 +1527,7 @@ FilterSameGrid(Me.CubeGrid, ref Gyroscopes);
 }
 if(Gyroscopes.Count < 1)
 {
-debugInfo = "No Gyro";
+errorInfo = "No Gyro";
 }
 
 setupGyroField(Gyroscopes, ref gyroYawField, ref gyroYawFactor, ref gyroPitchField, ref gyroPitchFactor, ref gyroRollField, ref gyroRollFactor, Cockpit);
@@ -1807,6 +1805,9 @@ Vector3D maintainSpeed = Vector3D.Zero;
 Vector3D diffToMe;
 MatrixD shipMatrix = MatrixD.Zero;
 static string debugInfo="";
+static string errorInfo="";
+static bool debugFix = false;
+static long debugInterval = 1;
 string distanceInfo="";
 int i = 0;
 
@@ -1892,7 +1893,7 @@ blocks = new List<IMyTerminalBlock>();
 
 }
 
-// 工具类
+// util
 void setDampenersOverride(IMyTerminalBlock controller, bool onOff) {
 bool nowOnOff = controller.GetValue<bool>("DampenersOverride");
 if (nowOnOff != onOff) {
@@ -2568,9 +2569,7 @@ resetApproachIdx();
 attackMode=false;
 setDampenersOverride(Cockpit, false);
 PlayActionList(thrusters, "OnOff_On");
-for (int i = 0; i < offGridThrust.Count; i++) {
-offGridThrust[i].Enabled=true;
-}
+offGridThrustLL.ForEach(l=>l.ForEach(t=>t.Enabled=true));
 PlayActionList(landingGears, "Unlock");
 PlayActionList(landingGears, "OnOff_Off");
 PlayActionList(connectors, "Unlock");
@@ -2587,9 +2586,7 @@ attackMode=false;
 isDown=false;
 setDampenersOverride(Cockpit, false);
 PlayActionList(thrusters, "OnOff_On");
-for (int i = 0; i < offGridThrust.Count; i++) {
-offGridThrust[i].Enabled=true;
-}
+offGridThrustLL.ForEach(l=>l.ForEach(t=>t.Enabled=true));
 PlayActionList(connectors, "OnOff_On");
 PlayActionList(landingGears, "OnOff_On");
 flyByOn = false;
@@ -2861,9 +2858,6 @@ Vector3D absDiff = diffPosition;
 diffToMe = Vector3D.TransformNormal(absDiff, refLookAtMatrix);
 Vector3D shipSpeedToMe = Vector3D.TransformNormal(shipSpeed, refLookAtMatrix);
 
-
-
-
 // method 2
 double aRate = 0.1;
 if (diffPosition.Length() < nearRange) {
@@ -3028,21 +3022,18 @@ bool isSetup = false;
 
 
 List<IMyShipController> referenceList = new List<IMyShipController>();
-List<IMyThrust> offGridThrust = new List<IMyThrust>();
+List<List<IMyThrust>> offGridThrustLL = new List<List<IMyThrust>>();
 bool useBst = true;
 
 IMyShipController thisReferenceBlock = null;
 Vector3D lastSpeedVector = new Vector3D(0,0,0);
 
-double maxThrustDotProduct ;
 double minDampeningDotProduct ;
 double fullBurnDotProduct ;
 
 void Main_RT(string argument, UpdateType updateType)
 {
-double maxThrustAngle = 10;
-if (naturalGravityLength > 0.01) maxThrustAngle = 55;//
-maxThrustDotProduct = Math.Cos(maxThrustAngle * Math.PI / 180);
+
 minDampeningDotProduct = Math.Cos(minDampeningAngle * Math.PI / 180);
 fullBurnDotProduct = Math.Cos(fullBurnToleranceAngle * Math.PI / 180);
 
@@ -3063,9 +3054,7 @@ refreshTime = 0;
 if (!isSetup)
 return;
 
-//if (timeCurrentCycle >= timeMaxCycle) 
-if (true) 
-{
+
 try
 {
 
@@ -3144,54 +3133,62 @@ needA_G -= dz * Vector3D.Normalize(needA_G);
 }
 if (needA_G.Length() < 0.02) needA_G = Vector3D.Zero;
 
+// FEATURE 0219 multilevel maxium thrust
+Vector3D thrustNeedLeft = thrustNeed;
+for(int i = 0; i < 3; i ++) {
+bool iH = i >0;
+if (iH && !useBst) break ;
+int offIdx = 0;
+if(iH) offIdx = 1;
+var offGridThrust = offGridThrustLL[offIdx];
 double thrustMax = 0;
-var thrustNeedDir = Vector3D.Normalize(thrustNeed);
+var cTNL = thrustNeedLeft;
+if(i == 1) {
+cTNL = Vector3D.Reject(thrustNeedLeft, msc.WorldMatrix.Up);
+} // i == 2 thrustneedY;
+if(cTNL.Length() < 0.0001) continue;
+var thrustNeedDir = Vector3D.Normalize(cTNL);
+
 foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-bool iH = isHy(thisThrust);
-if (scale > maxThrustDotProduct && (!iH || useBst))
+if (scale > 0)
 {
 thrustMax += thisThrust.MaxEffectiveThrust * scale;
 }
 
 }
-Vector3D thrustNeedL2 = Vector3D.Zero;
-if (thrustNeed.Length() > thrustMax) thrustNeedL2 = thrustNeed - thrustNeedDir * thrustMax;
-if (thrustMax < 1) thrustMax = 1;
-var percent = thrustNeed.Length() / thrustMax;
+float percent;
+if (thrustMax < 1) percent = 0;
+percent = (float)(cTNL.Length() / thrustMax);
 if (percent > 1)percent = 1;
-if (thrustMax < 1) percent = 0; // thrustMax dir wrong
 foreach (IMyThrust thisThrust in offGridThrust)
 {
 var thrustDirection = thisThrust.WorldMatrix.Forward;
 float scale = -(float)thrustDirection.Dot(thrustNeedDir);
-bool iH = isHy(thisThrust);
-if (scale > maxThrustDotProduct && (!iH || useBst))
+if (scale > 0.1)
 {
-SetOffThrusterOverride(thisThrust, (float)percent ); // CODING
+SetOffThrusterOverride(thisThrust, percent ); 
+thrustNeedLeft -= thisThrust.WorldMatrix.Backward * thisThrust.MaxEffectiveThrust * percent;
 }else {
 SetOffThrusterOverride(thisThrust, 0f);
-}//
-
+}
 }
 
+}//FEATURE 0219
 
 var tn2_x = thrustNeedX;
-var tnl2tome = Vector3D.TransformNormal(thrustNeedL2, refLookAtMatrix);
+var tnl2tome = Vector3D.TransformNormal(thrustNeedLeft, refLookAtMatrix);
 var tn2_y = tnl2tome.Y;
 var tn2_z = tnl2tome.Z;
 manageL2T(new Vector3D(tn2_x,tn2_y,tn2_z), mass);
 
 // END 
 } else {
-foreach (IMyThrust thisThrust in offGridThrust) {
-SetOffThrusterOverride(thisThrust, 0f);
-}
+offGridThrustLL.ForEach(l=>l.ForEach(t=>t.ThrustOverridePercentage=0));
 
 manageL2T(Vector3D.Zero, msc.CalculateShipMass().PhysicalMass);
-
 }
 
 timeCurrentCycle = 0;
@@ -3199,7 +3196,12 @@ timeCurrentCycle = 0;
 catch
 {
 }
+
 }
+
+void debug(string v)
+{
+if (!debugFix && t % debugInterval == 0) debugInfo += "\n" + v;
 }
 
 bool GrabBlocks()
@@ -3214,10 +3216,10 @@ if (referenceList.Count == 0)
 Echo($"[ERROR]: No remote or control seat with name tag '{controlSeatNameTag}' was found");
 return false;
 }
-
+List<IMyThrust> tmpTs = new List<IMyThrust>();
 if (!ignoreThrustersOnConnectors)
 {
-GridTerminalSystem.GetBlocksOfType(offGridThrust, block => block.CubeGrid != referenceList[0].CubeGrid && !ignoreTag(block.CustomName));
+GridTerminalSystem.GetBlocksOfType(tmpTs, block => block.CubeGrid != referenceList[0].CubeGrid && !ignoreTag(block.CustomName));
 }
 else
 {
@@ -3230,19 +3232,16 @@ foreach (IMyShipConnector thisConnector in connectors)
 connectorGrids.Add(thisConnector.CubeGrid);
 }
 
-GridTerminalSystem.GetBlocksOfType(offGridThrust, block => (block.CubeGrid != referenceList[0].CubeGrid && !connectorGrids.Contains(block.CubeGrid) &&  !ignoreTag(block.CustomName))
+GridTerminalSystem.GetBlocksOfType(tmpTs, block => (block.CubeGrid != referenceList[0].CubeGrid && !connectorGrids.Contains(block.CubeGrid) &&  !ignoreTag(block.CustomName))
 ||
 (block.CubeGrid == Me.CubeGrid && block.CustomName.Contains("Hydrogen")
 )
 );
 }
-
-if (offGridThrust.Count == 0)
-{
-Echo("[ERROR]: No off grid thrusters found");
-return false;
-}
-
+var l1 = tmpTs.Where(t=>!isHy(t)).ToList();
+var l2 = tmpTs.Where(t=>isHy(t)).ToList();
+offGridThrustLL.Add(l1);
+offGridThrustLL.Add(l2);
 return true;
 }
 
@@ -3426,7 +3425,7 @@ return;
 if(notDocked()){
 Vector3D needA = needA_G;
  if (Math.Abs(needA.Y) < 0.1 && needA.Length()> 0.1) needA.Y = 0.1;
-double dz = 5;
+double dz = 2;
 if(flyByOn||dockingOn)dz=1F;
 if (needA.Y >= 0.1 ) // 
 {
@@ -3444,6 +3443,7 @@ else if (naturalGravityLength > 0.01f && isAeroDynamic &&
 (aeroSpeedLevel>0 || (flyByOn&& mstm.Z<-10))
 ) tl = -(float)Math.PI * 0.45f;
 
+// FEATURE 0101 thruster back default
 if (needA.Length() < dz) {
 if (ctnNA == 0) ctnNA = t;
 else if (t - ctnNA > 60) tl = -0.5f*(float)Math.PI;
@@ -3846,3 +3846,10 @@ approachIdx = dockingList.Count - 1;
 bool isHy(IMyTerminalBlock b) {
 return b.CustomName.Contains("Hydrogen");
 }
+
+
+
+#endregion
+    }
+}
+
