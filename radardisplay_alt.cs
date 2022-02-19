@@ -92,7 +92,7 @@ const int MAX_REBROADCAST_INGEST_COUNT = 2;
 
 string MOTHER_CODE = "2ndUsagi1";
 static string debugInfo = "";
-bool fixDebug = false;
+bool pauseDebug = false;
 string COCKPIT_NAME = "Reference";
 int t = 0;
 MatrixD refLookAtMatrix = new MatrixD();
@@ -156,6 +156,7 @@ List<IMyTextSurface> cmdSurfaces = new List<IMyTextSurface>();
 List<IMyShipController> controllers = new List<IMyShipController>();
 IMyShipController reference;
 IMyShipController lastActiveShipController = null;
+long pickedIdx = 0;
 
 const double cycleTime = 1.0 / 60.0;
 string lastSetupResult = "";
@@ -220,7 +221,7 @@ public IEnumerable<bool> DroneLaunchHandler()
 
 void Main(string arg, UpdateType updateSource)
 {
-    if (!fixDebug) debugInfo = "";
+    if (!pauseDebug) debugInfo = "";
     if (!inited)
     {
         init();
@@ -290,13 +291,61 @@ void Main(string arg, UpdateType updateSource)
             LaunchStateMachine = DroneLaunchHandler().GetEnumerator();
         }
     }
-    if (LaunchStateMachine != null)
+    else if (arg.Equals("PICK_NEAR"))
     {
-        if (!LaunchStateMachine.MoveNext() || !LaunchStateMachine.Current)
+        pickClear();
+        var ktl = targetDataDict.Values.Where(x => x is KRadarTargetData).OrderBy(x => (x.Position - MePosition).Length());
+        if (ktl.Any())
         {
-            LaunchStateMachine.Dispose();
-            LaunchStateMachine = null;
+            var ktt = (KRadarTargetData)ktl.First();
+            ktt.isSelected = true;
+            pickedIdx = ktt.id;
         }
+    }
+    else if (arg.Equals("PICK_NEXT"))
+    {
+        var ktl = targetDataDict.Values.Where(x => x is KRadarTargetData).OrderBy(x => (x.Position - MePosition).Length());
+        bool found = false;
+        bool set = false;
+        foreach (var kt in ktl)
+        {
+            var ktt = (KRadarTargetData)kt;
+            if (found == true)
+            {
+                ktt.isSelected = true;
+                pickedIdx = ktt.id;
+                set = true;
+                break;
+            }
+
+            if (ktt.id == pickedIdx)
+            {
+                ktt.isSelected = false;
+                pickedIdx = 0;
+                found = true;
+            }
+        }
+        if (set == false && ktl.Any())
+        {
+            var ktt = (KRadarTargetData)ktl.First();
+            ktt.isSelected = true;
+            pickedIdx = ktt.id;
+        }
+    }
+    else if (arg.Equals("PICK_NEAR_HIGH"))
+    {
+        pickClear();
+        var ktl = targetDataDict.Values.Where(x => x is KRadarTargetData && ((KRadarTargetData)x).isHighThreaten).OrderBy(x => (x.Position - MePosition).Length());
+        if (ktl.Any())
+        {
+            var ktt = (KRadarTargetData)ktl.First();
+            ktt.isSelected = true;
+            pickedIdx = ktt.id;
+        }
+    }
+    else if (arg.Equals("PICK_CLEAR"))
+    {
+        pickClear();
     }
 
     updateMotion();
@@ -325,6 +374,27 @@ void Main(string arg, UpdateType updateSource)
     callDcsSendPosition();
     callDcsSendAvoid();
 
+    if (LaunchStateMachine != null)
+    {
+        if (!LaunchStateMachine.MoveNext() || !LaunchStateMachine.Current)
+        {
+            LaunchStateMachine.Dispose();
+            LaunchStateMachine = null;
+        }
+    }
+}
+
+void pickClear()
+{
+    TargetData td;
+    if (targetDataDict.TryGetValue(pickedIdx, out td))
+    {
+        if (td is KRadarTargetData)
+        {
+            ((KRadarTargetData)td).isSelected = false;
+        }
+    }
+    pickedIdx = 0;
 }
 
 void callDcsSendAvoid()
@@ -695,6 +765,7 @@ void GetTurretTargets()
                 break;
         }
 
+        bool isSelected = false;
         if (targetData is KRadarTargetData)
         {
             var kt = (KRadarTargetData)targetData;
@@ -703,18 +774,20 @@ void GetTurretTargets()
                 targetIconColor = enemyHighIconColor;
                 targetElevationColor = enemyHighElevationColor;
             }
+            isSelected = kt.isSelected;
         }
 
         if (kvp.Key == Me.CubeGrid.EntityId)
             continue;
 
         if (Vector3D.DistanceSquared(targetData.Position, reference.GetPosition()) < (MaxRange * MaxRange))
-            radarSurface.AddContact(targetData.Position, reference.WorldMatrix, targetIconColor, targetElevationColor, relation);
+            radarSurface.AddContact(targetData.Position, reference.WorldMatrix, targetIconColor, targetElevationColor, relation, isSelected);
     }
 
     NetworkTargets();
 
-    targetDataDict.Clear();
+    // targetDataDict.Clear(); don't clear kradar target, it will clean by parseKRadarTarget function
+    targetDataDict = targetDataDict.Where(x => x.Value is KRadarTargetData).ToDictionary(x => x.Key, x => x.Value);
 }
 
 void Draw(float startProportion, float endProportion)
@@ -779,6 +852,7 @@ class KRadarTargetData : TargetData
     public Vector3D realPos;
     public double size; // for size match
     public bool isHighThreaten = false;
+    public bool isSelected = false;
 
     public static double SIZE_RATIO_ERROR = 0.1;
     public static double POS_ABS_ERROR = 10;
@@ -836,6 +910,7 @@ class RadarSurface
         public Color IconColor;
         public Color ElevationColor;
         public string Icon;
+        public bool isSelected;
     }
 
     public RadarSurface(Color backColor, Color lineColor, Color planeColor, Color textColor, float projectionAngleDeg, float range)
@@ -857,7 +932,7 @@ class RadarSurface
         _radarProjectionSin = (float)Math.Sin(rads);
     }
 
-    public void AddContact(Vector3D position, MatrixD worldMatrix, Color iconColor, Color elevationLineColor, Relation relation)
+    public void AddContact(Vector3D position, MatrixD worldMatrix, Color iconColor, Color elevationLineColor, Relation relation, bool isSelected = false)
     {
         var transformedDirection = Vector3D.TransformNormal(position - worldMatrix.Translation, Matrix.Transpose(worldMatrix));
         //transformedDirection = transformedDirection;
@@ -882,6 +957,7 @@ class RadarSurface
             ElevationColor = elevationLineColor,
             IconColor = iconColor,
             Icon = spriteName,
+            isSelected = isSelected,
         };
 
         switch (relation)
@@ -1067,6 +1143,12 @@ class RadarSurface
             frame.Add(iconSprite);
             if (showProjectedElevation)
                 frame.Add(projectedIconSprite);
+        }
+        if (targetInfo.isSelected)
+        {
+            MySprite selectLine = new MySprite(SpriteType.TEXTURE, "SquareSimple", color: targetInfo.IconColor, size: new Vector2(elevationLineWidth * 5, elevationLineWidth));
+            selectLine.Position = screenCenter + iconPos + new Vector2(0, iconSize.Y * 1.1f);
+            frame.Add(selectLine);
         }
     }
 }
@@ -2131,7 +2213,7 @@ class KRadarElement
     public Vector3D pos;
     public double dis;
     public double size;
-    public bool occupied;
+    public bool occupied = false;
     public Vector3D ve;
     public bool haveVe = false;
 
@@ -2230,7 +2312,7 @@ void parseKRadarTarget()
             if (found.haveVe)
             {
                 kt.Velocity = found.ve;
-                var los = MePosition = kt.Position;
+                var los = MePosition - kt.Position;
                 var dir = Vector3D.Normalize(los);
                 kt.isHighThreaten = (los.Length() < 10000) && (Vector3D.Dot(kt.Velocity, dir) > 20);
             }
@@ -2238,6 +2320,7 @@ void parseKRadarTarget()
             found.occupied = true;
         }
     }
+
 
     // find left kpos, create new kradar target
     foreach (var kp in kradarPosList)
@@ -2252,12 +2335,31 @@ void parseKRadarTarget()
         if (kp.haveVe) newTarget.Velocity = kp.ve;
 
         targetDataDict.Add(newID, newTarget);
+        kradarTargetList.Add(newTarget);
     };
+
+    if (Me is IMyTextSurfaceProvider)
+    {
+        IMyTextSurface ts = ((IMyTextSurfaceProvider)Me).GetSurface(0);
+        StringBuilder sb = new StringBuilder();
+        foreach (var kt in kradarTargetList)
+        {
+            sb.Append(kt.id).Append(":").Append(kt.isSelected ? "Y" : "N").Append(":")
+                .Append(kt.isHighThreaten ? "Y" : "N").Append(":")
+                .Append(kt.Position.X).Append(":")
+                .Append(kt.Position.Y).Append(":")
+                .Append(kt.Position.Z).Append(":")
+                .Append(kt.Velocity.X).Append(":")
+                .Append(kt.Velocity.Y).Append(":")
+                .Append(kt.Velocity.Z).Append("\n");
+        }
+        ts.WriteText(sb.ToString());
+    }
 }
 
 void debug(string v)
 {
-    if (!fixDebug) debugInfo += "\n" + v;
+    if (!pauseDebug) debugInfo += "\n" + v;
 }
 
 static double getLogLen(double len)

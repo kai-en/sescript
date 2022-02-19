@@ -108,6 +108,7 @@ bool isAeroDynamic=false;
 float angleWhenDown= 0F; //default 0 , vf -0.65F
 float angleWhenWalk= 0F; //default 0.1F
 int aeroSpeedLevel=0;
+int MAX_SPEED = 1000;
 int sl_fs = 0;
 int sl_bs = 0;
 void aeroSLp(bool a){
@@ -126,12 +127,11 @@ sl_fs = 0;
 }
 
 var nf = -mySpeedToMe.Z;
-//if(nf<0)nf=0;
 aeroSpeedLevel = (int)nf / 10;
 }
 
 void aeroSLz() {
-if (sl_fs != 0 && t - sl_fs > 180) aeroSpeedLevel = 10;
+if (sl_fs != 0 && t - sl_fs > 180) aeroSpeedLevel = MAX_SPEED / 10;
 if (sl_bs != 0 && t - sl_bs > 180) aeroSpeedLevel = 0;
 sl_fs = 0;
 sl_bs = 0;
@@ -215,13 +215,10 @@ string RGMSNameTag = "Programmable block rgms";
 IMyTerminalBlock fighterFcsr = null;
 IMyTerminalBlock rgms = null;
 
-// new down mode
 Vector3D downStartPos = Vector3D.Zero;
 int lastDownT = 0;
 int lastUpT = 0;
 
-// auto fire missile
-bool autoFireMissile = false;
 bool ignoreTag(string n) {
 return n.Contains("#A#") || n.Contains("#B#") || n.Contains("RCS") || n.Contains("L2T");
 }
@@ -263,6 +260,7 @@ Program()
 
 void Main(string arguments, UpdateType updateType)
 {
+debugInfo = "";
 Runtime.UpdateFrequency = UpdateFrequency.Update1;
 if ((updateType & UpdateType.Update1) != 0) {
 arguments = "";
@@ -358,9 +356,6 @@ case ("LOADMISSILE"):
 welderList = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyShipWelder> (welderList);
 PlayActionList(welderList, "OnOff_On");
-break;
-case ("FIREMISSILE"):
-autoFireMissile = !autoFireMissile;
 break;
 case ("LOADMISSILEON"):
 break;
@@ -741,7 +736,10 @@ IMyMotorStator r;
 float[] pl = new float[3];
 PIDController pid = new PIDController(8f, 0.1f, 0f, 1f, -1f, 60);
 long delay = 0L;
-long lastMode = 0L;
+long sTime = 0L;
+bool pg = false;
+int lastMode = 0;
+int tarMode = 0;
 IMyPistonBase p;
 bool isR;
 float[] tapsl = new float[3]{0,0,0};
@@ -752,7 +750,7 @@ bool isTaReverse;
 bool isVTA;
 int iWTA;
 
-static int DELAY_ALL = 120;
+static int DELAY_ALL = 360;
 
 public VFTRotor(IMyTerminalBlock r, float p0, float p1, float p2, long d
 ,float ps0=0, float pe0=0, float ps1=0, float pe1=0, float ps2=0, float pe2=0, float ns0=0, float ne0=0, float ns1=0, float ne1=0, float ns2=0, float ne2=0, bool tr = false, int wta = -1) {
@@ -787,24 +785,31 @@ iWTA = wta;
 }
 
 public void setMode(int mode) {
-if (!isR) {
-p.SetValueFloat("Velocity", (float)pid.Filter(pl[mode] - p.CurrentPosition,2, p.Velocity)*0.7F);
+if (!pg && mode != tarMode)
+{
+pg = true;
+sTime = t;
+tarMode = mode;
+}
+
+long d = delay;
+if (tarMode < lastMode) d = (DELAY_ALL - delay);
+int nm;
+if (t < sTime + d) nm = lastMode;
+else nm = tarMode;
+if (t > sTime + DELAY_ALL * 2) { sTime = 0; pg = false; lastMode = tarMode; }
+if (!isR)
+{
+p.SetValueFloat("Velocity", (float)pid.Filter(pl[nm] - p.CurrentPosition, 2, p.Velocity) * 0.7F);
 return;
 }
-long d = delay;
-if (mode < lastMode) d = (DELAY_ALL - delay);
-
-if (t < vftrStart + d) return;
-
-var targetA = pl[mode];
+var targetA = pl[nm];
 var need = 0F;
 if (isVTA && legMode!=3 ) {
 if (VTA >= 0) {
-need = MathHelper.Clamp(VTA - tapsl[mode], 0, tapel[mode] - tapsl[mode]);
-// need *= (tapel[mode] - tapsl[mode]) / toRa(90F);
+need = MathHelper.Clamp(VTA - tapsl[nm], 0, tapel[nm] - tapsl[nm]);
 } else {
-need = MathHelper.Clamp(VTA - tansl[mode], tanel[mode] - tansl[mode], 0);
-// need *= (tanel[mode] - tansl[mode]) / toRa(-90F); 
+need = MathHelper.Clamp(VTA - tansl[nm], tanel[nm] - tansl[nm], 0);
 }
 }
 
@@ -814,9 +819,7 @@ need += WTA[iWTA];
 
 if (isTaReverse) need = - need;
 
-r.SetValueFloat("Velocity", (float)pid.Filter(pl[mode] + need - modangle(r.Angle),2, r.TargetVelocityRPM));
-lastMode = mode;
-
+r.SetValueFloat("Velocity", (float)pid.Filter(pl[nm] + need - modangle(r.Angle),2, r.TargetVelocityRPM));
 }
 
 public bool isNose() {
@@ -828,7 +831,7 @@ return r.CustomName.Contains("nose");
 
 List<VFTRotor> vftrList = new List<VFTRotor>();
 List<VFTRotor> wingrList = new List<VFTRotor>();
-int wingrMode = 0;
+int landrMode = 0, wingrMode = 0;
 List<VFTRotor> landrList = new List<VFTRotor>();
 static float VTA = 0; //global vector angle left;
 
@@ -896,7 +899,6 @@ continue;
 }
 r.setMode(vftrMode);
 }
-
 if (mySpeedToMe.Z < -60)
 wingrMode = 1;
 else if (mySpeedToMe.Z > -30)
@@ -904,7 +906,7 @@ wingrMode = 0;
 
 if (isDown)wingrMode = 1;
 
-int landrMode = isDown?1:0;
+landrMode = isDown?1:0;
 if (shipPosition != Vector3D.Zero && (MePosition - shipPosition).Length() < 200) {
 wingrMode = 1;
 landrMode = 1;
@@ -1270,7 +1272,7 @@ string info = "";
 info += " Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (approachIdx > 0 ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + (avoidOn?"Avoid":"") +br;
 info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") + (t - lastSendingTime<120 && t%60<30 ?"=>":"") + (t - lastReceivingTime<120 && t%60<30?"<=":"") + br;
 info += " Speed level: " + aeroSpeedLevel + " AHH: " + ahhOn + " " + Math.Round(ahh,1) + " Steer: " + (isSteeringAccumulate?"On":"Off") +  '\n';
-info += " Boosters: " + (useBst?"On":"Off") + " Missile-Auto: " + autoFireMissile + br;
+info += " Boosters: " + (useBst?"On":"Off") + br;
 info += " Location " + distanceInfo + br;
 if (gcTargetPanel != null) {
 info += " Target: " + gcTargetPanel.GetPublicTitle() + "\n";
@@ -1486,12 +1488,9 @@ Head = getBlockByName(HeadNameTag) as IMyShipController;
 //tryAddVftr("wing-p", 0, toRa(28F), toRa(28F), 0, wingrList);
 //tryAddVftr("Hinge landgear", 0, toRa(-45F), toRa(-45F), 0, landrList);
 
-//cc-7T
-tryAddVftr("Hinge Land", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
-tryAddVftr("Wing-L", toRa(-89F), 0, 0, 0, landrList);
-tryAddVftr("Wing-R", toRa(-89F), 0, 0, 0, landrList);
-tryAddVftr("Hinge Connector", toRa(89F), 0, 0, 0, landrList);
-tryAddVftr("Hinge Drill", toRa(1F), toRa(45F), toRa(45F), 0, landrList);
+// ff9x
+tryAddVftr("Hinge Land 1-1", toRa(0F), toRa(60F), toRa(60F), 0, landrList);
+tryAddVftr("Hinge Land 1-2", toRa(-90F), toRa(90F), toRa(90F), 600, landrList);
 
 // U2
 // tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
@@ -2664,10 +2663,6 @@ if (sonCode == null) break;
 welderList = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyShipWelder> (welderList);
 PlayActionList(welderList, "OnOff_On");
-break;
-case ("FIREMISSILEON"):
-if (sonCode == null) break;
-autoFireMissile=!autoFireMissile;
 break;
 case "DETRANSON":
 if (sonCode == null) break;
