@@ -622,6 +622,7 @@ bool checkRadarTarget(out Dictionary<long, RadarTarget> radarTargets)
         if (fields[2].Equals("Y")) radarTarget.isHighThreaten = true;
         else if (fields[2].Equals("N")) radarTarget.isHighThreaten = false;
         else allRead = false;
+        //if(!radarTargets.Any())radarTarget.isHighThreaten = true; // debugMode2
         allRead &= double.TryParse(fields[3], out x);
         allRead &= double.TryParse(fields[4], out y);
         allRead &= double.TryParse(fields[5], out z);
@@ -1351,15 +1352,6 @@ bool INIT_NEXT_MISSILE()
         bool HasMerge = TempMerges.Count > 0;
         bool HasThruster = NEW_MISSILE.THRUSTERS.Count > 0;
 
-        //Echos Some Useful Diagnostics
-        Lstrundata = "Last Missile Failed To Fire\nReason:" +
-            "\nHas Gyro: True" +
-            "\nHas Turret: " + HasTurret +
-            "\nHas Power: " + HasPower +
-            "\nHasMerge: " + HasMerge +
-            "\nHasThruster: " + HasThruster +
-            "\nRefueled: " + (!isRefueling);
-
         //Assigns and Exits Loop
         bool radarReady = false;
         if (radarSurface == null) radarReady = true; // do not affect non radar ship
@@ -1384,8 +1376,21 @@ bool INIT_NEXT_MISSILE()
                     firedThreatenIds.Add(NEW_MISSILE.targetId);
                     radarReady = true;
                 }
+                else
+                {
+                    break;
+                }
             }
         }
+
+        //Echos Some Useful Diagnostics
+        Lstrundata = "Last Missile Failed To Fire\nReason:" +
+            "\nHas Gyro: True" +
+            "\nHas Turret: " + HasTurret +
+            "\nHas Power: " + HasPower +
+            "\nHasMerge: " + HasMerge +
+            "\nHasThruster: " + HasThruster +
+            "\nRefueled: " + (!isRefueling);
         Lstrundata += "\nRadarTarget: " + radarReady;
         if (HasTurret && HasPower && HasMerge && HasThruster && (!isRefueling) && radarReady)
         {
