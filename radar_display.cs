@@ -1,9 +1,17 @@
+﻿using Sandbox.ModAPI.Ingame;
+using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using VRage;
+using VRage.Game;
+using VRage.Game.GUI.TextPanel;
+using VRage.Game.ModAPI.Ingame.Utilities;
 using VRageMath;
-//#region In-game Script 
+namespace RadarDisplay { 
+public class Program:MyGridProgram { 
+#region In-game Script 
 /* 
 / //// / Whip's Turret Based Radar Systems / //// / 
  
@@ -125,6 +133,8 @@ Color enemyIconColor = new Color(150, 100, 40, 255);
 Color enemyElevationColor = new Color(75, 50, 20, 255);
 Color enemyHighIconColor = new Color(150, 0, 0, 255);
 Color enemyHighElevationColor = new Color(75, 0, 0, 255);
+Color enemyDisableIconColor = new Color(100, 100, 100, 255);
+Color enemyDisableElevationColor = new Color(50, 50, 50, 255);
 Color neutralIconColor = new Color(150, 150, 0, 255);
 Color neutralElevationColor = new Color(75, 75, 0, 255);
 Color allyIconColor = new Color(0, 50, 150, 255);
@@ -169,6 +179,7 @@ readonly MyIni textSurfaceIni = new MyIni();
 string droneRadarName = "radardrone";
 IEnumerator<bool> LaunchStateMachine;
 
+double ALERT_RANGE = 2000;
 
 //#endregion 
 
@@ -347,6 +358,17 @@ void Main(string arg, UpdateType updateSource)
     {
         pickClear();
     }
+    else if (arg.Equals("PICK_DISABLE"))
+    {
+        bool cannot = pickedIdx == 0 || !targetDataDict.Any(x => x.Key == pickedIdx);
+        if (!cannot) { 
+            var kt = targetDataDict[pickedIdx];
+            if (kt is KRadarTargetData) { 
+                var ktt = (KRadarTargetData) kt;
+                ktt.isDisabled = !ktt.isDisabled;
+            }
+        }
+    }
 
     updateMotion();
 
@@ -456,7 +478,7 @@ void sendPosition(long entityId, TargetData td)
     refWorldMatrix.M31 + "," + refWorldMatrix.M32 + "," + refWorldMatrix.M33 + "," + refWorldMatrix.M34 + "," +
     currentPos.X + "," + currentPos.Y + "," + currentPos.Z + "," + refWorldMatrix.M44 + "," +
     speed.X + "," + speed.Y + "," + speed.Z;
-    List<KeyValuePair<long, TargetData>> enemyList = targetDataDict.Where(i => i.Value.Relation == TargetRelation.Enemy).ToList();
+    List<KeyValuePair<long, TargetData>> enemyList = targetDataDict.Where(i => i.Value.Relation == TargetRelation.Enemy && (MePosition - i.Value.Position).Length() < ALERT_RANGE).ToList();
     enemyList.Sort((l, r) =>
             (int)((MePosition - r.Value.Position).Length() -
         (MePosition - l.Value.Position).Length())
@@ -512,7 +534,31 @@ void ProcessNetworkMessage()
             if (motherCode == SON_CODE || motherCode == SON_CODE + "|" + MOTHER_CODE)
             {
                 string command = myTuple.Item2;
-                PlayAction(dcsComputer, "Run", "RADAR:" + command);
+                string[] ckv = command.Split(':');
+                if(ckv.Length == 1) { 
+                    PlayAction(dcsComputer, "Run", "RADAR:" + command);
+                } else { 
+                    switch(ckv[0]) {
+                                case "ArmLock":
+                                case "ArmUnlock":
+                                    String[] posa = ckv[1].Split(',');
+                                    double x, y, z;
+                                    double.TryParse(posa[0], out x);
+                                    double.TryParse(posa[1], out y);
+                                    double.TryParse(posa[2], out z);
+                                    var pos = new Vector3D(x, y, z);
+                                    if ((pos - Me.GetPosition()).Length() < 5)
+                                    {
+                                        if(ckv[0].Equals("ArmLock"))
+                                            PlayAction(dcsComputer, "Run", "RADAR:STANDBYON");
+                                        else
+                                            PlayAction(dcsComputer, "Run", "RADAR:STANDBYOFF");
+                                    }
+                                    break;
+                                default:
+                                    break;
+                    }
+                }
             }
         }
     }
@@ -550,7 +596,6 @@ void NetworkTargets()
         var targetData = kvp.Value;
         if (targetData.IngestCount > MAX_REBROADCAST_INGEST_COUNT)
             continue;
-
         if (!networkTargets && targetData.Relation == TargetRelation.Friendly) continue;
 
         var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)targetData.Relation, kvp.Key, targetData.Position, targetData.IngestCount, encodeMessage(targetData.Code, new MatrixD(), targetData.Velocity, 0));
@@ -774,6 +819,12 @@ void GetTurretTargets()
                 targetIconColor = enemyHighIconColor;
                 targetElevationColor = enemyHighElevationColor;
             }
+            if (kt.isDisabled)
+            {
+                targetIconColor = enemyDisableIconColor;
+                targetElevationColor = enemyDisableElevationColor;
+            }
+
             isSelected = kt.isSelected;
         }
 
@@ -853,9 +904,10 @@ class KRadarTargetData : TargetData
     public double size; // for size match
     public bool isHighThreaten = false;
     public bool isSelected = false;
+    public bool isDisabled = false;
 
     public static double SIZE_RATIO_ERROR = 0.1;
-    public static double POS_ABS_ERROR = 10;
+    public static double POS_ABS_ERROR = 300;
     public static long MAX_LIVE_FRAME = 180;
 
     public static long maxId = 1;
@@ -1380,7 +1432,7 @@ bool PopulateLists(IMyTerminalBlock block)
     var turret = block as IMyLargeTurretBase;
     if (turret != null)
     {
-        turrets.Add(turret);
+        turrets.Add(turret); 
         return false;
     }
 
@@ -2225,7 +2277,7 @@ void parseKRadarTarget()
     // CODING
     if (kradarPanel == null) return;
     var data = kradarPanel.GetText();
-    if (data == null || data.Length == 0) return;
+    if(data == null) data = "";
     string[] lines = data.Split('\n');
     List<KRadarElement> kradarPosList = new List<KRadarElement>();
     foreach (var l in lines)
@@ -2296,6 +2348,7 @@ void parseKRadarTarget()
                 (kt.size != 0 && (Math.Abs(kt.size - kp.size) / kt.size) < KRadarTargetData.SIZE_RATIO_ERROR))
             {
                 found = kp;
+                break;
             }
         }
 
@@ -2337,13 +2390,13 @@ void parseKRadarTarget()
         targetDataDict.Add(newID, newTarget);
         kradarTargetList.Add(newTarget);
     };
-
     if (Me is IMyTextSurfaceProvider)
     {
         IMyTextSurface ts = ((IMyTextSurfaceProvider)Me).GetSurface(0);
         StringBuilder sb = new StringBuilder();
         foreach (var kt in kradarTargetList)
         {
+            if (kt.isDisabled) continue;
             sb.Append(kt.id).Append(":").Append(kt.isSelected ? "Y" : "N").Append(":")
                 .Append(kt.isHighThreaten ? "Y" : "N").Append(":")
                 .Append(kt.Position.X).Append(":")
@@ -2375,4 +2428,9 @@ static double getLogLen(double len)
 static double sigmoid(double x)
 {
     return 1.0 / (1.0 + Math.Exp(-x));
+}
+
+
+#endregion
+}
 }

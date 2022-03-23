@@ -1,4 +1,4 @@
-using Sandbox.ModAPI.Ingame;
+锘縰sing Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
@@ -21,9 +21,9 @@ Kaien's drone control system V5.6
 ?id=1406061291
 
 last update:
-v5.6.0 20210802
+v5.6.1 202203
 -----------------
-Smoke and gyroDZ
+STANDBY
 ...
 
 custom data sample for son ship:
@@ -52,8 +52,6 @@ fighterFcsName=Programmable block fcs
 LCDNameTag=LCD Panel fcs
 homingTurretName=R_FORWARD_OC
 useTurretAsAimer=true
-liFcsSearchGroupName=Li-fcs-search-G
-liFcsLockGroupName=Li-fcs-lock-G
 macAV=0.005
 isBase=true
 maxTargetCount=1
@@ -76,6 +74,7 @@ WEAPON2
   :switch to rocket launcher
 */
 
+float VTOL_PID_P = 5F; // - 20
 string CockpitNameTag = "Cockpit";
 string HeadNameTag = "VF_HEAD";
 string LCDNameTag = "FCS_LCD";
@@ -87,10 +86,6 @@ double ScanRange = 2000;
 string fighterFcsName = "Programmable block fcs";
 
 bool useTurretAsAimer = false;
-string liFcsSearchGroupName = "Li-fcs-search-G";
-string liFcsLockGroupName = "Li-fcs-lock-G";
-int AimOnConfig = 1;
-int flyByAttackRoundTime = 20000;
 
 Vector3D flyByAimPosition = new Vector3D(0,0,0);
 Vector3D flyByAttackPosition = new Vector3D(0,0,0);
@@ -99,21 +94,16 @@ Vector3D targetPosition = new Vector3D(0,0,0);
 Vector3D shipSpeed = new Vector3D(0,0,0);
 Vector3D flyByAimSpeed = new Vector3D(0,0,0);
 bool needFlyByAim = false;
-List<IMyTerminalBlock> liFcsSearchList = new List<IMyTerminalBlock>();
-List<IMyTerminalBlock> liFcsLockList = new List<IMyTerminalBlock>();
 IMyTextPanel gcTargetPanel = null;
 List<IMyTextPanel> gcTargetPanelList = new List<IMyTextPanel>();
 int maxTargetCount = 1;
 Vector3D naturalGravity;
 double naturalGravityLength;
-Vector3D holdPosition;
-bool isHold = false;
 bool isDown = false;
+bool isStandBy = true;
 bool isME = false;
 bool isLaunch = false;
 bool isBase = false;
-bool motherSignalRotation = false;
-bool isTurning = false;
 bool isBig = false;
 bool dampenersOn = true;
 double droneAttackRange = 0;
@@ -188,15 +178,14 @@ Vector3D MePosition = Vector3D.Zero;
 Vector3D myToShipPosition = Vector3D.Zero;
 double AimRatio = 0.5;
 double maxAV = 1;
-Vector3D MeLastPosition;
 double diffX, diffZ;
 Vector3D MeVelocity;
 Vector3D MeLastVelocity;
-Vector3D MeAcceleration;
 Vector3D inputVec;
 Vector3D inputVec_RT = Vector3D.Zero;
 Vector3D needA_G = Vector3D.Zero;
 float inputRoll;
+Vector2 inputRota;
 bool isUnderControl = false;
 MyShipMass myShipMass;
 float shipMass;
@@ -221,16 +210,11 @@ Vector3D maintainSpeedToMeAA = Vector3D.Zero;
 bool isVF=true;
 IMyShipController Head = null;
 List<IMyTerminalBlock> rotorShoulder = new List<IMyTerminalBlock>();
-string RotorShoulderNameTag = "Rotor Shoulder";
 PIDController[] shoulderPIDList = new PIDController[2];
 static int legMode = 0; // default = 0, vf = 1
 float legMargin = -0.05f * (float)Math.PI;
-int legFoldStart = 0;
-int legFoldTime = 120;
 string FCSRNameTag = "Programmable block FCSR";
-string RGMSNameTag = "Programmable block rgms";
 IMyTerminalBlock fighterFcsr = null;
-IMyTerminalBlock rgms = null;
 
 Vector3D downStartPos = Vector3D.Zero;
 int lastDownT = 0;
@@ -244,16 +228,16 @@ return n.Contains("#A#") || n.Contains("#B#") || n.Contains("RCS") || n.Contains
 bool isSM = false;
 
 // auto height hold
-bool ahhOn = true;
-bool continueAhhOn = true;
-int continueAhhStart = 0;
+bool ahhOn = false;
+bool continueAhhOn = false;
+bool isNear = false;
 void setAhhOn(bool v) {
 // new ahh
+if(!v && ahhOn)resetThrusters();
 ahhOn = continueAhhOn = v;
 return;
 
 }
-bool useAhh = true;
 double ahh = 0;
 
 // suspect mode
@@ -269,6 +253,21 @@ static double INPUT_RATE = 5;
 
 // ctnNA
 int ctnNA = 0;
+bool useCtn = false;
+
+// axis
+        bool isAxisAim=false;
+List<IMyTerminalBlock> axisLight=new List<IMyTerminalBlock>();
+Color axisN = new Color(101,153,255),
+axisG = new Color(78,255,130),
+axisY = new Color(255,238,139),
+axisR = new Color(255,130,78);
+long axisBs=0;
+
+// s light
+List<IMyTerminalBlock> sLights = new List<IMyTerminalBlock>();
+Color SLow = new Color(255,112,148),
+SHight = new Color(255, 217, 165);
 
 Program()
 {
@@ -369,17 +368,7 @@ break;
 case ("WEAPON2"):
 break;
 case ("LOADMISSILE"):
-welderList = new List<IMyTerminalBlock>();
-GridTerminalSystem.GetBlocksOfType<IMyShipWelder> (welderList);
-PlayActionList(welderList, "OnOff_On");
-break;
-case ("LOADMISSILEON"):
-break;
-case ("FIREMISSILEON"):
-break;
-case "DETRANSON":
-break;
-case "TRANSON":
+// TODO
 break;
 case "DOWN":
 isDown = !isDown;
@@ -442,6 +431,9 @@ isSteeringAccumulate = !isSteeringAccumulate;
 steeringAccumulation = Vector3D.Zero;
 saIgnoreStart = -1;
 break;
+case "AXIS":
+isAxisAim=true;
+break;
 default:
 if (sonCode == null) break;
 if(arguments!=null && arguments != "") {
@@ -477,7 +469,8 @@ break;
 }
 
 t++;
-
+if(isStandBy) {ShowLCD();return;}
+userControl();
 if (t > lastMotherSignalTime + 120) {
 ParseSensor();
 }
@@ -536,24 +529,39 @@ bool needGyroOverride = false;
 if (sonCode != null) {
 if(notDocked()) MaintainSpeed();
 }
-// auto balance in gravity
+bool isFcsAiming = false;
+// axis cannon
+while(true){
+if (fighterFcsr == null) break;
+string[] lines = ((IMyTextSurfaceProvider)fighterFcsr).GetSurface(0).GetText().Split('\n');
+if(isAxisAim){
+string[] tarS = lines[0].Split(':');
+if (tarS.Length<3) { isAxisAim = false; break;}
+var tarN = new Vector3D();
+double.TryParse(tarS[0],out tarN.X);
+double.TryParse(tarS[1],out tarN.Y);
+double.TryParse(tarS[2],out tarN.Z);
+SetGyroYaw(tarN.X*AimRatio);
+SetGyroPitch(tarN.Y*AimRatio);
+needGyroOverride=true;
+isFcsAiming=true;
+}
+if (lines.Length<2) break;
+setAxisColor(lines[1], isAxisAim);
+break;
+}
+// speed light
+updateSLight();
+// a b g
 var ng = naturalGravity;
 bool isAssist = isDown || isLaunch || isSM || continueAhhOn;
 bool suc = isUnderControl;
 bool tuc = homingTurret != null && homingTurret.IsUnderControl;
-if (!suc && !isHold && ng.Length() > 0.001f &&
-!(flyByOn||dockingOn||isDown||isLaunch||isSM)
-) {
-holdPosition = MePosition;
-isHold = true;
-resetThrusters();
-}
-
-if ((!(flyByOn||dockingOn) && ng.Length() > 0.001f && dampenersOn) || isAssist) {
 if (isAssist) {
 
 
-bool isFcsAiming = LockTargetAiming && LockTargetPosition!=Vector3D.Zero;
+isFcsAiming |= LockTargetAiming && LockTargetPosition!=Vector3D.Zero;
+
 if(ng.Length() > 0.001 && !isFcsAiming) {
 var diff = diffX;
 if (diff != 0) {
@@ -568,11 +576,11 @@ diff += angleWhenWalk;
 }
 if (!isFcsAiming && !isSM && !tuc) {
 SetGyroPitch(diff * AimRatio);
-if(!isSteeringAccumulate)SetGyroYaw((msc.RotationIndicator.Y));
+if(!isSteeringAccumulate)SetGyroYaw((inputRota.Y));
 } else {
 // rix = -Y riy = X
-SetGyroPitch((-msc.RotationIndicator.X) * 0.5);
-if(!isSteeringAccumulate)SetGyroYaw((msc.RotationIndicator.Y));
+SetGyroPitch((-inputRota.X) * 0.5);
+if(!isSteeringAccumulate)SetGyroYaw((inputRota.Y));
 }
 
 needGyroOverride = true;
@@ -581,8 +589,7 @@ needGyroOverride = true;
 
 bool sma = LockTargetPosition!=Vector3D.Zero && isSM;
 if ( isDown || isLaunch || sma){
-Vector3D needSpeed = (holdPosition - MePosition) * 0.1f - MeVelocity;
-Vector3D maintainSpeedToMe = Vector3D.TransformNormal(needSpeed, refLookAtMatrix);
+Vector3D maintainSpeedToMe = Vector3D.Zero;
 
 Vector3D nowSpeedToMe = Vector3D.TransformNormal(Cockpit.GetShipVelocities().LinearVelocity, refLookAtMatrix);
 if (isDown) {
@@ -613,12 +620,6 @@ resetThrusters(false);
 inputVec_RT = maintainSpeedToMe * 1f; //
 }
 
-} else {
-if(isHold) {
-isHold = false;
-resetThrusters();
-}
-}
 }
 
 if (ahhOn && !isDown && !isLaunch && dampenersOn) {
@@ -720,9 +721,16 @@ if(LockTargetAiming && LockTargetPosition!=Vector3D.Zero) needGyroOverride = tru
 if((flyByOn || dockingOn) && notDocked()) needGyroOverride = true;
 
 if(isSteeringAccumulate) needGyroOverride = true;
+if (needGyroOverride == false && Math.Abs(inputRoll) < 0.001 && inputRota.Length() < 0.001)
+{
+SetGyroPitch(0);
+SetGyroYaw(0);
+SetGyroRoll(0);
+needGyroOverride = true;
+}
 SetGyroOverride(needGyroOverride);
 
-Main_RT(arguments, updateType); // calc thrustNeedDir need to be in front of main_vt
+Main_RT(arguments, updateType); // in front of main_vt
 
 Main_VT();
 
@@ -734,6 +742,26 @@ ShowLCD();
 // End Main
 }
 
+void updateSLight() { 
+var fs = Vector3D.Dot(MeVelocity, msc.WorldMatrix.Forward);
+var pe = MathHelper.Clamp(fs * 0.01, 0, 1);
+var nc = new Color((int)((SHight.R - SLow.R)*pe + SLow.R), (int)((SHight.G - SLow.G) * pe + SLow.G), (int)((SHight.B - SLow.B) * pe + SLow.B));
+SetBlocksValueColor(sLights, "Color", nc);
+SetBlocksValueFloat(sLights, "Radius", (float)((160-10)*pe+10));  
+SetBlocksValueFloat(sLights, "Intensity", (float)((5-0.5)*pe+0.5));
+}
+private void setAxisColor(string l, bool a)
+{
+var cn = "Color";
+int axisSec = 0;
+int.TryParse(l,out axisSec);
+if (axisSec == 0) {axisBs=0; if (a) SetBlocksValueColor(axisLight, cn, axisG); else SetBlocksValueColor(axisLight, cn, axisN); }
+else if(axisSec < 10) {
+if(axisBs==0)axisBs=t;
+if(t/60 %2==0) SetBlocksValueColor(axisLight, cn, axisY);
+else SetBlocksValueColor(axisLight, cn, Color.Black);
+} else SetBlocksValueColor(axisLight, cn, axisR);
+}
 Vector3D dummyP;
 Vector3D dummyL;
 Vector3D dummyF;
@@ -760,6 +788,7 @@ float[] tanel = new float[3]{0,0,0};
 bool isTaReverse;
 bool isVTA;
 int iWTA;
+bool inited = false;
 
 static int DELAY_ALL = 360;
 
@@ -775,6 +804,7 @@ isR = true;
 } else if (r is IMyPistonBase){
 this.p = (IMyPistonBase)r;
 isR = false;
+pid = new PIDController(20f, 0.1f, 0f, 1f, -1f, 60);
 } else {
 throw new Exception("e");
 }
@@ -796,6 +826,10 @@ iWTA = wta;
 }
 
 public void setMode(int mode) {
+if(!inited) { 
+lastMode = tarMode = mode;
+inited=true;
+}
 if (!pg && mode != tarMode)
 {
 pg = true;
@@ -811,7 +845,7 @@ else nm = tarMode;
 if (t > sTime + DELAY_ALL * 2) { sTime = 0; pg = false; lastMode = tarMode; }
 if (!isR)
 {
-p.SetValueFloat("Velocity", (float)pid.Filter(pl[nm] - p.CurrentPosition, 2, p.Velocity) * 0.7F);
+p.SetValueFloat("Velocity", (float)pid.Filter(pl[nm] - p.CurrentPosition, 2, p.Velocity));
 return;
 }
 var targetA = pl[nm];
@@ -830,7 +864,7 @@ need += WTA[iWTA];
 
 if (isTaReverse) need = - need;
 
-r.SetValueFloat("Velocity", (float)pid.Filter(pl[nm] + need - modangle(r.Angle),2, r.TargetVelocityRPM));
+r.SetValueFloat("Velocity", (float)pid.Filter(modangle(pl[nm] + need - r.Angle),2, r.TargetVelocityRPM));
 }
 
 public bool isNose() {
@@ -990,7 +1024,6 @@ if (tmpddd <= 0) tmpddd = 0.00001;
 smokeInterval = (int)((MeVelocity.Length()) / (tmpddd * 40));
 }
 mySpeedToMe = Vector3D.TransformNormal(MeVelocity, refLookAtMatrix);
-MeAcceleration = (MeVelocity-MeLastVelocity)*60;
 
 myShipMass = msc.CalculateShipMass();
 shipMass = myShipMass.PhysicalMass;
@@ -1015,125 +1048,18 @@ VFTransformLoop();
 isUnderControl = false;
 inputVec = Vector3D.Zero;
 inputRoll = 0;
+inputRota = Vector2.Zero;
 if (Head != null && Head.IsUnderControl) {
 inputVec = Head.MoveIndicator;
 inputRoll = Head.RollIndicator;
+inputRota = Head.RotationIndicator;
 isUnderControl = true;
 } else if (Cockpit.IsUnderControl){
 inputVec = Cockpit.MoveIndicator;
 inputRoll = Cockpit.RollIndicator;
+inputRota = Cockpit.RotationIndicator;
 isUnderControl = true;
 }
-
-if(isUnderControl) {
-
-if (isSteeringAccumulate) {
-double r2sRate = 0.002;
-steeringAccumulation += new Vector3D(0, msc.RotationIndicator.Y * r2sRate, 0);
-if(saIgnoreStart == -1 && steeringAccumulation.Length() < 0.5 && msc.RotationIndicator.Length()<0.5) {
-saIgnoreStart = t;
-}
-if (steeringAccumulation.Length() > 0.5 || msc.RotationIndicator.Length() > 0.5) {
-saIgnoreStart = -1;
-}
-if (saIgnoreStart != -1 && t > saIgnoreStart + 90) {
-isSteeringAccumulate = false;
-}
-
-Vector3D nowA = msc.GetShipVelocities().AngularVelocity;
-SetGyroYaw((steeringAccumulation.Y + nowA.Y * 100) * 0.01);
-SetGyroPitch(-msc.RotationIndicator.X);
-SetGyroRoll(-msc.RollIndicator);
-}
-
-if(inputVec.Z>0.1) {
-aeroSLp(false);
-} else if(inputVec.Z<-0.1) {
-aeroSLp(true);
-} else {
-aeroSLz();
-}
-
-if (inputVec.Length()<0.01&&MeVelocity.Length()>10){
-SetThrusterListOverride(backwardThrusters, 0f);
-}
-if(inputVec.Z > 0.1){
-SetThrusterListOverride(backwardThrusters, -1f);
-}
-// ahh
-Vector3D inputVecWorld = Vector3D.TransformNormal(inputVec, msc.WorldMatrix);
-bool wantUD = false;
-double udi = 0.1, uda = 0.2;
-if (isAeroDynamic) {
-udi = 0.5; uda = 0.7;
-}
-if (naturalGravity.Length() > 0.1 && inputVec.Length() >0.1) {
-  wantUD = Math.Abs(inputVecWorld.Dot(Vector3D.Normalize(naturalGravity))) > udi;
-}
-if (!wantUD) {
-if (Math.Abs(diffZ) > uda) wantUD = true;
-}
-if (!wantUD && isUnderControl) {
-if (msc.RotationIndicator.Length() > 0.1
-|| Math.Abs(inputRoll) > 0.1
-) {
-wantUD = true;
-}
-}
-
-
-if (wantUD) {
-setAhhOn(false);
-resetThrusters(false);
-}
-
-}
-
-
-if ( inputVec.Y > 0.5) {
-if (lastUpT == 0 && Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2) {
-lastUpT = t;
-}
-setAhhOn(false);
-} else if (Math.Abs(inputVec.Y) > -0.1 && lastUpT != 0) {
-if( t - lastUpT < 10) {
-double h = 0;
-if (msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h)) {
-ahh = h;
-setAhhOn(true);
-}
-}
-lastUpT = 0;
-} else if (inputVec.Y < -0.5) {
-setAhhOn(false);
-}
-
-bool cd = false;
-if ( inputVec.Y < -0.5) {
-if (lastDownT == 0 && Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2 && MeVelocity.Length() < 30) {
-lastDownT = t;
-}
-isDown=false;
-} else if (Math.Abs(inputVec.Y) < 0.1 && lastDownT != 0) {
-if( t - lastDownT < 10) {
-isDown = true;
-cd = true;
-}
-lastDownT = 0;
-} else if (inputVec.Y > 0.5) {
-isDown = false;
-cd = true;
-}
-if(cd){
-if (isDown) {
-isLaunch=false;
-downStartPos = MePosition;
-} else {
-SetGyroOverride(false);
-}
-resetThrusters();
-}
-
 
 // parse locktarget from fcs
 if (fighterFcs != null) {
@@ -1181,16 +1107,115 @@ diffZ = diffGravity(forward, naturalGravity, -left);
 }
 else
 {
-MeLastPosition = MePosition;
 MeLastVelocity = MeVelocity;
 }
 
 
 }
 
+void userControl() { 
+if(isUnderControl) {
+
+if (isSteeringAccumulate) {
+double r2sRate = 0.002;
+steeringAccumulation += new Vector3D(0, inputRota.Y * r2sRate, 0);
+if(saIgnoreStart == -1 && steeringAccumulation.Length() < 0.5 && inputRota.Length()<0.5) {
+saIgnoreStart = t;
+}
+if (steeringAccumulation.Length() > 0.5 || inputRota.Length() > 0.5) {
+saIgnoreStart = -1;
+}
+if (saIgnoreStart != -1 && t > saIgnoreStart + 90) {
+isSteeringAccumulate = false;
+}
+
+Vector3D nowA = msc.GetShipVelocities().AngularVelocity;
+SetGyroYaw((steeringAccumulation.Y + nowA.Y * 100) * 0.01);
+SetGyroPitch(-inputRota.X);
+SetGyroRoll(-msc.RollIndicator);
+}
+
+if(inputVec.Z>0.1) {
+aeroSLp(false);
+} else if(inputVec.Z<-0.1) {
+aeroSLp(true);
+} else {
+aeroSLz();
+}
+if (inputVec.Length()<0.01&&MeVelocity.Length()>10){
+SetThrusterListOverride(backwardThrusters, 0f);
+}
+if(inputVec.Z > 0.1){
+SetThrusterListOverride(backwardThrusters, -1f);
+}
+// ahh
+Vector3D inputVecWorld = Vector3D.TransformNormal(inputVec, msc.WorldMatrix);
+bool wantUD = false;
+double udi = 0.1, uda = 0.2;
+if (isAeroDynamic) {
+udi = 0.5; uda = 0.7;
+}
+if (naturalGravity.Length() > 0.1 && inputVec.Length() >0.1) {
+  wantUD = Math.Abs(inputVecWorld.Dot(Vector3D.Normalize(naturalGravity))) > udi;
+}
+if (!wantUD) {
+if (Math.Abs(diffZ) > uda) wantUD = true;
+}
+if (!wantUD && isUnderControl) {
+if (inputRota.Length() > 0.1
+|| Math.Abs(inputRoll) > 0.1
+) {
+wantUD = true;
+}
+}
+
+if (wantUD) {
+setAhhOn(false);
+}
+
+}
+
+
+if ( inputVec.Y > 0.5) {
+isAxisAim = false;
+if (lastUpT == 0 && Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2) {
+lastUpT = t;
+}
+setAhhOn(false);
+} else if (Math.Abs(inputVec.Y) > -0.1 && lastUpT != 0) {
+if( t - lastUpT < 10 && !isNear) {
+double h = 0;
+if (msc.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out h)) {
+ahh = h;
+setAhhOn(true);
+}
+}
+lastUpT = 0;
+} else if (inputVec.Y < -0.5) {
+setAhhOn(false);
+}
+
+if ( inputVec.Y < -0.5) {
+if (lastDownT == 0 && Math.Abs(diffX)<0.2 && Math.Abs(diffZ)<0.2 && MeVelocity.Length() < 30) {
+lastDownT = t;
+}
+if(isDown)resetThrusters();
+isDown=false;
+} else if (Math.Abs(inputVec.Y) < 0.1 && lastDownT != 0) {
+if( t - lastDownT < 10 && !isNear) {
+isDown = true;
+downStartPos = MePosition;
+isLaunch=false;
+}
+lastDownT = 0;
+} else if (inputVec.Y > 0.5) {
+if(isDown) resetThrusters();
+isDown = false;
+}
+}
 
 void resetThrusters(bool needD = true){
-if(needD)setDampenersOverride(Cockpit, true);
+if(needD)setDampenersOverride(msc, true);
 for (int i = 0; i < thrusters.Count; i++) {
 PlayAction(thrusters[i], "OnOff_On");
 thrusters[i].SetValue("Override", 0f);
@@ -1267,7 +1292,7 @@ Echo($"Location: {distanceInfo}");
 string br = "\n";
 
 string info = "";
-info += " Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (approachIdx > 0 ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + (avoidOn?"Avoid":"") +br;
+info += " Auto:  " + (flyByOn ? "Wing" : "") + (dockingOn ? "Landing" : "") + (attackMode ? "Attack" : "") + (approachIdx > 0 ? "Near" : "") + "    " + (isDown?"Down":"") + (isLaunch?"Launching":"") +  (isSM?"Speed Match":"") + (avoidOn?"Avoid":"") + (isStandBy ? "StandBy" : "") + br;
 info += (motherPointerMode?"Pointing":"") + " " +(motherCode!=null?"M: "+motherCode:"") + " " + (sonCode!=null?"S: "+sonCode:"") + (t - lastSendingTime<120 && t%60<30 ?"=>":"") + (t - lastReceivingTime<120 && t%60<30?"<=":"") + br;
 info += " Speed level: " + aeroSpeedLevel + " AHH: " + ahhOn + " " + Math.Round(ahh,1) + " Steer: " + (isSteeringAccumulate?"On":"Off") +  '\n';
 info += " Boosters: " + (useBst?"On":"Off") + br;
@@ -1293,6 +1318,8 @@ lcd.WriteText(info);
 if(flyByOn || dockingOn) {
 if(approachIdx > 0) lcd.FontColor = new Color(76,255,0);
 else lcd.FontColor = new Color(255,76,0);
+} else if (isStandBy){
+lcd.FontColor = new Color(150,150,150);
 } else {
 if(avoidOn) lcd.FontColor = new Color(0,255,255);
 else lcd.FontColor = new Color(0,76,255);
@@ -1471,13 +1498,13 @@ return;
 }
 
 if ((!notDocked() || dockable()) && !isBase){
-dockingOn=true;
+//dockingOn=true;
 approachIdx = dockingList.Count - 1;
 }
 Cockpit = getBlockByName(CockpitNameTag) as IMyShipController;
 if(Cockpit == null)
 {Echo(CockpitNameTag  + "RC not found"); return;}
-setDampenersOverride(Cockpit, true);
+//setDampenersOverride(Cockpit, true);
 refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), Cockpit.WorldMatrix.Forward, Cockpit.WorldMatrix.Up);
 
 Head = getBlockByName(HeadNameTag) as IMyShipController;
@@ -1486,25 +1513,28 @@ Head = getBlockByName(HeadNameTag) as IMyShipController;
 //tryAddVftr("wing-p", 0, toRa(28F), toRa(28F), 0, wingrList);
 //tryAddVftr("Hinge landgear", 0, toRa(-45F), toRa(-45F), 0, landrList);
 
-// ff9x
-tryAddVftr("Hinge Land 1-1", toRa(0F), toRa(60F), toRa(60F), 0, landrList);
-tryAddVftr("Hinge Land 1-2", toRa(-90F), toRa(90F), toRa(90F), 600, landrList);
+// ffx9
+//tryAddVftr("Hinge Land 1-1", toRa(0F), toRa(80F), toRa(80F), 0, landrList);
+//tryAddVftr("Hinge Land 1-2", toRa(-89F), toRa(90F), toRa(90F), 360, landrList);
+//tryAddVftr("Hinge Land 2-1", toRa(0F), toRa(45F), toRa(45F), 0, landrList);
+//tryAddVftr("Piston Land 2-2", 0, 4, 4, 360, landrList);
+//tryAddVftr("Piston Connect", 0, 10, 10, 360, landrList);
 
-// U2
-// tryAddVftr("Leg-L1", toRa(-85), toRa(-60F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
-// tryAddVftr("Leg-L2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
-// tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
-// tryAddVftr("Leg-R1", toRa(85), toRa(60F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
-// tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
-// tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
+// U3
+tryAddVftr("Leg-L1", toRa(5F), toRa(30F), toRa(90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
+tryAddVftr("Leg-L2", toRa(-5F), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
+tryAddVftr("Leg-L3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
+tryAddVftr("Leg-R1", toRa(-5), toRa(-30F), toRa(-90F), 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
+tryAddVftr("Leg-R2", toRa(-5), toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(0), toRa(-30), toRa(-90), toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
+tryAddVftr("Leg-R3", 0, toRa(-30F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-30), toRa(0), toRa(60), toRa(0), toRa(-60), false, 5);
 
-// tryAddVftr("Arm-L1", toRa(1F), toRa(-54F), 0, 120, vftrList);
-// tryAddVftr("Arm-L2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
-// tryAddVftr("Arm-R1", toRa(-1F), toRa(54F), 0, 120, vftrList);
-// tryAddVftr("Arm-R2", toRa(-70), toRa(70F), toRa(70F), 0, vftrList);
+tryAddVftr("Arm-L1", 0, 0, toRa(-90), 0, vftrList);
+tryAddVftr("Arm-L2", 0, toRa(130F), toRa(180F), 0, vftrList);
+tryAddVftr("Arm-R1", 0, 0, toRa(90), 0, vftrList);
+tryAddVftr("Arm-R2", 0, toRa(-130F), toRa(-180F), 0, vftrList);
 
-// tryAddVftr("Tail", 0, toRa(90F), toRa(90F), 0, vftrList);
-// tryAddVftr("Wing", 0, 0, toRa(-90F), 0, vftrList);
+tryAddVftr("Hinge Nose", toRa(90F), toRa(90F), 0, 0, vftrList);
+tryAddVftr("Piston Nose", 1.52F, 1.52F, 0, 200, vftrList);
 
 GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
 if (Cockpit is IMyTextSurfaceProvider) {
@@ -1535,9 +1565,6 @@ if (Head!=null)
   setupGyroField(Gyroscopes, ref gyroYawFieldHead, ref gyroYawFactorHead, ref gyroPitchFieldHead, ref gyroPitchFactorHead, ref gyroRollFieldHead, ref gyroRollFactorHead, Head);
 SetGyroOverride(false);
 
-findByGroup(liFcsSearchGroupName, liFcsSearchList);
-findByGroup(liFcsLockGroupName, liFcsLockList);
-
 fighterFcs = getBlockByName(fighterFcsName,false,true);
 if (fighterFcs != null)
 {
@@ -1549,7 +1576,6 @@ if (fighterFcs != null)
 }
 
 fighterFcsr = getBlockByName(FCSRNameTag,false,true);
-rgms = getBlockByName(RGMSNameTag,false,true);
 
 InitSpeedControl();
 
@@ -1564,10 +1590,12 @@ initL2T();
 
 GridTerminalSystem.GetBlocksOfType<IMyUserControllableGun> (smokeList, b=>b.CustomName.Contains("Smoke") && (!ignoreTag(b.CustomName)));
 
+axisLight = getBlockListByName("Axis Light");
+sLights = getBlockListByName("Speed Light");
+// init new
+
 init = true;
 }
-
-float MAX_GYRO_FACTOR = 60;
 
 void setupGyroField(List<IMyTerminalBlock> Gyroscopes,
 ref string[] gyroYawField,
@@ -1802,7 +1830,6 @@ List<IMyTerminalBlock> downThrusters = new List<IMyTerminalBlock>();
 List<IMyTerminalBlock> backwardThrusters = new List<IMyTerminalBlock>();
 IMyLargeTurretBase homingTurret = null;
 Vector3D maintainSpeed = Vector3D.Zero;
-Vector3D diffToMe;
 MatrixD shipMatrix = MatrixD.Zero;
 static string debugInfo="";
 static string errorInfo="";
@@ -1824,7 +1851,6 @@ string dockingApproach="DOWN";
 List<Vector3D> dockingList = new List<Vector3D>();
 List<Vector3D> lndList = new List<Vector3D>();
 float dtp=0F;
-//bool isApproach=false;
 int approachIdx = 0;
 void resetApproachIdx() {
 approachIdx = 0;
@@ -2112,12 +2138,9 @@ cfg.Get("upMode", ref upMode);
 cfg.Get("homingTurretName", ref homingTurretName);
 cfg.Get("useTurretAsAimer", ref useTurretAsAimer);
 cfg.Get("ScanRange", ref ScanRange);
-cfg.Get("liFcsSearchGroupName", ref liFcsSearchGroupName);
-cfg.Get("liFcsLockGroupName", ref liFcsLockGroupName);
 cfg.Get("maxAV", ref maxAV);
 cfg.Get("commandWaitTic", ref commandWaitTic);
 cfg.Get("commandAllTic", ref commandAllTic);
-//cfg.Get("isBig", ref isBig);
 isBig = Me.CubeGrid.GridSizeEnum == MyCubeSize.Large;
 cfg.Get("isDummy", ref isDummy);
 cfg.Get("isBase", ref isBase);
@@ -2357,9 +2380,6 @@ if(shipMatrix == MatrixD.Zero) return;
 maintainSpeedToMeAA = calcSpeedToMeAndAvoid(maintainSpeed);
 inputVec_RT=maintainSpeedToMeAA*0.1;
 
-// 计算转向
-isTurning = false;
-double isTurningLimit = 0.1;
 MatrixD refWorldMatrix = Cockpit.WorldMatrix;
 Vector3D shipDirectionToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Forward, refLookAtMatrix));
 MatrixD refLookAtMatrixUp = MatrixD.CreateLookAt(new Vector3D(0,0,0), refWorldMatrix.Up, refWorldMatrix.Backward);
@@ -2430,7 +2450,6 @@ sd.Y += dy;
 }
 SetGyroPitch(AimRatio*sd.Y*0.2);
 sd.Z=0;
-if (sd.Length()>isTurningLimit) isTurning=true;
 
 
 }
@@ -2443,7 +2462,7 @@ if (naturalGravityLength > 0) {
 // VTOL roll adjust
 var diff = diffX;
 
-// use roll to get side speed in gravity
+// roll to side speed in gravity
 var sideRoll = maintainSpeedToMeAA.X * 0.001f; // radio
 if (sideRoll > 0.05f) sideRoll = 0.05f;
 if (sideRoll < -0.05f) sideRoll = -0.05f;
@@ -2453,7 +2472,6 @@ sr = -1*diff;
 sr = -AimRatio*0.5*shipRollToMe.X;
 }
 SetGyroRoll(sr);
-if (sr > isTurningLimit) isTurning=true;
 SetGyroOverride(true);
 }
 
@@ -2469,11 +2487,9 @@ shipDirectionToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Right
 break;
 case "UP":
 shipDirectionToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Up, refLookAtMatrix));
-//dtp=-0.5F;
 break;
 case "DOWN":
 shipDirectionToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Down, refLookAtMatrix));
-//dtp=0.5F;
 break;
 case "FORWARD":
 shipDirectionToMe = Vector3D.Normalize(Vector3D.TransformNormal(shipMatrix.Forward, refLookAtMatrix));
@@ -2511,7 +2527,6 @@ SetGyroOverride(true);
 
 }
 
-// 维持速度
 if (flyByOn || (dockingOn && notDocked())) {
 var dr= DimSpeedAll(maintainSpeedToMeAA,refLookAtMatrix);
 }
@@ -2643,7 +2658,26 @@ avoidLifeTimeMap.Remove(item.Key);
 if (! kv[0].Equals(sonCode)) return;
 
 args = kv[1].Split(',');
-List<IMyTerminalBlock> welderList;
+switch(args[0]) { 
+case "STANDBYON":
+isStandBy=true;
+setAhhOn(false);
+setDampenersOverride(msc, false);
+List<IMyTerminalBlock> nsl = new List<IMyTerminalBlock>();
+nsl.AddList(upThrusters);
+nsl.AddList(leftThrusters);
+nsl.AddList(rightThrusters);
+PlayActionList(nsl, "OnOff_Off");
+SetGyroOverride(false);
+break;
+case "STANDBYOFF":
+isStandBy=false;
+isDown = false;
+resetThrusters();
+break;
+}
+if(isStandBy) return;
+
 switch(args[0]) {
 case "FLYBYON":
 if (sonCode == null || shipPosition==Vector3D.Zero) break;
@@ -2656,24 +2690,7 @@ commandCache="DOCKINGON";
 commandStart=t;
 break;
 case ("LOADMISSILEON"):
-if (sonCode == null) break;
-welderList = new List<IMyTerminalBlock>();
-GridTerminalSystem.GetBlocksOfType<IMyShipWelder> (welderList);
-PlayActionList(welderList, "OnOff_On");
-break;
-case "DETRANSON":
-if (sonCode == null) break;
-PlayActionList(connectors, "Unlock");
-PlayActionList(connectors, "OnOff_Off");
-PlayActionList(landingGears, "OnOff_On");
-PlayActionList(landingGears, "Lock");
-break;
-case "TRANSON":
-if (sonCode == null) break;
-PlayActionList(connectors, "OnOff_On");
-PlayActionList(connectors, "Lock");
-PlayActionList(landingGears, "Unlock");
-PlayActionList(landingGears, "OnOff_Off");
+//TODO
 break;
 case "ATTACKON":
 if (sonCode == null) break;
@@ -2806,7 +2823,7 @@ needFlyByAim = true;
 }
 
 void RefreshMaintainSpeed(){
-// 计算速度
+// 璁＄畻閫熷害
 if(shipMatrix == MatrixD.Zero) return;
 distanceInfo=displayVector3D(myToShipPosition);
 targetPosition = calcApproach(myToShipPosition, shipPosition, ref approachIdx);
@@ -2855,14 +2872,16 @@ Vector3D diffPositionBaseShip =  Vector3D.TransformNormal(diffPosition, shipLook
 
 // 
 Vector3D absDiff = diffPosition;
-diffToMe = Vector3D.TransformNormal(absDiff, refLookAtMatrix);
 Vector3D shipSpeedToMe = Vector3D.TransformNormal(shipSpeed, refLookAtMatrix);
 
 // method 2
 double aRate = 0.1;
 if (diffPosition.Length() < nearRange) {
+isNear = true;
+setAhhOn(false);
 maintainSpeed = diffPosition * aRate + shipSpeed;
 } else {
+isNear = false;
 double a = twRate[5];//use front tw as only tw
 double d = (targetPosition - MePosition).Length();
 double t = (MeVelocity-shipSpeed).Length() / a;
@@ -3009,15 +3028,7 @@ const double minDampeningAngle = 75;
 
 bool referenceIsOnSameGridAsProgram = true; //recommended setting: true
 
-//-----------------------------------------------
-//         No touching below this line
-//-----------------------------------------------
 const double updatesPerSecond = 10;
-//Number of updates per second
-const double timeMaxCycle = 1 / updatesPerSecond;
-double timeCurrentCycle = 0;
-const double refreshInterval = 10;
-double refreshTime = 141;
 bool isSetup = false;
 
 
@@ -3036,19 +3047,10 @@ void Main_RT(string argument, UpdateType updateType)
 
 minDampeningDotProduct = Math.Cos(minDampeningAngle * Math.PI / 180);
 fullBurnDotProduct = Math.Cos(fullBurnToleranceAngle * Math.PI / 180);
-
-
-//if ((updateType & UpdateType.Update1) == 0) //only runs bulk of logic when triggered by itself
-//return;
-
-timeCurrentCycle += 1.0/60.0;
-refreshTime += 1.0/60.0;
-
 if (!isSetup )
 {
 GrabBlocks();
 isSetup = true;
-refreshTime = 0;
 }
 
 if (!isSetup)
@@ -3191,7 +3193,6 @@ offGridThrustLL.ForEach(l=>l.ForEach(t=>t.ThrustOverridePercentage=0));
 manageL2T(Vector3D.Zero, msc.CalculateShipMass().PhysicalMass);
 }
 
-timeCurrentCycle = 0;
 }
 catch
 {
@@ -3338,8 +3339,6 @@ void Main_VT()
 IMyShipController remote = null;
 
 List<List<IMyTerminalBlock>> rotorLeft = new List<List<IMyTerminalBlock>>(), rotorRight = new List<List<IMyTerminalBlock>>();
-bool noLevel1 = false;
-
 
 const string rotorLeftName = "Advanced Rotor Left";
 const string rotorRightName = "Advanced Rotor Right";
@@ -3371,8 +3370,6 @@ List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
 GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(blocks, x => x.CustomName.Contains(rotorLeftName));
 if(blocks.Count > 0)
 rotorLeft = sortByRelativePosition(blocks,"X",!limitInnerRotor);
-else
-noLevel1 = true;
 // 
 var tmp = getBlockByName("Rotor Leg L2");
 if (tmp != null) rotorLeft.Add(new List<IMyTerminalBlock>(){tmp});
@@ -3412,7 +3409,7 @@ VT_init=true;
 
 // a b k
 if (vtolPIDList[0] == null) {
-float pp=20F,pi=0F,pd=0F, pim=1F;
+float pp=VTOL_PID_P,pi=0F,pd=0F, pim=1F;
 for (int i = 0;i < pidc; i ++) {
 vtolPIDList[i] = new PIDController(pp, pi, pd,pim,-pim,60);
 }
@@ -3444,9 +3441,9 @@ else if (naturalGravityLength > 0.01f && isAeroDynamic &&
 ) tl = -(float)Math.PI * 0.45f;
 
 // FEATURE 0101 thruster back default
-if (needA.Length() < dz) {
+if (useCtn && needA.Length() < dz) {
 if (ctnNA == 0) ctnNA = t;
-else if (t - ctnNA > 60) tl = -0.5f*(float)Math.PI;
+else if (t - ctnNA > 120) tl = -0.5f*(float)Math.PI;
 } else {
 ctnNA = 0;
 }
@@ -3477,21 +3474,6 @@ var ta = targetAngleLeft;
 
 float tal, tar;
 tal = tar = ta;
-//if (legMode ==3) {
-//var tmpi = i;
-//if (noLevel1) tmpi += 1;
-//processWalkAngle(out tal, out tar, tmpi);
-//}
-// roll deprecated
-// if (! limitInnerRotor && naturalGravityLength > 0.01f && isAeroDynamic && aeroSpeedLevel>0) {
-// if(i==0 || i == 1) {
-// float rolldiff = MathHelper.Clamp(inputRoll * 0.1f, -0.1f*(float)Math.PI, 0.1f*(float)Math.PI);
-// tal += rolldiff;
-// tar -= rolldiff;
-// if (i == 0) {
-// }
-// }
-// }
 
 float unmanlimit=1f;
 for (int j = 0; j < rl.Count; j++) {
