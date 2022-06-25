@@ -75,6 +75,7 @@ const string INI_MASTER_CODE = "Master code";
 const string INI_SLAVE_CODE = "Slave code";
 const string INI_START_WHEN_COMPILED = "Start when compiled";
 const string INI_KRADAR_PANEL_NAME = "KRadar panel name";
+const string INI_AIM_MARK_NAME = "Aim mark name";
 
 const string INI_NETWORK = "Share targets";
 const string INI_USE_RANGE_OVERRIDE = "Use radar range override";
@@ -100,6 +101,7 @@ const int MAX_REBROADCAST_INGEST_COUNT = 2;
 
 string MOTHER_CODE = "2ndUsagi1";
 static string debugInfo = "";
+static string debugOnce = "";
 bool pauseDebug = false;
 string COCKPIT_NAME = "Reference";
 int t = 0;
@@ -117,6 +119,8 @@ IMyTerminalBlock fcsReference = null;
 string FCS_REFERENCE_NAME = "Lidar FCS#R";
 string KRADAR_PANEL_NAME = "KRadar Panel";
 IMyTextSurface kradarPanel = null;
+IMyTerminalBlock aimMark = null;
+string AIM_MARK_NAME = "Projector Lidar";
 
 IMyBroadcastListener broadcastListener;
 
@@ -140,6 +144,9 @@ Color neutralElevationColor = new Color(75, 75, 0, 255);
 Color allyIconColor = new Color(0, 50, 150, 255);
 Color allyElevationColor = new Color(0, 25, 75, 255);
 Color textColor = new Color(255, 100, 0, 100);
+
+const int dsInterval = 60;
+static int dsFrame = new Random().Next(dsInterval);
 
 
 float MaxRange
@@ -180,6 +187,7 @@ string droneRadarName = "radardrone";
 IEnumerator<bool> LaunchStateMachine;
 
 double ALERT_RANGE = 2000;
+static long kradarLastUpdate = 0;
 
 //#endregion 
 
@@ -204,8 +212,6 @@ void updateMotion()
 
     refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), msc.WorldMatrix.Forward, msc.WorldMatrix.Up);
     MePosition = msc.GetPosition();
-
-    t++;
 }
 
 public IEnumerable<bool> DroneLaunchHandler()
@@ -232,7 +238,8 @@ public IEnumerable<bool> DroneLaunchHandler()
 
 void Main(string arg, UpdateType updateSource)
 {
-    if (!pauseDebug) debugInfo = "";
+    t++;
+    if (!pauseDebug) debugInfo = "debug info:";
     if (!inited)
     {
         init();
@@ -305,7 +312,7 @@ void Main(string arg, UpdateType updateSource)
     else if (arg.Equals("PICK_NEAR"))
     {
         pickClear();
-        var ktl = targetDataDict.Values.Where(x => x is KRadarTargetData).OrderBy(x => (x.Position - MePosition).Length());
+        var ktl = targetDataDict.Values.Where(x => x is KRadarTargetData).OrderBy(x => (x.estPosition() - MePosition).Length());
         if (ktl.Any())
         {
             var ktt = (KRadarTargetData)ktl.First();
@@ -315,7 +322,7 @@ void Main(string arg, UpdateType updateSource)
     }
     else if (arg.Equals("PICK_NEXT"))
     {
-        var ktl = targetDataDict.Values.Where(x => x is KRadarTargetData).OrderBy(x => (x.Position - MePosition).Length());
+        var ktl = targetDataDict.Values.Where(x => x is KRadarTargetData).OrderBy(x => (x.estPosition() - MePosition).Length());
         bool found = false;
         bool set = false;
         foreach (var kt in ktl)
@@ -346,7 +353,7 @@ void Main(string arg, UpdateType updateSource)
     else if (arg.Equals("PICK_NEAR_HIGH"))
     {
         pickClear();
-        var ktl = targetDataDict.Values.Where(x => x is KRadarTargetData && ((KRadarTargetData)x).isHighThreaten).OrderBy(x => (x.Position - MePosition).Length());
+        var ktl = targetDataDict.Values.Where(x => x is KRadarTargetData && ((KRadarTargetData)x).isHighThreaten).OrderBy(x => (x.estPosition() - MePosition).Length());
         if (ktl.Any())
         {
             var ktt = (KRadarTargetData)ktl.First();
@@ -369,7 +376,6 @@ void Main(string arg, UpdateType updateSource)
             }
         }
     }
-
     updateMotion();
 
     runtimeTracker.AddRuntime();
@@ -378,7 +384,7 @@ void Main(string arg, UpdateType updateSource)
     // kaien
     parseFcsTarget();
     parseKRadarTarget();
-    PrintDetailedInfo();
+    doAimMark();
 
     if (arg.Equals(IGC_TAG))
     {
@@ -404,6 +410,22 @@ void Main(string arg, UpdateType updateSource)
             LaunchStateMachine = null;
         }
     }
+
+    PrintDetailedInfo();
+}
+
+bool lastAimMarkNeed = false;
+private void doAimMark()
+{
+    if (aimMark == null) return;
+    bool need = pickedIdx != 0 && targetDataDict.ContainsKey(pickedIdx);
+    if (need == lastAimMarkNeed) return;
+    if (need) { 
+        PlayAction(aimMark, "OnOff_On");
+    } else { 
+        PlayAction(aimMark, "OnOff_Off");
+    }
+    lastAimMarkNeed = need;
 }
 
 void pickClear()
@@ -421,32 +443,47 @@ void pickClear()
 
 void callDcsSendAvoid()
 {
-    if (t % 4 != 2) return;
+    if (t % dsInterval != dsFrame) return;
     List<KeyValuePair<long, TargetData>> s = targetDataDict.Where(item => {
         var k = item.Key;
         var v = item.Value;
         if (v.Relation != TargetRelation.Friendly) return false;
-        if ((MePosition - v.Position).Length() > 50) return false;
+        if ((MePosition - v.estPosition()).Length() > 100) return false;
         if (k == Me.CubeGrid.EntityId) return false;
         return true;
     }).ToList();
-    s.Sort((l, r) =>
-        (int)((MePosition - r.Value.Position).Length() -
-    (MePosition - l.Value.Position).Length())
-    );
-    if (s.Count > 0) sendAvoid(s[0]);
+    Vector3D force = Vector3D.Zero;
+    s.ForEach(f =>
+    {
+        var d = MePosition - f.Value.estPosition();
+        var dir = Vector3D.Normalize(d);
+        var len = d.Length();
+        var fLen = 100D / len;
+        force += dir * fLen;
+    });
+    if(force != Vector3D.Zero){
+        var dir = Vector3D.Normalize(force);
+        dir = -dir;
+        var len = 100D / force.Length();
+        sendAvoid(MePosition + dir*len);
+    }
+//    s.Sort((l, r) =>
+//        (int)((MePosition - r.Value.estPosition()).Length() -
+//    (MePosition - l.Value.estPosition()).Length())
+//    );
+//    if (s.Count > 0) sendAvoid(s[0]);
 }
 
-void sendAvoid(KeyValuePair<long, TargetData> item)
+void sendAvoid(Vector3D p)
 {
-    var p = item.Value.Position;
-    string message = "RADAR" + "-AVOID:" + item.Key + "," + p.X + "," + p.Y + "," + p.Z;
+    string message = "RADAR" + "-AVOID:" + "9" + "," + p.X + "," + p.Y + "," + p.Z;
     PlayAction(dcsComputer, "Run", message);
 }
 
 void callDcsSendPosition()
 {
-    if (t % 4 != 0) return;
+    if (t % dsInterval != dsFrame) return;
+    //debugOnce = $"target {t} count {targetDataDict.Count}";
     foreach (var item in targetDataDict)
     {
         var k = item.Key;
@@ -466,7 +503,7 @@ void sendPosition(long entityId, TargetData td)
     MatrixD refWorldMatrix = td.Mat;
     var f = td.Mat.Forward;
     if (f == Vector3D.Zero) return;
-    Vector3D currentPos = td.Position;
+    Vector3D currentPos = td.estPosition();
     if (currentPos == null || currentPos.X == 0)
     {
         debugInfo = "error";
@@ -478,16 +515,16 @@ void sendPosition(long entityId, TargetData td)
     refWorldMatrix.M31 + "," + refWorldMatrix.M32 + "," + refWorldMatrix.M33 + "," + refWorldMatrix.M34 + "," +
     currentPos.X + "," + currentPos.Y + "," + currentPos.Z + "," + refWorldMatrix.M44 + "," +
     speed.X + "," + speed.Y + "," + speed.Z;
-    List<KeyValuePair<long, TargetData>> enemyList = targetDataDict.Where(i => i.Value.Relation == TargetRelation.Enemy && (MePosition - i.Value.Position).Length() < ALERT_RANGE).ToList();
+    List<KeyValuePair<long, TargetData>> enemyList = targetDataDict.Where(i => i.Value.Relation == TargetRelation.Enemy && (MePosition - i.Value.estPosition()).Length() < ALERT_RANGE).ToList();
     enemyList.Sort((l, r) =>
-            (int)((MePosition - r.Value.Position).Length() -
-        (MePosition - l.Value.Position).Length())
+            (int)((MePosition - r.Value.estPosition()).Length() -
+        (MePosition - l.Value.estPosition()).Length())
     );
     if (enemyList.Count > 0)
     {
         var k = enemyList[0].Key;
         var v = enemyList[0].Value;
-        Vector3D pos = v.Position;
+        Vector3D pos = v.estPosition();
         Vector3D vel = v.Velocity;
         message += "," + pos.X + "," + pos.Y + "," + pos.Z + "," + vel.X + "," + vel.Y + "," + vel.Z + "," + td.Round;
     }
@@ -507,6 +544,7 @@ void ProcessNetworkMessage()
             byte relationship = myTuple.Item1;
             long entityId = myTuple.Item2;
             Vector3D position = myTuple.Item3;
+            if(targetDataDict.Any(x=> (x.Value.estPosition() - position).Length() < 1)) continue;
             byte ingestCount = ++myTuple.Item4;
             string motherCode = "";
             MatrixD targetMatrix = new MatrixD();
@@ -516,15 +554,15 @@ void ProcessNetworkMessage()
 
             if ((byte)TargetRelation.Friendly == relationship)
             {
-                targetDataDict[entityId] = new TargetData(position, TargetRelation.Friendly, ingestCount, velocity, motherCode, targetMatrix, roundRotationCount);
+                targetDataDict[entityId] = new TargetData(position, TargetRelation.Friendly, ingestCount, velocity, motherCode, targetMatrix, roundRotationCount,t);
             }
             else if ((byte)TargetRelation.Neutral == relationship)
             {
-                targetDataDict[entityId] = new TargetData(position, TargetRelation.Neutral, ingestCount, velocity, "", targetMatrix, 0);
+                targetDataDict[entityId] = new TargetData(position, TargetRelation.Neutral, ingestCount, velocity, "", targetMatrix, 0,t);
             }
             else
             {
-                targetDataDict[entityId] = new TargetData(position, TargetRelation.Enemy, ingestCount, velocity, motherCode, targetMatrix, 0);
+                targetDataDict[entityId] = new TargetData(position, TargetRelation.Enemy, ingestCount, velocity, motherCode, targetMatrix, 0,t);
             }
         }
         else if (messageData is MyTuple<string, string>)
@@ -598,7 +636,7 @@ void NetworkTargets()
             continue;
         if (!networkTargets && targetData.Relation == TargetRelation.Friendly) continue;
 
-        var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)targetData.Relation, kvp.Key, targetData.Position, targetData.IngestCount, encodeMessage(targetData.Code, new MatrixD(), targetData.Velocity, 0));
+        var myTuple = new MyTuple<byte, long, Vector3D, byte, string>((byte)targetData.Relation, kvp.Key, targetData.estPosition(), targetData.IngestCount, encodeMessage(targetData.Code, new MatrixD(), targetData.Velocity, 0));
         IGC.SendBroadcastMessage(IGC_TAG, myTuple);
     }
     //} 
@@ -702,7 +740,7 @@ void DrawCmdPanel()
             if (tmpl.Count == 0) continue;
             TargetData td = tmpl[0];
 
-            sprite = MySprite.CreateText($"{Math.Round((td.Position - MePosition).Length(), 1)}", FONT, textColor, textSize, TextAlignment.LEFT);
+            sprite = MySprite.CreateText($"{Math.Round((td.estPosition() - MePosition).Length(), 1)}", FONT, textColor, textSize, TextAlignment.LEFT);
             sprite.Position = screenCenter + new Vector2(-halfScreenSize.X + 250, -halfScreenSize.Y + nowHeight);
             frame.Add(sprite);
 
@@ -775,9 +813,9 @@ void GetTurretTargets()
             var target = block.GetTargetedEntity();
 
             if (target.Relationship == MyRelationsBetweenPlayerAndBlock.Enemies)
-                targetDataDict[target.EntityId] = new TargetData(target.Position, TargetRelation.Enemy, 0, target.Velocity, "", target.Orientation, 0);
+                targetDataDict[target.EntityId] = new TargetData(target.Position, TargetRelation.Enemy, 0, target.Velocity, "", target.Orientation, 0,t);
             else
-                targetDataDict[target.EntityId] = new TargetData(target.Position, TargetRelation.Neutral, 0, target.Velocity, "", target.Orientation, 0);
+                targetDataDict[target.EntityId] = new TargetData(target.Position, TargetRelation.Neutral, 0, target.Velocity, "", target.Orientation, 0,t);
         }
     }
 
@@ -831,8 +869,8 @@ void GetTurretTargets()
         if (kvp.Key == Me.CubeGrid.EntityId)
             continue;
 
-        if (Vector3D.DistanceSquared(targetData.Position, reference.GetPosition()) < (MaxRange * MaxRange))
-            radarSurface.AddContact(targetData.Position, reference.WorldMatrix, targetIconColor, targetElevationColor, relation, isSelected);
+        if (Vector3D.DistanceSquared(targetData.estPosition(), reference.GetPosition()) < (MaxRange * MaxRange))
+            radarSurface.AddContact(targetData.estPosition(), reference.WorldMatrix, targetIconColor, targetElevationColor, relation, isSelected);
     }
 
     NetworkTargets();
@@ -882,9 +920,10 @@ class TargetData
     public string Code;
     public MatrixD Mat;
     public double Round;
+    public long t;
 
 
-    public TargetData(Vector3D position, TargetRelation relation, byte ingestCount, Vector3D velocity, string code, MatrixD mat, double round)
+    public TargetData(Vector3D position, TargetRelation relation, byte ingestCount, Vector3D velocity, string code, MatrixD mat, double round, long t)
     {
         this.Position = position;
         this.Relation = relation;
@@ -893,6 +932,11 @@ class TargetData
         this.Code = code;
         this.Mat = mat;
         this.Round = round;
+        this.t = t;
+    }
+
+    public Vector3D estPosition() { 
+        return this.Position + (1D/60)*(t-this.t)*this.Velocity;
     }
 }
 
@@ -912,8 +956,8 @@ class KRadarTargetData : TargetData
 
     public static long maxId = 1;
 
-    public KRadarTargetData(Vector3D position, TargetRelation relation, byte ingestCount, Vector3D velocity, string code, MatrixD mat, double round)
-        : base(position, relation, ingestCount, velocity, code, mat, round)
+    public KRadarTargetData(Vector3D position, TargetRelation relation, byte ingestCount, Vector3D velocity, string code, MatrixD mat, double round, long t)
+        : base(position, relation, ingestCount, velocity, code, mat, round, t)
     {
 
     }
@@ -1252,6 +1296,7 @@ void WriteCustomDataIni()
     generalIni.Set(INI_SECTION_GENERAL, INI_START_WHEN_COMPILED, startWhenCompiled);
 
     generalIni.Set(INI_SECTION_GENERAL, INI_KRADAR_PANEL_NAME, KRADAR_PANEL_NAME);
+    generalIni.Set(INI_SECTION_GENERAL, INI_AIM_MARK_NAME, AIM_MARK_NAME);
 
     MyIniHelper.SetColorChar(INI_SECTION_COLORS, INI_TEXT, textColor, generalIni);
     MyIniHelper.SetColorChar(INI_SECTION_COLORS, INI_BACKGROUND, backColor, generalIni);
@@ -1283,6 +1328,7 @@ void ParseCustomDataIni()
     startWhenCompiled = generalIni.Get(INI_SECTION_GENERAL, INI_START_WHEN_COMPILED).ToBoolean(startWhenCompiled);
     Echo("startWhenCompiled " + startWhenCompiled);
     KRADAR_PANEL_NAME = generalIni.Get(INI_SECTION_GENERAL, INI_KRADAR_PANEL_NAME).ToString(KRADAR_PANEL_NAME);
+    AIM_MARK_NAME = generalIni.Get(INI_SECTION_GENERAL, INI_AIM_MARK_NAME).ToString(AIM_MARK_NAME);
 
     textColor = MyIniHelper.GetColorChar(INI_SECTION_COLORS, INI_TEXT, generalIni, textColor);
     backColor = MyIniHelper.GetColorChar(INI_SECTION_COLORS, INI_BACKGROUND, generalIni, backColor);
@@ -2037,12 +2083,13 @@ void init()
     dcsComputer = getBlockByName<IMyProgrammableBlock>(DCS_NAME);
     fcsComputer = getBlockByName<IMyProgrammableBlock>(FCS_NAME);
     fcsReference = getBlockByName<IMyTerminalBlock>(FCS_REFERENCE_NAME, false);
-    var tmpPanel = getBlockByName<IMyTerminalBlock>(KRADAR_PANEL_NAME);
+    var tmpPanel = getBlockByName<IMyTerminalBlock>(KRADAR_PANEL_NAME,false);
     if (tmpPanel is IMyTextPanel)
     {
         kradarPanel = (IMyTextSurface)tmpPanel;
     }
-
+    aimMark = getBlockByName<IMyTerminalBlock>(AIM_MARK_NAME);
+    
     inited = true;
 }
 
@@ -2254,7 +2301,7 @@ void parseFcsTarget()
         long tmpL;
         cfgTarget.Get("EntityId" + i, ref tmpS);
         long.TryParse(tmpS, out tmpL);
-        targetDataDict[tmpL] = new TargetData(tmpP, TargetRelation.Enemy, MAX_REBROADCAST_INGEST_COUNT, tmpV, MOTHER_CODE, new MatrixD(), 0);
+        targetDataDict[tmpL] = new TargetData(tmpP, TargetRelation.Enemy, MAX_REBROADCAST_INGEST_COUNT, tmpV, MOTHER_CODE, new MatrixD(), 0,t);
     }
 
 
@@ -2274,14 +2321,23 @@ class KRadarElement
 
 void parseKRadarTarget()
 {
-    // CODING
     if (kradarPanel == null) return;
     var data = kradarPanel.GetText();
     if(data == null) data = "";
     string[] lines = data.Split('\n');
     List<KRadarElement> kradarPosList = new List<KRadarElement>();
+    bool firstLine = true;
     foreach (var l in lines)
     {
+        if(firstLine) { 
+            long updateFrame;
+            bool get = long.TryParse(l, out updateFrame);
+            if (!get) break;
+            if (updateFrame == kradarLastUpdate) break;
+            kradarLastUpdate = updateFrame;
+            firstLine = false;
+            continue;
+        }
         if (l == null || l.Length == 0) continue;
         string[] fields = l.Split(':');
         if (fields.Count() < 4) continue;
@@ -2320,6 +2376,7 @@ void parseKRadarTarget()
         kradarPosList.Add(ke);
     }
 
+
     // get all kradar target
     List<KRadarTargetData> kradarTargetList = targetDataDict.Where(x => x.Value is KRadarTargetData).Select(x => (KRadarTargetData)x.Value).ToList();
 
@@ -2331,8 +2388,12 @@ void parseKRadarTarget()
             targetDataDict.Remove(kt.id);
             continue;
         }
-
-        kt.Position = kt.realPos + ((t - kt.lastFrame) * (1D / 60) * kt.Velocity);
+        var dt = t - kt.lastFrame;
+        var kv = kt.Velocity;
+        var kvf = ((1D / 60) * kt.Velocity);
+        var delta = dt * kvf * 0.5;
+        kt.Position = kt.realPos + delta;
+        kt.t = t;
 
         // try match target
         foreach (var kp in kradarPosList)
@@ -2356,11 +2417,12 @@ void parseKRadarTarget()
         {
             var lastRealPos = kt.realPos;
             var lastFrame = kt.lastFrame;
-
+            var pe = (found.pos - kt.Position).Length();
             kt.realPos = found.pos;
             kt.size = found.size;
             kt.Position = found.pos;
             kt.lastFrame = t;
+            kt.t = t;
 
             if (found.haveVe)
             {
@@ -2374,20 +2436,19 @@ void parseKRadarTarget()
         }
     }
 
-
     // find left kpos, create new kradar target
     foreach (var kp in kradarPosList)
     {
         if (kp.occupied) continue;
         var newID = KRadarTargetData.maxId++;
-        KRadarTargetData newTarget = new KRadarTargetData(kp.pos, TargetRelation.Enemy, MAX_REBROADCAST_INGEST_COUNT, Vector3D.Zero, MOTHER_CODE, new MatrixD(), 0);
+        KRadarTargetData newTarget = new KRadarTargetData(kp.pos, TargetRelation.Enemy, MAX_REBROADCAST_INGEST_COUNT, Vector3D.Zero, MOTHER_CODE, new MatrixD(), 0,t);
         newTarget.realPos = kp.pos;
         newTarget.lastFrame = t;
         newTarget.size = kp.size;
         newTarget.id = newID;
         if (kp.haveVe) newTarget.Velocity = kp.ve;
 
-        targetDataDict.Add(newID, newTarget);
+        targetDataDict[newID] = newTarget;
         kradarTargetList.Add(newTarget);
     };
     if (Me is IMyTextSurfaceProvider)

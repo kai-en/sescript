@@ -1,17 +1,30 @@
-using Sandbox.ModAPI.Ingame;
+﻿using Sandbox.ModAPI.Ingame;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using VRageMath;
+using Sandbox.ModAPI.Interfaces;
+using VRage.Game.GUI.TextPanel;
+using VRage.Game;
 
+namespace rgms_p
+{
+    public class Program:MyGridProgram
+    {
 
 // start ingame script
 
 static int SMOKE_DENSITY = 8; // larger means less smoke
 static double REFUELER_MERGE_DISTANCE = 1.81;
-static double REFUELER_HINGE_DISTANCE = 1.23;
+static double REFUELER_HINGE_DISTANCE = 0.51;
+static bool isNearExplode = true;
 //static int rgms_no = 0;
 // static float missileGravityRate = 5F;
 double GUIDE_RATE = 0.05; // 0.05 - small ion missile, TR low, if TR is higher, need to lower this? 
-double ATAN_BASE = 0.5; // 
+double ATAN_BASE = 0.7; // 1 - default 
 double APID_P = 10;
 double APID_D = 1.0;
 
@@ -25,12 +38,14 @@ List<IMyTerminalBlock> welderList = new List<IMyTerminalBlock>();
 //double MISSILE_MASS = 1989;
 //double MISSILE_MASS = 1407.4;
 double LaunchDist = 15;
-double OTV_MIN_RANGE = 5000;
-//int dropTime = 0;
+static double MAX_SPEED = 1000;
+static double OTV_MIN_RANGE = MAX_SPEED * 5;
+int dropTime = 0;
 bool isClearDown = false;
 
 static string debugInfo = "";
 static bool fixDebug = false;
+static long debugInterval = 30;
 static long timestamp = 0;
 const int MISSILE_BUILD_TIME = 20;
 bool isAeroDynamic = false;
@@ -151,6 +166,7 @@ class MISSILE
     public Vector3D TargetVelocity = Vector3D.Zero;
     public Vector3D TargetVelocityPanel = Vector3D.Zero;
     public double nearest = 1000000;
+    public double nearestSide = 1000000;
     public double minStop = 1;
     public Vector3D lastVelocity = Vector3D.Zero;
     public Vector3D lastAVelocity = Vector3D.Zero;
@@ -162,13 +178,14 @@ class MISSILE
     public long targetId = 0; // for radar target only
     public bool markRemove = false;
     public Vector3D startPos;
+            
+    public Vector3D Offset = Vector3D.Zero;
 }
 List<MISSILE> MISSILES = new List<MISSILE>();
 
 //Consts
 double Global_Timestep = 0.01667;
 double PNGain = 3;
-double Offset = 0;
 double ThisShipSize = 10;
 string Lstrundata = "Please ensure you have read the \n setup and hints & tips, found within \n the custom data of this block\n";
 IEnumerator<bool> LaunchStateMachine;
@@ -187,6 +204,10 @@ List<IMyTextSurface> displaySurfaces = new List<IMyTextSurface>();
 
 IMySoundBlock Alarm;
 IMyShipController RC;
+int detonateCount = 0;
+IMyTerminalBlock aimBlock = null;
+String aimBlockName = "Lidar FCS#R";
+
 class Refueler
 {
     public IMyMotorStator h1;
@@ -373,12 +394,14 @@ Program()
     List<IMyTextSurface> tmpList = new List<IMyTextSurface>();
     GridTerminalSystem.GetBlocksOfType<IMyTextSurface>(tmpList, b => ((IMyTerminalBlock)b).CustomName.Contains("M_LCD"));
     displaySurfaces.AddRange(tmpList);
-    if (RC is IMyTextSurfaceProvider)
+    List<IMyTextSurfaceProvider> tmpProviderList = new List<IMyTextSurfaceProvider>();
+    GridTerminalSystem.GetBlocksOfType<IMyTextSurfaceProvider>(tmpProviderList, b => ((IMyTerminalBlock)b).CustomName.Contains("M_LCD"));
+    displaySurfaces.AddRange(tmpProviderList.Select(x =>
     {
-        var tmp = ((IMyTextSurfaceProvider)RC).GetSurface(4);
-        if (tmp != null) displaySurfaces.Add(tmp);
-        else if (((IMyTextSurfaceProvider)RC).GetSurface(0) != null) displaySurfaces.Add(((IMyTextSurfaceProvider)RC).GetSurface(0));
-    }
+        var tmp = x.GetSurface(4);
+        if (tmp != null) return tmp;
+        return x.GetSurface(0);
+    }));
 
     List<IMyTerminalBlock> tList = new List<IMyTerminalBlock>();
     GridTerminalSystem.GetBlocksOfType<IMyTimerBlock>(tList, b => ((IMyTerminalBlock)b).CustomName.Contains("PG-"));
@@ -393,6 +416,12 @@ Program()
     {
         radarSurface = ((IMyTextSurfaceProvider)tmpProgBlockList[0]).GetSurface(0);
     }
+
+    tList.Clear();
+    GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(tList, b => ((IMyTerminalBlock)b).CustomName.Contains(aimBlockName));
+    if(tList.Any()) { 
+        aimBlock = tList.First();
+    }
 }
 #endregion
 
@@ -401,21 +430,22 @@ Program()
 void Main(string argument)
 {
     timestamp++;
-    if (!fixDebug && timestamp % 60 == 0) debugInfo = "";
+    if (!fixDebug && timestamp % debugInterval == 0) debugInfo = "";
     //General Layout Diagnostics
     OP_BAR();
+    Echo($"Detonate Count: {detonateCount}");
+    Echo($"Near Explode: {isNearExplode}");
     QuickEcho(MISSILES.Count, "Active (Fired) Missiles:");
     QuickEcho(refuelerList.Count, "Refuelers:");
     QuickEcho(autoFireMissile, "Auto fire:");
     QuickEcho(isTrackVelocity, "Track V:");
-    QuickEcho(isPn ? "PN" : "Parallel", "Guild rate:");
+    QuickEcho(isPn ? "PN" : "Parallel", "Guide mode:");
     QuickEcho(Runtime.LastRunTimeMs, "Runtime:");
     Echo("Version:  " + VERSION);
     //Echo("PNGain: " + PNGain);
-    Echo("Offset: " + Offset);
     Echo("Agile: " + GUIDE_RATE + " " + ATAN_BASE + " " + APID_P + " " + APID_D);
     Echo($"Launch Distance: {LaunchDist}");
-    Echo($"Target Velocity Intercept Min Range: {OTV_MIN_RANGE}");
+    Echo($"TVI Min Range: {OTV_MIN_RANGE}");
     Echo("\nInfo:\n---------------");
     Echo(Lstrundata);
 
@@ -482,12 +512,48 @@ void Main(string argument)
                 PNGain = value;
             }
         }
-        else if (args[0] == "SetOffset")
+        else if (args[0] == "AddOffsetDown")
         {
             double value = 0;
-            if (double.TryParse(args[1], out value))
+            if (double.TryParse(args[1], out value) && aimBlock!=null)
             {
-                Offset = value;
+                var add = value * aimBlock.WorldMatrix.Down;
+                foreach(var m in MISSILES) { 
+                    m.Offset += add;
+                }
+            }
+        }
+        else if (args[0] == "AddOffsetUp")
+        {
+            double value = 0;
+            if (double.TryParse(args[1], out value) && aimBlock!=null)
+            {
+                var add = value * aimBlock.WorldMatrix.Up;
+                foreach(var m in MISSILES) { 
+                    m.Offset += add;
+                }
+            }
+        }
+        else if (args[0] == "AddOffsetLeft")
+        {
+            double value = 0;
+            if (double.TryParse(args[1], out value) && aimBlock!=null)
+            {
+                var add = value * aimBlock.WorldMatrix.Left;
+                foreach(var m in MISSILES) { 
+                    m.Offset += add;
+                }
+            }
+        }
+        else if (args[0] == "AddOffsetRight")
+        {
+            double value = 0;
+            if (double.TryParse(args[1], out value) && aimBlock!=null)
+            {
+                var add = value * aimBlock.WorldMatrix.Right;
+                foreach(var m in MISSILES) { 
+                    m.Offset += add;
+                }
             }
         }
         else if (args[0] == "SetAuto")
@@ -504,6 +570,15 @@ void Main(string argument)
         {
             if (args[1] == "True") isPn = true;
             else isPn = false;
+        }else if (args[0] == "SetNearExplode") { 
+            if (args[1].ToLower().Equals("true")) isNearExplode = true;
+            else isNearExplode = false;
+        }else if (args[0] == "SetAtan") { 
+            double value = 0;
+            if (double.TryParse(args[1], out value))
+            {
+                ATAN_BASE = value;
+            }
         }
     }
     else if (argument != "")
@@ -536,7 +611,7 @@ void Main(string argument)
 
         if (ThisMissile.IS_CLEAR == false)
         {
-            if ((ThisMissile.GYRO.GetPosition() - ThisMissile.startPos).Length() > LaunchDist)
+            if ((ThisMissile.GYRO.GetPosition() - (RC.GetPosition() + ThisMissile.startPos)).Length() > LaunchDist)
             { ThisMissile.IS_CLEAR = true; }
         }
         if (debugMode) ThisMissile.IS_CLEAR = true;
@@ -759,14 +834,20 @@ public IEnumerable<bool> MissileLaunchHandler()
 
         //Disables Merge Block
         MISSILE ThisMissile = MISSILES[MISSILES.Count - 1];
+        ThisMissile.GYRO.ApplyAction("OnOff_On");
 
         var MERGE_A = ThisMissile.MERGE;
         (MERGE_A as IMyShipMergeBlock).Enabled = false;
 
+        
+        for (int k = 0; k < dropTime; k++) {
+        	yield return true;
+        }
+
         foreach (IMyThrust thruster in ThisMissile.THRUSTERS)
         {
             ((IMyTerminalBlock)thruster).ApplyAction("OnOff_On");
-            if (!debugMode) thruster.ThrustOverridePercentage = 1;
+            //if (!debugMode) thruster.ThrustOverridePercentage = 1;
         }
 
         var POWER_A = ThisMissile.POWER;
@@ -804,10 +885,6 @@ public IEnumerable<bool> MissileLaunchHandler()
                 land.ApplyAction("Unlock");
             }
         }
-
-        //for (int i = 0; i < dropTime; i++) {
-        //	yield return true;
-        //}
 
         //Launches Missile & Gathers Next Scanner
         PREP_FOR_LAUNCH(ThisMissile);
@@ -860,20 +937,7 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
     {
         ENEMY_POS = targetPanelPosition;
         usePanel = true;
-        Vector3D dir = ENEMY_POS - RC.GetPosition();
-        dir = Vector3D.Normalize(dir);
-        var rcmt = RC.WorldMatrix;
-        Vector3D tmp = Vector3D.Reject(dir, rcmt.Up);
-        if (tmp.Equals(Vector3D.Zero))
-        {
-            tmp = rcmt.Forward;
-        }
-        else
-        {
-            tmp = Vector3D.Normalize(tmp);
-        }
-        MatrixD rd = MatrixD.CreateFromDir(tmp, rcmt.Up);
-        ENEMY_POS = ENEMY_POS + Offset * rd.Right;
+        ENEMY_POS = ENEMY_POS + This_Missile.Offset;
 
     }
 
@@ -908,11 +972,11 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
         PlayAction(This_Missile.SMOKE, "ShootOnce");
     if (isClear == false)
     {
-
-        if (isClearDown)
-            TargetPosition = This_Missile.startPos + RC.WorldMatrix.Down * LaunchDist;
+        var ng = RC.GetNaturalGravity();
+        if (isClearDown && ng.Length()<0.1)
+            TargetPosition = RC.GetPosition() + This_Missile.startPos + RC.WorldMatrix.Down * LaunchDist;
         else
-            TargetPosition = This_Missile.startPos + RC.WorldMatrix.Up * LaunchDist;
+            TargetPosition = RC.GetPosition() + This_Missile.startPos + RC.WorldMatrix.Up * LaunchDist;
         TargetAcc = Vector3D.Zero;
         This_Missile.TargetVelocity = RC.GetShipVelocities().LinearVelocity;
         This_Missile.TargetVelocityPanel = This_Missile.TargetVelocity;
@@ -998,12 +1062,17 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
         var maxSdl = thrust / This_Missile.MISSILE_MASS;
         if (!debugMode)
         {
-            var thrustPercent = This_Missile.prevDot * This_Missile.prevDot;
-            if (thrustPercent < 0.2) thrustPercent = 0.2; // avoid low speed trap, important
-            if (!This_Missile.IS_CLEAR) thrustPercent = 1; // do not reduce thrust if not leave ship
+            var thrustPercent = This_Missile.prevDot > 0 ? This_Missile.prevDot * This_Missile.prevDot: 0;
+            if(targetRange.Length() <100) thrustPercent = 1; // do not reduce thrust if target is close(because the error may increase and we need lift in gravity)
+            if(!isClear) { 
+              if(This_Missile.prevDot > 0.1) thrustPercent = 1;
+              else thrustPercent=0;
+            } else { 
+              if (thrustPercent < 0.2) thrustPercent = 0.2; 
+            }
             foreach (var t in This_Missile.THRUSTERS)
             {
-                t.ThrustOverridePercentage = (float)thrustPercent;
+                t.ThrustOverridePercentage = (float)thrustPercent; // TODO test
             }
             thrust *= thrustPercent;
         }
@@ -1039,14 +1108,13 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
 
         // 2 换算不需要的加速度 平行制导率
         var trueGuideRate = GUIDE_RATE;
-        trueGuideRate *= 100 / maxSdl; // ratio, 100(10G) is base TR
-        trueGuideRate *= 1 + RC.GetNaturalGravity().Length() * 0.2; // 3 times?
-        //trueGuideRate = GUIDE_RATE * (sdl / (sdl - RC.GetNaturalGravity().Length()));// TODO GUIDE_RATE sdl?
+        trueGuideRate *= Math.Max(maxSdl * 0.1D - 3D, 0.5D); // 
+        // trueGuideRate *= 2 + RC.GetNaturalGravity().Length() * 0.1; // times?
         Vector3D rdo;
         if (rv.Length() != 0)
         {
             Vector3D rvN = Vector3D.Normalize(rv);
-            double newLen = Math.Atan2(rv.Length(), ATAN_BASE);
+            double newLen = Math.Atan2(rv.Length(), ATAN_BASE); // if rv = atan_base, output 0.7?
             Vector3D newRv = rvN * newLen;
             rdo = newRv * trueGuideRate * 60
             //+ ra * 0.5
@@ -1059,7 +1127,7 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
 
         if (isPn)
         { // use PN
-            double PN_RATE = 3000;
+            double PN_RATE = 1000;
             Vector3D losD = (LOS_New - LOS_Old) * 60
             //+ ra * 0.5
             ;
@@ -1067,7 +1135,7 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
             Vector3D sideN = Vector3D.Normalize(Vector3D.Reject(LOS_New, Vector3D.Normalize(MissileVelocity)));
             Vector3D graN = Vector3D.Normalize(RC.GetNaturalGravity());
             double rdol_pn = Math.Atan2(losDl, ATAN_BASE) * PN_RATE;
-            if (rdol_pn > sdl * 0.5) rdol_pn = sdl * 0.5;
+            //if (rdol_pn > sdl * 0.5) rdol_pn = sdl * 0.5;
             Vector3D rdo_pn = sideN * rdol_pn;
 
 
@@ -1116,8 +1184,6 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
             // 9 总加速度方向
             Vector3D nam = Vector3D.Normalize(sd_pn);
 
-            if (targetRange.Length() < This_Missile.nearest)
-                This_Missile.nearest = targetRange.Length();
             //double pn_test = (Vector3D.Normalize(MissileVelocity) - Vector3D.Normalize(lastVelocity)).Length() / ((LOS_New - LOS_Old).Length()*60);
 
             am = nam;
@@ -1164,10 +1230,6 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
             // 9 总加速度方向
             Vector3D nam = Vector3D.Normalize(sd);
 
-            if (targetRange.Length() < This_Missile.nearest)
-                This_Missile.nearest = targetRange.Length();
-            //double pn_test = (Vector3D.Normalize(MissileVelocity) - Vector3D.Normalize(lastVelocity)).Length() / ((LOS_New - LOS_Old).Length()*60);
-
             am = nam;
         }
 
@@ -1178,7 +1240,17 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
         //debugInfo += "\nRA: " + rangle;
 
         //debugInfo += "\namToMe: " + displayVector3D(amToMe);
-        //debugInfo += "\nnearest" + This_Missile.nearest;
+        debug($"trange: {Math.Round(targetRange.Length(),3)}");
+        debug($"rverror: {Math.Round(rv.Length(),3)}");
+        debug($"aimerror: {Math.Round((am - This_Missile.GYRO.WorldMatrix.Up).Length(), 2)}");
+
+        if (targetRange.Length() < This_Missile.nearest && This_Missile.IS_CLEAR) { 
+            This_Missile.nearest = targetRange.Length();
+            var mvN = Vector3D.Normalize(MissileVelocity);
+            var trr = Vector3D.Reject(targetRange, mvN);
+            This_Missile.nearestSide = trr.Length();
+        }
+        debug($"nearest: {Math.Round(This_Missile.nearest, 3)} {Math.Round(This_Missile.nearestSide, 3)}");
 
 
     }
@@ -1199,18 +1271,29 @@ This_Missile_Director.GetTargetedEntity().IsEmpty() == false)
     bool targetGetFar = (TargetPosition - MissilePosition).LengthSquared() > (TargetPositionPrev - MissilePositionPrev).LengthSquared() && (TargetPosition - MissilePosition).LengthSquared() < 4 * 4;
     if (targetGetFar)
     {
-        foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).StartCountdown(); }
+        foreach (var item in This_Missile.WARHEADS) {
+            var wh = (IMyWarhead) item;
+            if (isNearExplode) wh.Detonate();
+            else wh.StartCountdown(); 
+        }
     }
     var stop = Vector3D.Dot(Vector3D.Normalize(MissileVelocity), Vector3D.Normalize(lastVelocity));
     if (targetNear && stop < This_Missile.minStop) This_Missile.minStop = stop;
-    bool missileStop = stop < 0.8;
+    bool missileStop = stop < 0.9;
     missileStop = missileStop && targetNear;
     if (missileStop) //A mighty earth shattering kaboom
     {
+        foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).IsArmed = true; }
         foreach (var item in This_Missile.WARHEADS) { (item as IMyWarhead).Detonate(); }
         This_Missile.markRemove = true;
+        detonateCount ++;
     }
 
+}
+
+private void debug(string v)
+{
+    if (!fixDebug && timestamp % debugInterval == 0) debugInfo += "\n" + v;
 }
 #endregion
 
@@ -1315,14 +1398,12 @@ bool INIT_NEXT_MISSILE()
 
         // a b K
         List<IMyThrust> TempThrusters = THRUSTERS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance && b.CustomName.Contains(NEW_MISSILE.MISSILE_TAG));
-        TempThrusters.Sort((x, y) => (compareP(x, y, Key_Gyro)));
-        List<IMyThrust> T2Thrusters = new List<IMyThrust>();
-        int TCount = NEW_MISSILE.THRUSTER_COUNT < TempThrusters.Count ? NEW_MISSILE.THRUSTER_COUNT : TempThrusters.Count;
-        for (int i = 0; i < TCount; i++)
-        {
-            T2Thrusters.Add(TempThrusters[i]);
-        }
-        NEW_MISSILE.THRUSTERS = T2Thrusters;
+        var ThrusterSort = TempThrusters.OrderBy(x => {
+            var rp = x.GetPosition() - Key_Gyro.GetPosition();
+            var xy = Vector3D.Reject(rp, Key_Gyro.WorldMatrix.Down);
+            return xy.Length();
+        });
+        NEW_MISSILE.THRUSTERS = ThrusterSort.Take(NEW_MISSILE.THRUSTER_COUNT).ToList();
 
 
         List<IMyTerminalBlock> TempSpots = SPOTS.FindAll(b => (b.GetPosition() - GyroPos).LengthSquared() < Distance * Distance && b.CustomName.Contains(NEW_MISSILE.MISSILE_TAG));
@@ -1401,7 +1482,7 @@ bool INIT_NEXT_MISSILE()
             }
             NEW_MISSILE.POWER = TempPower[0];
             NEW_MISSILE.MERGE = TempMerges[0];
-            NEW_MISSILE.startPos = NEW_MISSILE.GYRO.GetPosition();
+            NEW_MISSILE.startPos = NEW_MISSILE.GYRO.GetPosition() - RC.GetPosition();
             if (NEW_MISSILE.IS_SIDE) NEW_MISSILE.prevDir = NEW_MISSILE.GYRO.WorldMatrix.Forward;
             else NEW_MISSILE.prevDir = NEW_MISSILE.GYRO.WorldMatrix.Up;
             MISSILES.Add(NEW_MISSILE);
@@ -2147,3 +2228,7 @@ void checkFcsTarget(out Vector3D targetPosition, out Vector3D targetVelocity)
 
 // (sqrt (+ (* 1 1) (* 1.5 1.5)))
 // (sqrt (+ (* 1 1) (* 1.5 1.5) 1))
+
+
+    }
+}
