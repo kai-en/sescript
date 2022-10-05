@@ -23,7 +23,7 @@ Kaien's drone control system V5.6
 last update:
 v5.6.1 202203
 -----------------
-STANDBY
+RADAR:STANDBYOFF
 ...
 
 custom data sample for son ship:
@@ -736,7 +736,6 @@ SetGyroRoll(0);
 needGyroOverride = true;
 }
 SetGyroOverride(needGyroOverride);
-
 Main_RT(arguments, updateType); // in front of main_vt
 
 Main_VT();
@@ -1286,8 +1285,9 @@ void ShowLCD()
 // Echo status:
 Echo("DCS v5.6");
 Echo(debugInfo);
-if(Head != null) {
-Echo("Head: " + Head.CustomName + "\n");
+Echo("FC:" + Cockpit.CustomName);
+if (Head != null) {
+Echo(" Head:" + Head.CustomName + "\n");
 }
 Echo("WMI Rotor Thruster\nManager... " + RunningSymbol() + "\n");
 Echo($"Gyros :{Gyroscopes.Count}");
@@ -1516,11 +1516,8 @@ refLookAtMatrix = MatrixD.CreateLookAt(new Vector3D(), Cockpit.WorldMatrix.Forwa
 
 Head = getBlockByName(HeadNameTag) as IMyShipController;
 
-//FA85
-tryAddVftr("Wing-L", 0, toRa(20F), toRa(20F), 0, wingrList);
-tryAddVftr("Wing-R", 0, toRa(-20F), toRa(-20F), 0, wingrList);
-tryAddVftr("Hinge Land", toRa(90F), toRa(40F), toRa(40F), 0, landrList);
-tryAddVftr("Hinge Head", toRa(90F), toRa(45F), toRa(45F), 0, landrList);
+//FA86
+//tryAddVftr("Hinge Land", toRa(0F), toRa(25F), toRa(25F), 0, landrList);
 
 // ffx9
 //tryAddVftr("Hinge Land 1-1", toRa(0F), toRa(80F), toRa(80F), 0, landrList);
@@ -1529,13 +1526,14 @@ tryAddVftr("Hinge Head", toRa(90F), toRa(45F), toRa(45F), 0, landrList);
 //tryAddVftr("Piston Land 2-2", 0, 4, 4, 360, landrList);
 //tryAddVftr("Piston Connect", 0, 10, 10, 360, landrList);
 
-// U4
+// U5
+tryAddVftr("Hinge Land", toRa(90F), toRa(0F), toRa(0F), 0, landrList);
 //tryAddVftr("Leg-L1", toRa(90F), toRa(90F), 0, 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, false, 0);
-//tryAddVftr("Leg-L2", toRa(-90F), toRa(-90F), 0, 0, vftrList, 0,0,0,0, 0,0,0,0, toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
-//tryAddVftr("Leg-L3", 0, toRa(90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-90), toRa(0), toRa(60), toRa(0), toRa(-60), false, 4);
+tryAddVftr("Leg-L2", toRa(-88F), toRa(-88F), 0, 0, vftrList, 0,0,0,0, 0,0,0,0, toRa(60), toRa(90), toRa(-60), toRa(-90), false, 2);
+tryAddVftr("Leg-L3", toRa(88F), toRa(-2F), toRa(-90F), 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-90), toRa(0), toRa(60), toRa(0), toRa(-60), true, 4);
 //tryAddVftr("Leg-R1", toRa(-90F), toRa(-90F), 0, 0, vftrList, 0,0,0,0, 0,0,0,0, 0,0,0,0, true, 1);
-//tryAddVftr("Leg-R2", toRa(-90F), toRa(-90F), 0, 0, vftrList, 0,0,0,0, 0,0,0,0, toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
-//tryAddVftr("Leg-R3", 0, toRa(-90F), 0, 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-90), toRa(0), toRa(60), toRa(0), toRa(-60), true, 5);
+tryAddVftr("Leg-R2", toRa(-88F), toRa(-88F), 0, 0, vftrList, 0,0,0,0, 0,0,0,0, toRa(60), toRa(90), toRa(-60), toRa(-90), false, 3);
+tryAddVftr("Leg-R3", toRa(88F), toRa(-2F), toRa(-90F), 0, vftrList, 0,0,0,0, toRa(0), toRa(90), toRa(0), toRa(-90), toRa(0), toRa(60), toRa(0), toRa(-60), true, 5);
 
 //tryAddVftr("Arm-L1", 0, 0, toRa(-90), 0, vftrList);
 //tryAddVftr("Arm-L2", 0, toRa(130F), toRa(180F), 0, vftrList);
@@ -1544,12 +1542,8 @@ tryAddVftr("Hinge Head", toRa(90F), toRa(45F), toRa(45F), 0, landrList);
 
 //tryAddVftr("Hinge Nose", toRa(90F), toRa(90F), 0, 0, vftrList);
 //tryAddVftr("Piston Nose", 1.52F, 1.52F, 0, 200, vftrList);
-
-GridTerminalSystem.GetBlocksOfType(LCD, b => ((IMyTerminalBlock)b).CustomName.Contains(DCSLCDNameTag));
-if (Cockpit is IMyTextSurfaceProvider) {
-var tmp =((IMyTextSurfaceProvider)Cockpit).GetSurface(2);
-if (tmp != null) LCD.Add(tmp);
-}
+var tbl = getBlockListByName(DCSLCDNameTag);
+LCD = tbl.Select(b => { if (b is IMyTextSurfaceProvider) { return ((IMyTextSurfaceProvider)b).GetSurface(2); } else return (IMyTextSurface)b; }).ToList();
 
 if(LCD.Count < 1)
 {errorInfo = DCSLCDNameTag  + " not found";}
@@ -3059,7 +3053,6 @@ List<IMyShipController> referenceList = new List<IMyShipController>();
 List<List<IMyThrust>> offGridThrustLL = new List<List<IMyThrust>>();
 bool useBst = true;
 
-IMyShipController thisReferenceBlock = null;
 Vector3D lastSpeedVector = new Vector3D(0,0,0);
 
 double minDampeningDotProduct ;
@@ -3067,7 +3060,6 @@ double fullBurnDotProduct ;
 
 void Main_RT(string argument, UpdateType updateType)
 {
-
 minDampeningDotProduct = Math.Cos(minDampeningAngle * Math.PI / 180);
 fullBurnDotProduct = Math.Cos(fullBurnToleranceAngle * Math.PI / 180);
 if (!isSetup )
@@ -3075,24 +3067,17 @@ if (!isSetup )
 GrabBlocks();
 isSetup = true;
 }
-
 if (!isSetup)
 return;
 
 
 try
 {
-
-thisReferenceBlock = GetControlledShipController(referenceList);
-
-if(true){
 if(inputVec_RT.Length() < 0.1 && aeroSpeedLevel>0){
 if(mySpeedToMe.Z > (-10*aeroSpeedLevel)){
 inputVec_RT.Z = MathHelper.Clamp( ft, -1, 1);
 }
 }
-}
-
 if(notDocked()) {
 // TN
 Vector3D needA = inputVec_RT * 10.0; // 1G
